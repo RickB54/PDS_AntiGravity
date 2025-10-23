@@ -12,6 +12,10 @@ export interface Customer {
   vehicle: string;
   model: string;
   year: string;
+  color: string;
+  mileage: string;
+  conditionInside: string;
+  conditionOutside: string;
   services: string[];
   lastService: string;
   duration: string;
@@ -33,6 +37,10 @@ export default function CustomerModal({ open, onOpenChange, initial, onSave }: P
     vehicle: "",
     model: "",
     year: "",
+    color: "",
+    mileage: "",
+    conditionInside: "",
+    conditionOutside: "",
     services: [],
     lastService: "",
     duration: "",
@@ -43,7 +51,22 @@ export default function CustomerModal({ open, onOpenChange, initial, onSave }: P
     if (initial) {
       setForm({ ...initial, services: initial.services || [] });
     } else {
-      setForm({ id: undefined, name: "", phone: "", vehicle: "", model: "", year: "", services: [], lastService: "", duration: "", notes: "" });
+      setForm({ 
+        id: undefined, 
+        name: "", 
+        phone: "", 
+        vehicle: "", 
+        model: "", 
+        year: "", 
+        color: "",
+        mileage: "",
+        conditionInside: "",
+        conditionOutside: "",
+        services: [], 
+        lastService: "", 
+        duration: "", 
+        notes: "" 
+      });
     }
   }, [initial, open]);
 
@@ -67,7 +90,7 @@ export default function CustomerModal({ open, onOpenChange, initial, onSave }: P
           <DialogTitle>{initial?.id ? "Edit Customer" : "Add Customer"}</DialogTitle>
           <DialogDescription>Update customer details and service history.</DialogDescription>
         </DialogHeader>
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 py-2">
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 py-2 max-h-[60vh] overflow-y-auto">
           <div className="space-y-2">
             <Label htmlFor="name">Name</Label>
             <Input id="name" value={form.name} onChange={(e) => handleChange("name", e.target.value)} />
@@ -87,6 +110,22 @@ export default function CustomerModal({ open, onOpenChange, initial, onSave }: P
           <div className="space-y-2">
             <Label htmlFor="year">Year</Label>
             <Input id="year" value={form.year} onChange={(e) => handleChange("year", e.target.value)} />
+          </div>
+          <div className="space-y-2">
+            <Label htmlFor="color">Color</Label>
+            <Input id="color" value={form.color} onChange={(e) => handleChange("color", e.target.value)} />
+          </div>
+          <div className="space-y-2 md:col-span-2">
+            <Label htmlFor="mileage">Approximate Mileage</Label>
+            <Input id="mileage" value={form.mileage} onChange={(e) => handleChange("mileage", e.target.value)} placeholder="e.g., 45000" />
+          </div>
+          <div className="space-y-2">
+            <Label htmlFor="conditionInside">Condition (Inside)</Label>
+            <Textarea id="conditionInside" value={form.conditionInside} onChange={(e) => handleChange("conditionInside", e.target.value)} className="min-h-[60px]" placeholder="Describe interior condition" />
+          </div>
+          <div className="space-y-2">
+            <Label htmlFor="conditionOutside">Condition (Outside)</Label>
+            <Textarea id="conditionOutside" value={form.conditionOutside} onChange={(e) => handleChange("conditionOutside", e.target.value)} className="min-h-[60px]" placeholder="Describe exterior condition" />
           </div>
           <div className="space-y-2 md:col-span-2">
             <Label htmlFor="services">Services (comma separated)</Label>

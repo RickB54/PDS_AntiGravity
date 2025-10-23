@@ -26,7 +26,7 @@ import logo from "@/assets/prime-logo.png";
 const menuItems = [
   { title: "Home", url: "/", icon: Home },
   { title: "Service Checklist", url: "/checklist", icon: ClipboardCheck },
-  { title: "Search Customer", url: "/customers", icon: Search },
+  { title: "Customer Info", url: "/customers", icon: Search },
   { title: "Invoicing", url: "/invoicing", icon: FileText },
   { title: "Accounting", url: "/accounting", icon: Calculator },
   { title: "Training Manual", url: "/training", icon: BookOpen },

@@ -4,6 +4,7 @@ import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Download, Upload, Database } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
+import { exportAll, importAllFromJSON, downloadBlob } from "@/lib/db";
 
 const Settings = () => {
   const { toast } = useToast();
