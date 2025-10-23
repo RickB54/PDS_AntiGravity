@@ -54,10 +54,10 @@ const Invoicing = () => {
   }, []);
 
   const loadData = async () => {
-    const invs = await getInvoices<Invoice>();
-    const custs = await getCustomers<Customer>();
-    setInvoices(invs);
-    setCustomers(custs);
+    const invs = await getInvoices();
+    const custs = await getCustomers();
+    setInvoices(invs as Invoice[]);
+    setCustomers(custs as Customer[]);
   };
 
   const addService = () => {
