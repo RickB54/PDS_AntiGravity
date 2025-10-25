@@ -34,18 +34,20 @@ export async function getCustomers<T extends GenericWithId>(): Promise<T[]> {
 
 export async function upsertCustomer<T extends Partial<GenericWithId>>(cust: T): Promise<GenericWithId & T> {
   const list = await getArray<any>(KEYS.customers);
+  const now = new Date().toISOString();
   let saved: any;
   if (cust.id) {
     const idx = list.findIndex((c: any) => c.id === cust.id);
     if (idx >= 0) {
-      list[idx] = { ...list[idx], ...cust };
-      saved = list[idx];
+      const existing = list[idx];
+      saved = { ...existing, ...cust, updatedAt: now, createdAt: existing.createdAt || now };
+      list[idx] = saved;
     } else {
-      saved = { id: String(cust.id), ...cust };
+      saved = { id: String(cust.id), ...cust, createdAt: now, updatedAt: now };
       list.push(saved);
     }
   } else {
-    saved = { id: genId(), ...cust };
+    saved = { id: genId(), ...cust, createdAt: now, updatedAt: now };
     list.push(saved);
   }
   await setArray(KEYS.customers, list);
@@ -56,6 +58,13 @@ export async function deleteCustomer(id: string): Promise<void> {
   const list = await getArray<any>(KEYS.customers);
   const next = list.filter((c: any) => c.id !== id);
   await setArray(KEYS.customers, next);
+}
+export async function purgeTestCustomers(): Promise<void> {
+  const list = await getArray<any>(KEYS.customers);
+  const next = list.filter((c: any) => !["John Smith", "Sarah Johnson"].includes(String(c.name || "").trim()));
+  if (next.length !== list.length) {
+    await setArray(KEYS.customers, next);
+  }
 }
 
 // Estimates

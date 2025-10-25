@@ -6,9 +6,12 @@ import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
-import { Plus, Pencil, Trash2, AlertTriangle } from "lucide-react";
+import { Plus, AlertTriangle, Printer, Save } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import localforage from "localforage";
+import DateRangeFilter, { DateRangeValue } from "@/components/filters/DateRangeFilter";
+import MaterialsInventory from "@/components/inventory/MaterialsInventory";
+import jsPDF from "jspdf";
 
 interface Chemical {
   id: string;
@@ -142,7 +145,7 @@ const InventoryControl = () => {
             </Card>
           )}
 
-          <Card className="p-6 bg-gradient-card border-border">
+<Card className="p-6 bg-gradient-card border-border">
             <div className="flex items-center justify-between mb-4">
               <h2 className="text-2xl font-bold text-foreground">Chemical Inventory</h2>
               <Button onClick={openAdd} className="bg-gradient-hero">
@@ -155,38 +158,27 @@ const InventoryControl = () => {
               <TableHeader>
                 <TableRow>
                   <TableHead>Chemical Name</TableHead>
-                  <TableHead>Bottle Size</TableHead>
-                  <TableHead>Cost per Bottle</TableHead>
+                  <TableHead className="hidden md:table-cell">Bottle Size</TableHead>
+                  <TableHead className="hidden md:table-cell">Cost per Bottle</TableHead>
                   <TableHead>Current Stock</TableHead>
-                  <TableHead>Threshold</TableHead>
-                  <TableHead>Actions</TableHead>
+                  <TableHead className="hidden md:table-cell">Threshold</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
                 {chemicals.map(chem => (
-                  <TableRow key={chem.id}>
+                  <TableRow key={chem.id} className="cursor-pointer" onClick={() => openEdit(chem)}>
                     <TableCell className="font-medium">{chem.name}</TableCell>
-                    <TableCell>{chem.bottleSize}</TableCell>
-                    <TableCell>${chem.costPerBottle.toFixed(2)}</TableCell>
+                    <TableCell className="hidden md:table-cell">{chem.bottleSize}</TableCell>
+                    <TableCell className="hidden md:table-cell">${chem.costPerBottle.toFixed(2)}</TableCell>
                     <TableCell className={chem.currentStock <= chem.threshold ? "text-destructive font-bold" : ""}>
                       {chem.currentStock}
                     </TableCell>
-                    <TableCell>{chem.threshold}</TableCell>
-                    <TableCell>
-                      <div className="flex gap-2">
-                        <Button variant="ghost" size="icon" onClick={() => openEdit(chem)}>
-                          <Pencil className="h-4 w-4" />
-                        </Button>
-                        <Button variant="ghost" size="icon" onClick={() => handleDelete(chem.id)}>
-                          <Trash2 className="h-4 w-4" />
-                        </Button>
-                      </div>
-                    </TableCell>
+                    <TableCell className="hidden md:table-cell">{chem.threshold}</TableCell>
                   </TableRow>
                 ))}
                 {chemicals.length === 0 && (
                   <TableRow>
-                    <TableCell colSpan={6} className="text-center text-muted-foreground py-8">
+                    <TableCell colSpan={5} className="text-center text-muted-foreground py-8">
                       No chemicals added yet. Click "Add Chemical" to get started.
                     </TableCell>
                   </TableRow>
@@ -195,19 +187,22 @@ const InventoryControl = () => {
             </Table>
           </Card>
 
-          <Card className="p-6 bg-gradient-card border-border">
-            <div className="flex items-center justify-between mb-4">
+<Card className="p-6 bg-gradient-card border-border">
+            <div className="flex items-center justify-between mb-4 flex-wrap gap-2">
               <h2 className="text-2xl font-bold text-foreground">Usage History</h2>
-              <select
-                value={dateFilter}
-                onChange={(e) => setDateFilter(e.target.value as any)}
-                className="h-10 rounded-md border border-input bg-background px-3 py-2 text-sm"
-              >
-                <option value="all">All Time</option>
-                <option value="daily">Today</option>
-                <option value="weekly">This Week</option>
-                <option value="monthly">This Month</option>
-              </select>
+              <div className="flex gap-2 items-center flex-wrap">
+                <select
+                  value={dateFilter}
+                  onChange={(e) => setDateFilter(e.target.value as any)}
+                  className="h-10 rounded-md border border-input bg-background px-3 py-2 text-sm"
+                >
+                  <option value="all">All Time</option>
+                  <option value="daily">Today</option>
+                  <option value="weekly">This Week</option>
+                  <option value="monthly">This Month</option>
+                </select>
+                <DateRangeFilter value={{}} onChange={() => {}} storageKey="inventory-history-range" />
+              </div>
             </div>
 
             <Table>
@@ -236,6 +231,7 @@ const InventoryControl = () => {
               </TableBody>
             </Table>
           </Card>
+          <MaterialsInventory />
         </div>
       </main>
 

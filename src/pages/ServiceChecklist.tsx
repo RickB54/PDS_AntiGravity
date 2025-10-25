@@ -7,10 +7,11 @@ import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Textarea } from "@/components/ui/textarea";
 import { ChevronDown, ChevronUp, Save, FileText, Info } from "lucide-react";
-import { addEstimate, getCustomers } from "@/lib/db";
+import { addEstimate, getCustomers, upsertCustomer, upsertInvoice, purgeTestCustomers } from "@/lib/db";
 import { useToast } from "@/hooks/use-toast";
 import jsPDF from "jspdf";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
+import CustomerModal, { Customer as CustomerType } from "@/components/customers/CustomerModal";
 
 interface Service {
   id: string;
@@ -160,7 +161,7 @@ const addOnServices: Service[] = [
 
 const ServiceChecklist = () => {
   const { toast } = useToast();
-  const [customers, setCustomers] = useState<Customer[]>([]);
+  const [customers, setCustomers] = useState<CustomerType[]>([]);
   const [selectedCustomer, setSelectedCustomer] = useState("");
   const [vehicleType, setVehicleType] = useState("Mid-Size/SUV");
   const [selectedServices, setSelectedServices] = useState<string[]>([]);
@@ -169,11 +170,13 @@ const ServiceChecklist = () => {
   const [discountValue, setDiscountValue] = useState("");
   const [destinationFee, setDestinationFee] = useState(0);
   const [notes, setNotes] = useState("");
+  const [customerModalOpen, setCustomerModalOpen] = useState(false);
 
-  useEffect(() => {
+useEffect(() => {
     (async () => {
+      await purgeTestCustomers();
       const list = await getCustomers();
-      setCustomers(list as Customer[]);
+      setCustomers(list as CustomerType[]);
     })();
   }, []);
 
@@ -214,7 +217,7 @@ const ServiceChecklist = () => {
     return Math.max(0, calculateSubtotal() - calculateDiscount());
   };
 
-  const handleSave = async () => {
+const handleSave = async () => {
     const customer = customers.find(c => c.id === selectedCustomer);
     const allServices = [...coreServices, ...addOnServices];
     const selectedItems = selectedServices.map(id => {
@@ -239,6 +242,42 @@ const ServiceChecklist = () => {
     });
 
     toast({ title: "Estimate Saved", description: "Service checklist saved to local storage." });
+  };
+
+  const handleCreateInvoice = async () => {
+    const customer = customers.find(c => c.id === selectedCustomer);
+    const allServices = [...coreServices, ...addOnServices];
+    const selectedItems = selectedServices.map(id => {
+      const service = allServices.find(s => s.id === id);
+      return {
+        name: service?.name || "",
+        price: service?.prices[vehicleType] || 0,
+      };
+    });
+
+    if (!customer) {
+      toast({ title: "Select customer", description: "Please select or add a customer.", variant: "destructive" });
+      return;
+    }
+
+    const invoice = {
+      customerId: customer.id!,
+      customerName: customer.name,
+      vehicle: `${customer.year || ""} ${customer.vehicle || ""} ${customer.model || ""}`.trim(),
+      services: selectedItems,
+      total: calculateTotal(),
+      date: new Date().toLocaleDateString(),
+      createdAt: new Date().toISOString(),
+      meta: {
+        vehicleType,
+        discountType,
+        discountValue,
+        notes,
+      },
+    } as any;
+
+    await upsertInvoice(invoice);
+    toast({ title: "Invoice Created", description: "Invoice saved from checklist." });
   };
 
   const generatePDF = () => {
@@ -306,19 +345,22 @@ const ServiceChecklist = () => {
           <Card className="p-6 bg-gradient-card border-border">
             <h2 className="text-2xl font-bold text-foreground mb-4">Customer & Vehicle Info</h2>
             
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
-              <div className="space-y-2">
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
+              <div className="space-y-2 md:col-span-2">
                 <Label>Select Customer</Label>
-                <select
-                  value={selectedCustomer}
-                  onChange={(e) => setSelectedCustomer(e.target.value)}
-                  className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
-                >
-                  <option value="">Select a customer...</option>
-                  {customers.map(c => (
-                    <option key={c.id} value={c.id}>{c.name}</option>
-                  ))}
-                </select>
+                <div className="flex gap-2">
+                  <select
+                    value={selectedCustomer}
+                    onChange={(e) => setSelectedCustomer(e.target.value)}
+                    className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+                  >
+                    <option value="">Select a customer...</option>
+                    {customers.map(c => (
+                      <option key={c.id} value={c.id}>{c.name}</option>
+                    ))}
+                  </select>
+                  <Button type="button" variant="outline" onClick={() => setCustomerModalOpen(true)}>Add New</Button>
+                </div>
               </div>
 
               <div className="space-y-2">
@@ -502,16 +544,31 @@ const ServiceChecklist = () => {
           </Card>
 
           {/* Actions */}
-          <div className="flex gap-4 flex-wrap">
+<div className="flex gap-4 flex-wrap">
             <Button onClick={handleSave} className="bg-gradient-hero">
               <Save className="h-4 w-4 mr-2" />
               Save Estimate
+            </Button>
+            <Button onClick={handleCreateInvoice} variant="outline">
+              <FileText className="h-4 w-4 mr-2" />
+              Save & Create Invoice
             </Button>
             <Button onClick={generatePDF} variant="outline">
               <FileText className="h-4 w-4 mr-2" />
               Generate PDF
             </Button>
           </div>
+
+          <CustomerModal
+            open={customerModalOpen}
+            onOpenChange={setCustomerModalOpen}
+            onSave={async (data) => {
+              const saved = await upsertCustomer(data as any);
+              const list = await getCustomers();
+              setCustomers(list as CustomerType[]);
+              setSelectedCustomer((saved as any).id);
+            }}
+          />
         </div>
       </main>
     </div>

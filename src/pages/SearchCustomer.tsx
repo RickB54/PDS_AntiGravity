@@ -5,7 +5,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
 import CustomerModal from "@/components/customers/CustomerModal";
-import { getCustomers, upsertCustomer, deleteCustomer as removeCustomer } from "@/lib/db";
+import { getCustomers, upsertCustomer, deleteCustomer as removeCustomer, purgeTestCustomers } from "@/lib/db";
 import { Search, Pencil, Trash2, Plus } from "lucide-react";
 import {
   AlertDialog,
@@ -18,6 +18,7 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { useToast } from "@/hooks/use-toast";
+import DateRangeFilter, { DateRangeValue } from "@/components/filters/DateRangeFilter";
 
 interface Customer {
   id?: string;
@@ -37,6 +38,8 @@ interface Customer {
   lastService: string;
   duration: string;
   notes: string;
+  createdAt?: string;
+  updatedAt?: string;
 }
 
 const SearchCustomer = () => {
@@ -46,16 +49,19 @@ const SearchCustomer = () => {
   const [deleteCustomerId, setDeleteCustomerId] = useState<string | null>(null);
   const [modalOpen, setModalOpen] = useState(false);
   const [editing, setEditing] = useState<Customer | null>(null);
-  const [dateFilter, setDateFilter] = useState<"all" | "daily" | "weekly" | "monthly">("all");
+const [dateFilter, setDateFilter] = useState<"all" | "daily" | "weekly" | "monthly">("all");
+  const [dateRange, setDateRange] = useState<DateRangeValue>({});
 
-  useEffect(() => {
+useEffect(() => {
     (async () => {
+      await purgeTestCustomers();
       const list = await getCustomers();
       setCustomers(list as Customer[]);
     })();
   }, []);
 
-  const refresh = async () => {
+const refresh = async () => {
+    await purgeTestCustomers();
     const list = await getCustomers();
     setCustomers(list as Customer[]);
   };
@@ -68,18 +74,23 @@ const SearchCustomer = () => {
     toast({ title: "Customer Saved", description: "Record stored locally." });
   };
 
-  const filterByDate = (customer: Customer) => {
-    if (dateFilter === "all") return true;
-    if (!customer.lastService) return false;
-    
-    const serviceDate = new Date(customer.lastService);
+const filterByDate = (customer: Customer) => {
     const now = new Date();
+    const baseDateStr = customer.updatedAt || customer.createdAt || customer.lastService;
+    if (!baseDateStr) return dateFilter === "all" && !(dateRange.from || dateRange.to);
+    const d = new Date(baseDateStr);
+
+    let passQuick = true;
     const dayMs = 24 * 60 * 60 * 1000;
-    
-    if (dateFilter === "daily") return now.getTime() - serviceDate.getTime() < dayMs;
-    if (dateFilter === "weekly") return now.getTime() - serviceDate.getTime() < 7 * dayMs;
-    if (dateFilter === "monthly") return now.getTime() - serviceDate.getTime() < 30 * dayMs;
-    return true;
+    if (dateFilter === "daily") passQuick = now.getTime() - d.getTime() < dayMs;
+    if (dateFilter === "weekly") passQuick = now.getTime() - d.getTime() < 7 * dayMs;
+    if (dateFilter === "monthly") passQuick = now.getTime() - d.getTime() < 30 * dayMs;
+
+    let passRange = true;
+    if (dateRange.from) passRange = d >= new Date(dateRange.from.setHours(0,0,0,0));
+    if (passRange && dateRange.to) passRange = d <= new Date(dateRange.to.setHours(23,59,59,999));
+
+    return passQuick && passRange;
   };
 
   const filteredCustomers = customers.filter(customer => {
@@ -113,7 +124,7 @@ const SearchCustomer = () => {
             <div className="space-y-4">
               <div className="flex items-center justify-between flex-wrap gap-4">
                 <h2 className="text-2xl font-bold text-foreground">Find Customer</h2>
-                <div className="flex gap-2 items-center flex-wrap">
+<div className="flex gap-2 items-center flex-wrap">
                   <select
                     value={dateFilter}
                     onChange={(e) => setDateFilter(e.target.value as any)}
@@ -124,6 +135,7 @@ const SearchCustomer = () => {
                     <option value="weekly">This Week</option>
                     <option value="monthly">This Month</option>
                   </select>
+                  <DateRangeFilter value={dateRange} onChange={setDateRange} storageKey="customers-range" />
                   <Button className="bg-gradient-hero" onClick={openAdd}>
                     <Plus className="h-4 w-4 mr-2" />
                     Add New Customer

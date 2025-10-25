@@ -4,7 +4,7 @@ import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { FileText, Printer, Save, Trash2, Calendar } from "lucide-react";
+import { FileText, Printer, Save, Trash2 } from "lucide-react";
 import { getInvoices, upsertInvoice, getCustomers, deleteInvoice } from "@/lib/db";
 import { Customer } from "@/components/customers/CustomerModal";
 import { useToast } from "@/hooks/use-toast";
@@ -16,6 +16,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import DateRangeFilter, { DateRangeValue } from "@/components/filters/DateRangeFilter";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -45,7 +46,8 @@ const Invoicing = () => {
   const [selectedCustomer, setSelectedCustomer] = useState("");
   const [services, setServices] = useState<{ name: string; price: number }[]>([]);
   const [newService, setNewService] = useState({ name: "", price: "" });
-  const [dateFilter, setDateFilter] = useState("all");
+const [dateFilter, setDateFilter] = useState("all");
+  const [dateRange, setDateRange] = useState<DateRangeValue>({});
   const [showCreateForm, setShowCreateForm] = useState(false);
   const [deleteId, setDeleteId] = useState<string | null>(null);
 
@@ -136,19 +138,20 @@ const Invoicing = () => {
     loadData();
   };
 
-  const filterInvoices = () => {
+const filterInvoices = () => {
     const now = new Date();
     return invoices.filter(inv => {
       const invDate = new Date(inv.createdAt);
-      if (dateFilter === "daily") {
-        return invDate.toDateString() === now.toDateString();
-      } else if (dateFilter === "weekly") {
-        const weekAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
-        return invDate >= weekAgo;
-      } else if (dateFilter === "monthly") {
-        return invDate.getMonth() === now.getMonth() && invDate.getFullYear() === now.getFullYear();
-      }
-      return true;
+      let passQuick = true;
+      if (dateFilter === "daily") passQuick = invDate.toDateString() === now.toDateString();
+      else if (dateFilter === "weekly") passQuick = invDate >= new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
+      else if (dateFilter === "monthly") passQuick = invDate.getMonth() === now.getMonth() && invDate.getFullYear() === now.getFullYear();
+
+      let passRange = true;
+      if (dateRange.from) passRange = invDate >= new Date(dateRange.from.setHours(0,0,0,0));
+      if (passRange && dateRange.to) passRange = invDate <= new Date(dateRange.to.setHours(23,59,59,999));
+
+      return passQuick && passRange;
     });
   };
 
@@ -157,9 +160,9 @@ const Invoicing = () => {
       <PageHeader title="Invoicing" />
       <main className="container mx-auto px-4 py-6 max-w-6xl">
         <div className="space-y-6 animate-fade-in">
-          <div className="flex justify-between items-center">
+<div className="flex justify-between items-center flex-wrap gap-3">
             <h1 className="text-3xl font-bold text-foreground">Invoices</h1>
-            <div className="flex gap-3">
+            <div className="flex gap-3 items-center flex-wrap w-full md:w-auto">
               <Select value={dateFilter} onValueChange={setDateFilter}>
                 <SelectTrigger className="w-40">
                   <SelectValue />
@@ -171,7 +174,8 @@ const Invoicing = () => {
                   <SelectItem value="monthly">This Month</SelectItem>
                 </SelectContent>
               </Select>
-              <Button onClick={() => setShowCreateForm(!showCreateForm)} className="bg-gradient-hero">
+              <DateRangeFilter value={dateRange} onChange={setDateRange} storageKey="invoices-range" />
+              <Button onClick={() => setShowCreateForm(!showCreateForm)} className="bg-gradient-hero w-full md:w-auto">
                 <FileText className="h-4 w-4 mr-2" />
                 {showCreateForm ? "Cancel" : "Create Invoice"}
               </Button>
