@@ -7,7 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Textarea } from "@/components/ui/textarea";
 import { ChevronDown, ChevronUp, Save, FileText, Info } from "lucide-react";
-import { addEstimate, getCustomers, upsertCustomer, upsertInvoice, purgeTestCustomers } from "@/lib/db";
+import { addEstimate, getCustomers, upsertCustomer, upsertInvoice, purgeTestCustomers, getInvoices } from "@/lib/db";
 import { useToast } from "@/hooks/use-toast";
 import jsPDF from "jspdf";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
@@ -186,6 +186,20 @@ useEffect(() => {
       if (customer?.vehicleType) {
         setVehicleType(customer.vehicleType);
       }
+      // Pre-check previous services from the latest invoice
+      (async () => {
+        const invs = await getInvoices();
+        const custInvs = (invs as any[]).filter(inv => inv.customerId === selectedCustomer);
+        custInvs.sort((a, b) => new Date(b.createdAt || b.date).getTime() - new Date(a.createdAt || a.date).getTime());
+        const last = custInvs[0];
+        if (last?.services?.length) {
+          const all = [...coreServices, ...addOnServices];
+          const ids = last.services
+            .map((s: any) => all.find(x => x.name === s.name)?.id)
+            .filter(Boolean) as string[];
+          if (ids.length) setSelectedServices(ids);
+        }
+      })();
     }
   }, [selectedCustomer, customers]);
 
@@ -250,8 +264,10 @@ const handleSave = async () => {
     const selectedItems = selectedServices.map(id => {
       const service = allServices.find(s => s.id === id);
       return {
+        id,
         name: service?.name || "",
         price: service?.prices[vehicleType] || 0,
+        chemicals: service?.chemicals || [],
       };
     });
 
@@ -260,24 +276,51 @@ const handleSave = async () => {
       return;
     }
 
-    const invoice = {
+    const now = new Date();
+    const invoice: any = {
       customerId: customer.id!,
       customerName: customer.name,
       vehicle: `${customer.year || ""} ${customer.vehicle || ""} ${customer.model || ""}`.trim(),
+      contact: { address: customer.address, phone: customer.phone, email: customer.email },
+      vehicleInfo: { type: vehicleType, mileage: customer.mileage, year: customer.year, color: customer.color, conditionInside: customer.conditionInside, conditionOutside: customer.conditionOutside },
       services: selectedItems,
+      subtotal: calculateSubtotal(),
+      discount: { type: discountType, value: discountValue ? parseFloat(discountValue) : 0, amount: calculateDiscount() },
       total: calculateTotal(),
-      date: new Date().toLocaleDateString(),
-      createdAt: new Date().toISOString(),
-      meta: {
-        vehicleType,
-        discountType,
-        discountValue,
-        notes,
-      },
-    } as any;
+      notes,
+      date: now.toLocaleDateString(),
+      createdAt: now.toISOString(),
+    };
 
     await upsertInvoice(invoice);
-    toast({ title: "Invoice Created", description: "Invoice saved from checklist." });
+
+    // Generate PDF (download)
+    try {
+      const doc = new jsPDF();
+      doc.setFontSize(18);
+      doc.text("Prime Detail Solutions - Invoice", 20, 20);
+      doc.setFontSize(12);
+      doc.text(`Customer: ${invoice.customerName}`, 20, 35);
+      doc.text(`Phone: ${invoice.contact.phone || "-"}`, 20, 42);
+      doc.text(`Email: ${invoice.contact.email || "-"}`, 20, 49);
+      doc.text(`Address: ${invoice.contact.address || "-"}`, 20, 56);
+      doc.text(`Vehicle: ${invoice.vehicle}`, 20, 66);
+      doc.text(`Vehicle Type: ${invoice.vehicleInfo.type}`, 20, 73);
+      let y = 85;
+      doc.setFontSize(14);
+      doc.text("Services:", 20, y); y += 8;
+      doc.setFontSize(11);
+      invoice.services.forEach((s: any) => {
+        doc.text(`${s.name}: $${s.price.toFixed(2)}`, 25, y); y += 6;
+        if (s.chemicals?.length) { doc.setFontSize(9); doc.text(`Chemicals: ${s.chemicals.join(", ")}`, 28, y); y += 5; doc.setFontSize(11);}  
+      });
+      if (invoice.discount.amount > 0) { y += 4; doc.text(`Discount: -$${invoice.discount.amount.toFixed(2)} (${invoice.discount.type === 'percent' ? invoice.discount.value + '%' : '$' + invoice.discount.value})`, 25, y); y += 6; }
+      y += 4; doc.setFontSize(12); doc.text(`Total: $${invoice.total.toFixed(2)}`, 20, y);
+      if (notes) { y += 10; doc.setFontSize(12); doc.text("Notes:", 20, y); y += 6; doc.setFontSize(10); const split = doc.splitTextToSize(notes, 170); doc.text(split, 20, y); }
+      doc.save(`invoice-${now.getTime()}.pdf`);
+    } catch {}
+
+    toast({ title: "Invoice Created", description: "Invoice saved and PDF downloaded." });
   };
 
   const generatePDF = () => {
@@ -376,6 +419,43 @@ const handleSave = async () => {
                   <option value="Luxury/High-End">Luxury/High-End</option>
                 </select>
               </div>
+            </div>
+
+            {selectedCustomer && (
+              <div className="mt-4 grid grid-cols-1 md:grid-cols-3 gap-4">
+                {(() => {
+                  const c = customers.find(x => x.id === selectedCustomer);
+                  if (!c) return null;
+                  return (
+                    <>
+                      <div>
+                        <Label>Contact</Label>
+                        <p className="text-sm text-muted-foreground">{c.phone || "-"}</p>
+                        <p className="text-sm text-muted-foreground">{c.email || "-"}</p>
+                        <p className="text-sm text-muted-foreground">{c.address || "-"}</p>
+                      </div>
+                      <div>
+                        <Label>Vehicle</Label>
+                        <p className="text-sm text-muted-foreground">{[c.year, c.vehicle, c.model].filter(Boolean).join(" ") || "-"}</p>
+                        <p className="text-sm text-muted-foreground">Color: {c.color || "-"}</p>
+                        <p className="text-sm text-muted-foreground">Mileage: {c.mileage || "-"}</p>
+                      </div>
+                      <div>
+                        <Label>Condition & Notes</Label>
+                        <p className="text-sm text-muted-foreground">Inside: {c.conditionInside || "-"}</p>
+                        <p className="text-sm text-muted-foreground">Outside: {c.conditionOutside || "-"}</p>
+                        <p className="text-sm text-muted-foreground">Notes: {c.notes || "-"}</p>
+                      </div>
+                    </>
+                  );
+                })()}
+              </div>
+            )}
+
+            <div className="mt-4">
+              <Button type="button" variant="outline" onClick={() => setCustomerModalOpen(true)} disabled={!selectedCustomer}>
+                Edit Details
+              </Button>
             </div>
           </Card>
 
@@ -544,31 +624,28 @@ const handleSave = async () => {
           </Card>
 
           {/* Actions */}
-<div className="flex gap-4 flex-wrap">
-            <Button onClick={handleSave} className="bg-gradient-hero">
-              <Save className="h-4 w-4 mr-2" />
-              Save Estimate
-            </Button>
-            <Button onClick={handleCreateInvoice} variant="outline">
+          <div className="flex gap-4 flex-wrap">
+            <Button onClick={handleCreateInvoice} className="bg-gradient-hero">
               <FileText className="h-4 w-4 mr-2" />
               Save & Create Invoice
             </Button>
             <Button onClick={generatePDF} variant="outline">
               <FileText className="h-4 w-4 mr-2" />
-              Generate PDF
+              Generate Estimate PDF
             </Button>
           </div>
 
-          <CustomerModal
-            open={customerModalOpen}
-            onOpenChange={setCustomerModalOpen}
-            onSave={async (data) => {
-              const saved = await upsertCustomer(data as any);
-              const list = await getCustomers();
-              setCustomers(list as CustomerType[]);
-              setSelectedCustomer((saved as any).id);
-            }}
-          />
+      <CustomerModal
+        open={customerModalOpen}
+        onOpenChange={setCustomerModalOpen}
+        initial={customers.find(c => c.id === selectedCustomer) as any}
+        onSave={async (data) => {
+          const saved = await upsertCustomer(data as any);
+          const list = await getCustomers();
+          setCustomers(list as CustomerType[]);
+          setSelectedCustomer((saved as any).id);
+        }}
+      />
         </div>
       </main>
     </div>

@@ -24,8 +24,10 @@ interface Chemical {
 
 interface UsageHistory {
   id: string;
-  chemicalId: string;
-  chemicalName: string;
+  chemicalId?: string;
+  chemicalName?: string;
+  materialId?: string;
+  materialName?: string;
   serviceName: string;
   date: string;
 }
@@ -37,6 +39,7 @@ const InventoryControl = () => {
   const [modalOpen, setModalOpen] = useState(false);
   const [editing, setEditing] = useState<Chemical | null>(null);
   const [dateFilter, setDateFilter] = useState<"all" | "daily" | "weekly" | "monthly">("all");
+  const [dateRange, setDateRange] = useState<DateRangeValue>({});
   const [form, setForm] = useState({
     name: "",
     bottleSize: "",
@@ -47,7 +50,14 @@ const InventoryControl = () => {
 
   useEffect(() => {
     loadData();
+    // Persist date filter
+    const saved = localStorage.getItem('inventory-date-filter');
+    if (saved) setDateFilter(saved as any);
   }, []);
+
+  useEffect(() => {
+    localStorage.setItem('inventory-date-filter', dateFilter);
+  }, [dateFilter]);
 
   const loadData = async () => {
     const chems = (await localforage.getItem<Chemical[]>("chemicals")) || [];
@@ -108,15 +118,20 @@ const InventoryControl = () => {
   };
 
   const filterByDate = (item: UsageHistory) => {
-    if (dateFilter === "all") return true;
-    const itemDate = new Date(item.date);
+    const d = new Date(item.date);
     const now = new Date();
     const dayMs = 24 * 60 * 60 * 1000;
-    
-    if (dateFilter === "daily") return now.getTime() - itemDate.getTime() < dayMs;
-    if (dateFilter === "weekly") return now.getTime() - itemDate.getTime() < 7 * dayMs;
-    if (dateFilter === "monthly") return now.getTime() - itemDate.getTime() < 30 * dayMs;
-    return true;
+
+    let passQuick = true;
+    if (dateFilter === "daily") passQuick = now.getTime() - d.getTime() < dayMs;
+    if (dateFilter === "weekly") passQuick = now.getTime() - d.getTime() < 7 * dayMs;
+    if (dateFilter === "monthly") passQuick = now.getTime() - d.getTime() < 30 * dayMs;
+
+    let passRange = true;
+    if (dateRange.from) passRange = d >= new Date(dateRange.from.setHours(0,0,0,0));
+    if (passRange && dateRange.to) passRange = d <= new Date(dateRange.to.setHours(23,59,59,999));
+
+    return passQuick && passRange;
   };
 
   const filteredHistory = usageHistory.filter(filterByDate);
@@ -145,7 +160,10 @@ const InventoryControl = () => {
             </Card>
           )}
 
-<Card className="p-6 bg-gradient-card border-border">
+          {/* Materials above Chemicals */}
+          <MaterialsInventory />
+
+          <Card className="p-6 bg-gradient-card border-border">
             <div className="flex items-center justify-between mb-4">
               <h2 className="text-2xl font-bold text-foreground">Chemical Inventory</h2>
               <Button onClick={openAdd} className="bg-gradient-hero">
@@ -201,7 +219,7 @@ const InventoryControl = () => {
                   <option value="weekly">This Week</option>
                   <option value="monthly">This Month</option>
                 </select>
-                <DateRangeFilter value={{}} onChange={() => {}} storageKey="inventory-history-range" />
+                <DateRangeFilter value={dateRange} onChange={setDateRange} storageKey="inventory-history-range" />
               </div>
             </div>
 
@@ -210,6 +228,7 @@ const InventoryControl = () => {
                 <TableRow>
                   <TableHead>Date</TableHead>
                   <TableHead>Chemical</TableHead>
+                  <TableHead>Material</TableHead>
                   <TableHead>Service</TableHead>
                 </TableRow>
               </TableHeader>
@@ -217,13 +236,14 @@ const InventoryControl = () => {
                 {filteredHistory.map(item => (
                   <TableRow key={item.id}>
                     <TableCell>{new Date(item.date).toLocaleString()}</TableCell>
-                    <TableCell>{item.chemicalName}</TableCell>
+                    <TableCell>{item.chemicalName || '-'}</TableCell>
+                    <TableCell>{(item as any).materialName || '-'}</TableCell>
                     <TableCell>{item.serviceName}</TableCell>
                   </TableRow>
                 ))}
                 {filteredHistory.length === 0 && (
                   <TableRow>
-                    <TableCell colSpan={3} className="text-center text-muted-foreground py-8">
+                    <TableCell colSpan={4} className="text-center text-muted-foreground py-8">
                       No usage history found for the selected period.
                     </TableCell>
                   </TableRow>
@@ -231,7 +251,6 @@ const InventoryControl = () => {
               </TableBody>
             </Table>
           </Card>
-          <MaterialsInventory />
         </div>
       </main>
 

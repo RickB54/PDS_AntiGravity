@@ -6,7 +6,7 @@ import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
 import CustomerModal from "@/components/customers/CustomerModal";
 import { getCustomers, upsertCustomer, deleteCustomer as removeCustomer, purgeTestCustomers } from "@/lib/db";
-import { Search, Pencil, Trash2, Plus } from "lucide-react";
+import { Search, Pencil, Trash2, Plus, Printer, Save } from "lucide-react";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -19,6 +19,7 @@ import {
 } from "@/components/ui/alert-dialog";
 import { useToast } from "@/hooks/use-toast";
 import DateRangeFilter, { DateRangeValue } from "@/components/filters/DateRangeFilter";
+import jsPDF from "jspdf";
 
 interface Customer {
   id?: string;
@@ -124,7 +125,7 @@ const filterByDate = (customer: Customer) => {
             <div className="space-y-4">
               <div className="flex items-center justify-between flex-wrap gap-4">
                 <h2 className="text-2xl font-bold text-foreground">Find Customer</h2>
-<div className="flex gap-2 items-center flex-wrap">
+                <div className="flex gap-2 items-center flex-wrap">
                   <select
                     value={dateFilter}
                     onChange={(e) => setDateFilter(e.target.value as any)}
@@ -136,6 +137,12 @@ const filterByDate = (customer: Customer) => {
                     <option value="monthly">This Month</option>
                   </select>
                   <DateRangeFilter value={dateRange} onChange={setDateRange} storageKey="customers-range" />
+                  <Button variant="outline" onClick={() => generatePDF(false)}>
+                    <Printer className="h-4 w-4 mr-2" />Print
+                  </Button>
+                  <Button variant="outline" onClick={() => generatePDF(true)}>
+                    <Save className="h-4 w-4 mr-2" />Save PDF
+                  </Button>
                   <Button className="bg-gradient-hero" onClick={openAdd}>
                     <Plus className="h-4 w-4 mr-2" />
                     Add New Customer
@@ -291,5 +298,19 @@ const filterByDate = (customer: Customer) => {
     </div>
   );
 };
+
+function generatePDF(download = false) {
+  const doc = new jsPDF();
+  doc.setFontSize(16);
+  doc.text("Customer List", 20, 20);
+  let y = 35;
+  filteredCustomers.forEach((c) => {
+    doc.setFontSize(12);
+    doc.text(`${c.name} | ${c.phone} | ${c.email || '-'} | ${c.year} ${c.vehicle} ${c.model}`, 20, y);
+    y += 7;
+    if (y > 280) { doc.addPage(); y = 20; }
+  });
+  if (download) doc.save("customers.pdf"); else window.open(doc.output('bloburl'), '_blank');
+}
 
 export default SearchCustomer;

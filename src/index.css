@@ -32,6 +32,10 @@ All colors MUST be HSL.
     --destructive: 0 84% 60%;
     --destructive-foreground: 0 0% 98%;
 
+    /* Success (green) for positive indicators */
+    --success: 142 72% 35%;
+    --success-foreground: 0 0% 98%;
+
     --border: 0 0% 20%;
     --input: 0 0% 15%;
     --ring: 0 72% 51%;

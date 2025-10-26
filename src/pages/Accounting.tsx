@@ -26,6 +26,7 @@ import {
 import { useToast } from "@/hooks/use-toast";
 import { getInvoices, getExpenses, upsertExpense } from "@/lib/db";
 import jsPDF from "jspdf";
+import DateRangeFilter, { DateRangeValue } from "@/components/filters/DateRangeFilter";
 
 interface Invoice {
   id?: string;
@@ -52,7 +53,9 @@ const Accounting = () => {
   const [showDeleteExpense, setShowDeleteExpense] = useState(false);
   const [showDeleteNotes, setShowDeleteNotes] = useState(false);
   const [dateFilter, setDateFilter] = useState("all");
+  const [dateRange, setDateRange] = useState<DateRangeValue>({});
   const [expenseList, setExpenseList] = useState<Expense[]>([]);
+  const [invoiceList, setInvoiceList] = useState<Invoice[]>([]);
 
   useEffect(() => {
     loadData();
@@ -62,6 +65,7 @@ const Accounting = () => {
     const invoices = await getInvoices();
     const expensesData = await getExpenses();
     setExpenseList(expensesData as Expense[]);
+    setInvoiceList(invoices as Invoice[]);
 
     const now = new Date();
     const today = now.toDateString();
@@ -89,11 +93,24 @@ const Accounting = () => {
   };
 
   const calculateProfit = () => {
-    let revenue = monthlyRevenue;
-    if (dateFilter === "daily") revenue = dailyRevenue;
-    else if (dateFilter === "weekly") revenue = weeklyRevenue;
-    
-    return revenue - totalSpent;
+    // Compute filtered totals using quick filter + custom date range
+    const now = new Date();
+    const startQuick = dateFilter === 'daily' ? new Date(now.setHours(0,0,0,0))
+      : dateFilter === 'weekly' ? new Date(Date.now() - 7*24*60*60*1000)
+      : dateFilter === 'monthly' ? new Date(new Date().getFullYear(), new Date().getMonth(), 1)
+      : null;
+
+    const within = (dStr: string) => {
+      const d = new Date(dStr);
+      if (startQuick && d < startQuick) return false;
+      if (dateRange.from && d < new Date(dateRange.from.setHours(0,0,0,0))) return false;
+      if (dateRange.to && d > new Date(dateRange.to.setHours(23,59,59,999))) return false;
+      return true;
+    };
+
+    const revenue = invoiceList.filter(inv => within(inv.createdAt)).reduce((sum, i) => sum + (i.total || 0), 0);
+    const exp = expenseList.filter(ex => within(ex.createdAt)).reduce((sum, e) => sum + (e.amount || 0), 0);
+    return revenue - exp;
   };
 
   const handleAddExpense = async () => {
@@ -156,13 +173,11 @@ const Accounting = () => {
       
       <main className="container mx-auto px-4 py-6 max-w-6xl">
         <div className="space-y-6 animate-fade-in">
-          <div className="flex justify-between items-center">
+          <div className="flex justify-between items-center flex-wrap gap-2">
             <h1 className="text-3xl font-bold text-foreground">Accounting</h1>
-            <div className="flex gap-2">
+            <div className="flex gap-2 items-center flex-wrap">
               <Select value={dateFilter} onValueChange={setDateFilter}>
-                <SelectTrigger className="w-40">
-                  <SelectValue />
-                </SelectTrigger>
+                <SelectTrigger className="w-40"><SelectValue /></SelectTrigger>
                 <SelectContent>
                   <SelectItem value="all">All Time</SelectItem>
                   <SelectItem value="daily">Today</SelectItem>
@@ -170,6 +185,7 @@ const Accounting = () => {
                   <SelectItem value="monthly">This Month</SelectItem>
                 </SelectContent>
               </Select>
+              <DateRangeFilter value={dateRange} onChange={setDateRange} storageKey="accounting-range" />
               <Button size="icon" variant="outline" onClick={() => generatePDF(false)}>
                 <Printer className="h-4 w-4" />
               </Button>
@@ -292,7 +308,7 @@ const Accounting = () => {
                     cy="100"
                     r="80"
                     fill="none"
-                    stroke="hsl(var(--primary))"
+                    stroke="hsl(var(--success))"
                     strokeWidth="40"
                     strokeDasharray={`${Math.max(0, profitPercent) * 5.03} 503`}
                     strokeDashoffset={`${Math.max(0, -profitPercent) * 5.03}`}
@@ -308,7 +324,7 @@ const Accounting = () => {
             </div>
             <div className="flex justify-center gap-6 mt-4">
               <div className="flex items-center gap-2">
-                <div className="w-4 h-4 rounded-full bg-primary"></div>
+                <div className="w-4 h-4 rounded-full" style={{ backgroundColor: 'hsl(var(--success))' }}></div>
                 <span className="text-sm">Profit: ${Math.max(0, profit).toFixed(2)}</span>
               </div>
               <div className="flex items-center gap-2">
