@@ -5,8 +5,9 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
 import CustomerModal from "@/components/customers/CustomerModal";
-import { getCustomers, upsertCustomer, deleteCustomer as removeCustomer, purgeTestCustomers } from "@/lib/db";
-import { Search, Pencil, Trash2, Plus, Printer, Save, ChevronDown, ChevronUp, ChevronsDown, ChevronsUp } from "lucide-react";
+import { getCustomers, upsertCustomer, deleteCustomer as removeCustomer, purgeTestCustomers, getInvoices } from "@/lib/db";
+import { Search, Pencil, Trash2, Plus, Printer, Save, ChevronDown, ChevronUp, ChevronsDown, ChevronsUp, FileBarChart, Eye, Edit } from "lucide-react";
+import { Link } from "react-router-dom";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import {
   AlertDialog,

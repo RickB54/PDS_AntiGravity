@@ -11,6 +11,7 @@ import SearchCustomer from "./pages/SearchCustomer";
 import InventoryControl from "./pages/InventoryControl";
 import Invoicing from "./pages/Invoicing";
 import Accounting from "./pages/Accounting";
+import Reports from "./pages/Reports";
 import TrainingManual from "./pages/TrainingManual";
 import EmployeeDashboard from "./pages/EmployeeDashboard";
 import MobileSetup from "./pages/MobileSetup";
@@ -36,6 +37,7 @@ const App = () => (
                 <Route path="/inventory" element={<InventoryControl />} />
                 <Route path="/invoicing" element={<Invoicing />} />
                 <Route path="/accounting" element={<Accounting />} />
+                <Route path="/reports" element={<Reports />} />
                 <Route path="/training" element={<TrainingManual />} />
                 <Route path="/employees" element={<EmployeeDashboard />} />
                 <Route path="/mobile-setup" element={<MobileSetup />} />

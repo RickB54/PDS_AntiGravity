@@ -4,7 +4,8 @@ import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { FileText, Printer, Save, Trash2, DollarSign } from "lucide-react";
+import { FileText, Printer, Save, Trash2, DollarSign, FileBarChart } from "lucide-react";
+import { Link } from "react-router-dom";
 import { getInvoices, upsertInvoice, getCustomers, deleteInvoice } from "@/lib/db";
 import { Customer } from "@/components/customers/CustomerModal";
 import { useToast } from "@/hooks/use-toast";
@@ -31,6 +32,7 @@ import {
 
 interface Invoice {
   id?: string;
+  invoiceNumber?: number;
   customerId: string;
   customerName: string;
   vehicle: string;
@@ -56,6 +58,8 @@ const Invoicing = () => {
   const [deleteId, setDeleteId] = useState<string | null>(null);
   const [paymentDialog, setPaymentDialog] = useState<Invoice | null>(null);
   const [paymentAmount, setPaymentAmount] = useState("");
+  const [selectedInvoice, setSelectedInvoice] = useState<Invoice | null>(null);
+  const [filterCustomerId, setFilterCustomerId] = useState("");
 
   useEffect(() => {
     loadData();
@@ -64,7 +68,14 @@ const Invoicing = () => {
   const loadData = async () => {
     const invs = await getInvoices();
     const custs = await getCustomers();
-    setInvoices(invs as Invoice[]);
+    
+    // Assign invoice numbers starting from 100
+    const invoicesWithNumbers = (invs as Invoice[]).map((inv, idx) => ({
+      ...inv,
+      invoiceNumber: inv.invoiceNumber || 100 + idx
+    }));
+    
+    setInvoices(invoicesWithNumbers);
     setCustomers(custs as Customer[]);
   };
 
@@ -90,7 +101,11 @@ const Invoicing = () => {
     const customer = customers.find(c => c.id === selectedCustomer);
     if (!customer) return;
 
+    // Get next invoice number
+    const maxInvoiceNum = invoices.reduce((max, inv) => Math.max(max, inv.invoiceNumber || 99), 99);
+
     const invoice: Invoice = {
+      invoiceNumber: maxInvoiceNum + 1,
       customerId: selectedCustomer,
       customerName: customer.name,
       vehicle: `${customer.year} ${customer.vehicle} ${customer.model}`,
@@ -98,6 +113,8 @@ const Invoicing = () => {
       total: calculateTotal(),
       date: new Date().toLocaleDateString(),
       createdAt: new Date().toISOString(),
+      paymentStatus: "unpaid",
+      paidAmount: 0,
     };
 
     await upsertInvoice(invoice);
@@ -114,11 +131,12 @@ const Invoicing = () => {
     doc.text("Prime Detail Solutions", 105, 20, { align: "center" });
     doc.setFontSize(12);
     doc.text("Invoice", 105, 30, { align: "center" });
-    doc.text(`Date: ${invoice.date}`, 20, 45);
-    doc.text(`Customer: ${invoice.customerName}`, 20, 55);
-    doc.text(`Vehicle: ${invoice.vehicle}`, 20, 65);
+    doc.text(`Invoice #${invoice.invoiceNumber || 'N/A'}`, 105, 38, { align: "center" });
+    doc.text(`Date: ${invoice.date}`, 20, 50);
+    doc.text(`Customer: ${invoice.customerName}`, 20, 60);
+    doc.text(`Vehicle: ${invoice.vehicle}`, 20, 70);
     
-    let y = 80;
+    let y = 85;
     doc.text("Services:", 20, y);
     y += 10;
     invoice.services.forEach((s) => {
@@ -129,9 +147,18 @@ const Invoicing = () => {
     y += 5;
     doc.setFontSize(14);
     doc.text(`Total: $${invoice.total.toFixed(2)}`, 20, y);
+    
+    y += 10;
+    doc.setFontSize(10);
+    const status = invoice.paymentStatus || "unpaid";
+    doc.text(`Payment Status: ${status.toUpperCase()}`, 20, y);
+    if (invoice.paidAmount && invoice.paidAmount > 0) {
+      y += 6;
+      doc.text(`Paid: $${invoice.paidAmount.toFixed(2)}`, 20, y);
+    }
 
     if (download) {
-      doc.save(`invoice-${invoice.id}.pdf`);
+      doc.save(`Invoice_${invoice.invoiceNumber}_${new Date().toISOString().split('T')[0]}.pdf`);
     } else {
       window.open(doc.output('bloburl'), '_blank');
     }
@@ -157,7 +184,10 @@ const Invoicing = () => {
       if (dateRange.from) passRange = invDate >= new Date(dateRange.from.setHours(0,0,0,0));
       if (passRange && dateRange.to) passRange = invDate <= new Date(dateRange.to.setHours(23,59,59,999));
 
-      return passQuick && passRange;
+      let passCustomer = true;
+      if (filterCustomerId) passCustomer = inv.customerId === filterCustomerId;
+
+      return passQuick && passRange && passCustomer;
     });
   };
 
@@ -189,15 +219,18 @@ const Invoicing = () => {
     const doc = new jsPDF();
     doc.setFontSize(16);
     doc.text("Invoice List", 20, 20);
-    let y = 35;
+    doc.setFontSize(10);
+    doc.text(`Generated: ${new Date().toLocaleString()}`, 20, 28);
+    let y = 40;
     filterInvoices().forEach((inv) => {
       doc.setFontSize(10);
       const status = inv.paymentStatus || "unpaid";
-      doc.text(`${inv.customerName} | $${inv.total} | ${status.toUpperCase()} | ${inv.date}`, 20, y);
+      doc.text(`#${inv.invoiceNumber} | ${inv.customerName} | $${inv.total.toFixed(2)} | ${status.toUpperCase()} | ${inv.date}`, 20, y);
       y += 7;
       if (y > 280) { doc.addPage(); y = 20; }
     });
-    if (download) doc.save("invoices.pdf"); else window.open(doc.output('bloburl'), '_blank');
+    if (download) doc.save(`Invoices_${new Date().toISOString().split('T')[0]}.pdf`); 
+    else window.open(doc.output('bloburl'), '_blank');
   };
 
   return (
@@ -205,9 +238,14 @@ const Invoicing = () => {
       <PageHeader title="Invoicing" />
       <main className="container mx-auto px-4 py-6 max-w-6xl">
         <div className="space-y-6 animate-fade-in">
-<div className="flex justify-between items-center flex-wrap gap-3">
+          <div className="flex justify-between items-center flex-wrap gap-3">
             <h1 className="text-3xl font-bold text-foreground">Invoices</h1>
             <div className="flex gap-3 items-center flex-wrap w-full md:w-auto">
+              <Link to="/reports">
+                <Button variant="outline" size="sm">
+                  <FileBarChart className="h-4 w-4 mr-2" />Reports
+                </Button>
+              </Link>
               <Select value={dateFilter} onValueChange={setDateFilter}>
                 <SelectTrigger className="w-40">
                   <SelectValue />
@@ -232,6 +270,29 @@ const Invoicing = () => {
               </Button>
             </div>
           </div>
+
+          {/* Customer Filter */}
+          <Card className="p-4 bg-gradient-card border-border">
+            <Label htmlFor="customer-filter" className="text-sm font-medium mb-2 block">Filter by Customer</Label>
+            <div className="flex gap-2 items-center">
+              <Select value={filterCustomerId} onValueChange={setFilterCustomerId}>
+                <SelectTrigger id="customer-filter" className="flex-1">
+                  <SelectValue placeholder="All Customers" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="">All Customers</SelectItem>
+                  {customers.map(c => (
+                    <SelectItem key={c.id} value={c.id!}>{c.name}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              {filterCustomerId && (
+                <Button variant="outline" size="sm" onClick={() => setFilterCustomerId("")}>
+                  Clear
+                </Button>
+              )}
+            </div>
+          </Card>
 
           {/* Outstanding Balance */}
           <Card className="p-6 bg-gradient-card border-border">
@@ -258,7 +319,9 @@ const Invoicing = () => {
                     </SelectTrigger>
                     <SelectContent>
                       {customers.map(c => (
-                        <SelectItem key={c.id} value={c.id!}>{c.name} - {c.vehicle} {c.model}</SelectItem>
+                        <SelectItem key={c.id} value={c.id!}>
+                          {c.name} - {c.vehicle} {c.model}
+                        </SelectItem>
                       ))}
                     </SelectContent>
                   </Select>
@@ -311,17 +374,17 @@ const Invoicing = () => {
 
           <div className="grid gap-4">
             {filterInvoices().map((inv) => (
-              <Card key={inv.id} className="p-4 bg-gradient-card border-border">
+              <Card 
+                key={inv.id} 
+                className="p-4 bg-gradient-card border-border cursor-pointer hover:border-primary/50 transition-colors"
+                onClick={() => setSelectedInvoice(inv)}
+              >
                 <div className="flex justify-between items-start">
                   <div>
-                    <h3 className="font-bold text-foreground">{inv.customerName}</h3>
+                    <h3 className="font-bold text-foreground">Invoice #{inv.invoiceNumber}</h3>
+                    <p className="text-sm text-muted-foreground">{inv.customerName}</p>
                     <p className="text-sm text-muted-foreground">{inv.vehicle}</p>
                     <p className="text-sm text-muted-foreground">Date: {inv.date}</p>
-                    <div className="mt-2 space-y-1">
-                      {inv.services.map((s, i) => (
-                        <p key={i} className="text-sm">• {s.name} - ${s.price.toFixed(2)}</p>
-                      ))}
-                    </div>
                     <p className="text-lg font-bold text-primary mt-2">Total: ${inv.total.toFixed(2)}</p>
                     <p className={`text-sm font-medium mt-1 ${
                       (inv.paymentStatus || "unpaid") === "paid" ? "text-success" :
@@ -332,7 +395,7 @@ const Invoicing = () => {
                       {inv.paidAmount && inv.paidAmount > 0 ? ` ($${inv.paidAmount.toFixed(2)} paid)` : ""}
                     </p>
                   </div>
-                  <div className="flex flex-col gap-2">
+                  <div className="flex flex-col gap-2" onClick={(e) => e.stopPropagation()}>
                     <div className="flex gap-2">
                       <Button size="icon" variant="outline" onClick={() => generatePDF(inv, false)}>
                         <Printer className="h-4 w-4" />
@@ -381,6 +444,83 @@ const Invoicing = () => {
         setPaymentAmount={setPaymentAmount}
         onConfirm={updatePayment}
       />
+
+      {/* Invoice Detail Dialog */}
+      {selectedInvoice && (
+        <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4" onClick={() => setSelectedInvoice(null)}>
+          <Card className="max-w-2xl w-full max-h-[90vh] overflow-auto bg-background" onClick={(e) => e.stopPropagation()}>
+            <div className="p-6 space-y-4">
+              <div className="flex justify-between items-start">
+                <div>
+                  <h2 className="text-2xl font-bold text-foreground">Invoice #{selectedInvoice.invoiceNumber}</h2>
+                  <p className="text-muted-foreground">Prime Detail Solutions</p>
+                </div>
+                <Button variant="ghost" size="sm" onClick={() => setSelectedInvoice(null)}>✕</Button>
+              </div>
+              
+              <div className="border-t border-border pt-4 space-y-3">
+                <div>
+                  <Label className="text-sm font-semibold">Customer</Label>
+                  <p className="text-foreground">{selectedInvoice.customerName}</p>
+                </div>
+                <div>
+                  <Label className="text-sm font-semibold">Vehicle</Label>
+                  <p className="text-foreground">{selectedInvoice.vehicle}</p>
+                </div>
+                <div>
+                  <Label className="text-sm font-semibold">Date</Label>
+                  <p className="text-foreground">{selectedInvoice.date}</p>
+                </div>
+              </div>
+
+              <div className="border-t border-border pt-4">
+                <Label className="text-sm font-semibold mb-2 block">Services</Label>
+                <div className="space-y-2">
+                  {selectedInvoice.services.map((s, i) => (
+                    <div key={i} className="flex justify-between items-center p-2 bg-muted/30 rounded">
+                      <span>{s.name}</span>
+                      <span className="font-semibold">${s.price.toFixed(2)}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              <div className="border-t border-border pt-4">
+                <div className="flex justify-between items-center text-lg font-bold">
+                  <span>Total:</span>
+                  <span className="text-primary">${selectedInvoice.total.toFixed(2)}</span>
+                </div>
+                <div className="mt-2">
+                  <p className={`text-sm font-medium ${
+                    (selectedInvoice.paymentStatus || "unpaid") === "paid" ? "text-success" :
+                    (selectedInvoice.paymentStatus || "unpaid") === "partially-paid" ? "text-yellow-500" :
+                    "text-destructive"
+                  }`}>
+                    Status: {(selectedInvoice.paymentStatus || "unpaid").replace("-", " ").toUpperCase()}
+                  </p>
+                  {selectedInvoice.paidAmount && selectedInvoice.paidAmount > 0 && (
+                    <p className="text-sm text-muted-foreground">Paid: ${selectedInvoice.paidAmount.toFixed(2)}</p>
+                  )}
+                </div>
+              </div>
+
+              <div className="border-t border-border pt-4 flex gap-2 justify-end">
+                <Button variant="outline" onClick={() => generatePDF(selectedInvoice, false)}>
+                  <Printer className="h-4 w-4 mr-2" />Print
+                </Button>
+                <Button variant="outline" onClick={() => generatePDF(selectedInvoice, true)}>
+                  <Save className="h-4 w-4 mr-2" />Save PDF
+                </Button>
+                {(selectedInvoice.paymentStatus || "unpaid") !== "paid" && (
+                  <Button onClick={() => { setPaymentDialog(selectedInvoice); setSelectedInvoice(null); }}>
+                    <DollarSign className="h-4 w-4 mr-2" />Record Payment
+                  </Button>
+                )}
+              </div>
+            </div>
+          </Card>
+        </div>
+      )}
     </div>
   );
 };

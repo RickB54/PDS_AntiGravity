@@ -8,7 +8,8 @@ import {
   Users, 
   Truck,
   Settings,
-  Package
+  Package,
+  FileBarChart
 } from "lucide-react";
 import { NavLink } from "react-router-dom";
 import {
@@ -31,6 +32,7 @@ const menuItems = [
   { title: "Inventory Control", url: "/inventory", icon: Package },
   { title: "Invoicing", url: "/invoicing", icon: FileText },
   { title: "Accounting", url: "/accounting", icon: Calculator },
+  { title: "Reports", url: "/reports", icon: FileBarChart },
   { title: "Training Manual", url: "/training", icon: BookOpen },
   { title: "Employee Dashboard", url: "/employees", icon: Users },
   { title: "Settings", url: "/settings", icon: Settings },
