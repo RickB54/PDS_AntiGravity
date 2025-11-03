@@ -1,6 +1,8 @@
 import { useState } from "react";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
+import { Navbar } from "@/components/Navbar";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -14,6 +16,7 @@ const CustomerPortal = () => {
   const [selectedAddOns, setSelectedAddOns] = useState<string[]>([]);
   const [distance, setDistance] = useState(0);
   const [addOnsExpanded, setAddOnsExpanded] = useState(false);
+  const [learnMorePackage, setLearnMorePackage] = useState<typeof servicePackages[0] | null>(null);
 
   const service = servicePackages.find(s => s.id === selectedService);
   const servicePrice = service ? getServicePrice(service.id, vehicleType) : 0;
@@ -29,6 +32,7 @@ const CustomerPortal = () => {
 
   return (
     <div className="min-h-screen bg-background">
+      <Navbar />
       <PageHeader title="Premium Auto Detailing Services" />
       <main className="container mx-auto px-4 py-8 max-w-7xl">
         {/* Vehicle Type Selector - Centered */}
@@ -106,16 +110,28 @@ const CustomerPortal = () => {
                     </div>
                   </div>
 
-                  {/* Select Button */}
-                  <Button
-                    className={`w-full h-12 font-semibold transition-all duration-300 
-                      ${isSelected 
-                        ? 'bg-gradient-hero text-white shadow-glow' 
-                        : 'bg-secondary text-secondary-foreground hover:bg-gradient-hero hover:text-white'
-                      }`}
-                  >
-                    {isSelected ? '✓ Selected' : 'Select Service'}
-                  </Button>
+                  {/* Buttons */}
+                  <div className="flex gap-2">
+                    <Button
+                      className={`flex-1 h-12 font-semibold transition-all duration-300 
+                        ${isSelected 
+                          ? 'bg-gradient-hero text-white shadow-glow' 
+                          : 'bg-secondary text-secondary-foreground hover:bg-gradient-hero hover:text-white'
+                        }`}
+                    >
+                      {isSelected ? '✓ Selected' : 'Select'}
+                    </Button>
+                    <Button
+                      variant="outline"
+                      className="h-12"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setLearnMorePackage(pkg);
+                      }}
+                    >
+                      Learn More
+                    </Button>
+                  </div>
                 </div>
               </Card>
             );
@@ -270,6 +286,53 @@ const CustomerPortal = () => {
           </Button>
         </Card>
       </main>
+
+      {/* Learn More Dialog */}
+      <Dialog open={!!learnMorePackage} onOpenChange={() => setLearnMorePackage(null)}>
+        <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle className="text-2xl">{learnMorePackage?.name.replace(' (BEST VALUE)', '')}</DialogTitle>
+            <DialogDescription>
+              ${learnMorePackage ? getServicePrice(learnMorePackage.id, vehicleType) : 0}
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div>
+              <h4 className="font-semibold mb-2 text-foreground">Why Choose This Package?</h4>
+              <p className="text-muted-foreground">{learnMorePackage?.description}</p>
+            </div>
+            
+            <div>
+              <h4 className="font-semibold mb-2 text-foreground">What's Included:</h4>
+              <ul className="space-y-2">
+                {learnMorePackage?.steps.map((step, idx) => (
+                  <li key={idx} className="flex items-start gap-2">
+                    <span className="text-primary mt-1">✓</span>
+                    <span className="text-muted-foreground">{typeof step === 'string' ? step : step.name}</span>
+                  </li>
+                ))}
+              </ul>
+            </div>
+
+            <div className="flex gap-3 pt-4">
+              <Button 
+                className="flex-1 bg-gradient-hero"
+                onClick={() => {
+                  if (learnMorePackage) {
+                    setSelectedService(learnMorePackage.id);
+                  }
+                  setLearnMorePackage(null);
+                }}
+              >
+                Add to Cart
+              </Button>
+              <Button variant="outline" onClick={() => setLearnMorePackage(null)}>
+                Close
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 };

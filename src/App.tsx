@@ -24,6 +24,8 @@ import FileManager from "./pages/FileManager";
 import MobileSetup from "./pages/MobileSetup";
 import Settings from "./pages/Settings";
 import NotFound from "./pages/NotFound";
+import About from "./pages/About";
+import Contact from "./pages/Contact";
 
 const queryClient = new QueryClient();
 
@@ -52,6 +54,8 @@ const App = () => {
         <BrowserRouter>
           <Routes>
             <Route path="/login" element={<Login />} />
+            <Route path="/about" element={<About />} />
+            <Route path="/contact" element={<Contact />} />
             
             <Route
               path="/*"

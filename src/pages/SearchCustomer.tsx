@@ -363,6 +363,13 @@ const filterByDate = (customer: Customer) => {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      <CustomerModal
+        open={modalOpen}
+        onOpenChange={setModalOpen}
+        initial={editing}
+        onSave={onSaveModal}
+      />
     </div>
   );
 };
