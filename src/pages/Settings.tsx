@@ -1,5 +1,7 @@
 import { useState } from "react";
+import { useNavigate } from "react-router-dom";
 import { PageHeader } from "@/components/PageHeader";
+import { getCurrentUser } from "@/lib/auth";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -11,8 +13,16 @@ import localforage from "localforage";
 
 const Settings = () => {
   const { toast } = useToast();
+  const navigate = useNavigate();
+  const user = getCurrentUser();
   const [deleteDialog, setDeleteDialog] = useState<string | null>(null);
   const [timeRange, setTimeRange] = useState("");
+
+  // Redirect non-admin users
+  if (user?.role !== 'admin') {
+    navigate('/');
+    return null;
+  }
 
   const handleBackup = async () => {
     try {

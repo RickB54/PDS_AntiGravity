@@ -219,7 +219,12 @@ const filterByDate = (customer: Customer) => {
             {filteredCustomers.map((customer) => {
               const isExpanded = expandedCustomers.includes(customer.id!);
               return (
-                <Card key={customer.id} className="bg-gradient-card border-border hover:shadow-glow transition-all">
+                <Card 
+                  key={customer.id} 
+                  className={`bg-gradient-card border-border hover:shadow-glow transition-all ${
+                    isExpanded ? 'sticky top-4 z-10 shadow-xl' : ''
+                  }`}
+                >
                   <Collapsible open={isExpanded} onOpenChange={() => toggleCustomer(customer.id!)}>
                     <div className="p-6">
                       <div className="flex items-start justify-between gap-4">

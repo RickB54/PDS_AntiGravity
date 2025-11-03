@@ -1,11 +1,13 @@
 import { useState } from "react";
+import { Navbar } from "@/components/Navbar";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { useToast } from "@/hooks/use-toast";
-import { Mail, Phone, MapPin, Clock } from "lucide-react";
+import { Link } from "react-router-dom";
+import { Mail, Phone, MapPin, Clock, ArrowLeft } from "lucide-react";
 import { savePDFToArchive } from "@/lib/pdfArchive";
 import jsPDF from "jspdf";
 
@@ -88,7 +90,16 @@ ${formData.message}
 
   return (
     <div className="min-h-screen bg-background">
+      <Navbar />
+      
       <main className="container mx-auto px-4 py-16 max-w-6xl">
+        <Button variant="ghost" asChild className="mb-6">
+          <Link to="/">
+            <ArrowLeft className="h-4 w-4 mr-2" />
+            Previous
+          </Link>
+        </Button>
+        
         <div className="text-center mb-12">
           <h1 className="text-4xl md:text-5xl font-bold text-foreground mb-4">Contact Us</h1>
           <p className="text-xl text-muted-foreground">

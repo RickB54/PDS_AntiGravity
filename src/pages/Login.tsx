@@ -47,7 +47,7 @@ const Login = () => {
   };
 
   const handleGuest = () => {
-    navigate('/customer-portal');
+    navigate('/');
   };
 
   return (

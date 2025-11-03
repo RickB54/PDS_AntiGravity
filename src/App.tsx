@@ -26,6 +26,8 @@ import Settings from "./pages/Settings";
 import NotFound from "./pages/NotFound";
 import About from "./pages/About";
 import Contact from "./pages/Contact";
+import FAQ from "./pages/FAQ";
+import BookNow from "./pages/BookNow";
 
 const queryClient = new QueryClient();
 
@@ -52,10 +54,12 @@ const App = () => {
         <Toaster />
         <Sonner />
         <BrowserRouter>
-          <Routes>
-            <Route path="/login" element={<Login />} />
-            <Route path="/about" element={<About />} />
-            <Route path="/contact" element={<Contact />} />
+        <Routes>
+          <Route path="/login" element={<Login />} />
+          <Route path="/about" element={<About />} />
+          <Route path="/contact" element={<Contact />} />
+          <Route path="/faq" element={<FAQ />} />
+          <Route path="/book" element={<BookNow />} />
             
             <Route
               path="/*"

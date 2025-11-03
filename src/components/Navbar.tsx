@@ -18,12 +18,11 @@ export const Navbar = () => {
   const navLinks = [
     { to: "/", label: "Home" },
     { to: "/about", label: "About" },
+    { to: "/customer-portal", label: "Services" },
+    { to: "/faq", label: "FAQ" },
     { to: "/contact", label: "Contact" },
+    { to: "/book", label: "Book Now" },
   ];
-
-  if (user?.role === "customer") {
-    navLinks.push({ to: "/customer-dashboard", label: "View My Offers" });
-  }
 
   const isActive = (path: string) => location.pathname === path;
 

@@ -1,12 +1,15 @@
+import { Navbar } from "@/components/Navbar";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
-import { Shield, Users, Sparkles, ArrowRight } from "lucide-react";
+import { Shield, Users, Sparkles, ArrowRight, ArrowLeft } from "lucide-react";
 import { Link } from "react-router-dom";
 import logo from "@/assets/logo-3inch.png";
 
 const About = () => {
   return (
     <div className="min-h-screen bg-background">
+      <Navbar />
+      
       {/* Hero Section with Video Background */}
       <section className="relative h-[60vh] flex items-center justify-center overflow-hidden">
         <div className="absolute inset-0 bg-black/60 z-10" />
@@ -30,6 +33,13 @@ const About = () => {
 
       {/* Main Content */}
       <main className="container mx-auto px-4 py-16 max-w-6xl">
+        <Button variant="ghost" asChild className="mb-6">
+          <Link to="/">
+            <ArrowLeft className="h-4 w-4 mr-2" />
+            Previous
+          </Link>
+        </Button>
+        
         <div className="space-y-16">
           {/* Mission Statement */}
           <Card className="p-8 md:p-12 bg-gradient-card border-border">
