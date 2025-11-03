@@ -122,12 +122,12 @@ const CompanyEmployees = () => {
                 <Users className="h-5 w-5 text-primary" />
                 <label className="font-medium">Select Employee:</label>
               </div>
-              <Select value={selectedEmployee} onValueChange={setSelectedEmployee}>
+              <Select value={selectedEmployee || "all"} onValueChange={(val) => setSelectedEmployee(val === "all" ? "" : val)}>
                 <SelectTrigger className="w-64">
                   <SelectValue placeholder="All Employees" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="">All Employees</SelectItem>
+                  <SelectItem value="all">All Employees</SelectItem>
                   {employees.map(emp => (
                     <SelectItem key={emp.email} value={emp.email}>
                       {emp.name}
