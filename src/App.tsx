@@ -29,6 +29,7 @@ import Contact from "./pages/Contact";
 import FAQ from "./pages/FAQ";
 import BookNow from "./pages/BookNow";
 import CustomerAccount from "./pages/CustomerAccount";
+import Portal from "./pages/Portal";
 
 const queryClient = new QueryClient();
 
@@ -61,6 +62,7 @@ const App = () => {
           <Route path="/contact" element={<Contact />} />
           <Route path="/faq" element={<FAQ />} />
           <Route path="/book" element={<BookNow />} />
+          <Route path="/portal" element={<Portal />} />
             
             <Route
               path="/*"
@@ -73,10 +75,11 @@ const App = () => {
           <Route path="/" element={<Index />} />
                         
                         <Route path="/dashboard" element={
-                          user?.role === 'admin' ? <Navigate to="/" replace /> :
-                          user?.role === 'employee' ? <Navigate to="/employee-dashboard" replace /> :
+                          user?.role === 'admin' ? <Navigate to="/dashboard/admin" replace /> :
+                          user?.role === 'employee' ? <Navigate to="/dashboard/employee" replace /> :
                           user?.role === 'customer' ? <Navigate to="/customer-portal" replace /> :
-                          <Navigate to="/login" replace />
+                          // If not logged in, show login screen (no redirect)
+                          <Login />
                         } />
                         
                         <Route path="/customer-portal" element={
@@ -150,6 +153,12 @@ const App = () => {
                             <Reports />
                           </ProtectedRoute>
                         } />
+
+                        <Route path="/dashboard/admin" element={
+                          <ProtectedRoute allowedRoles={['admin']}>
+                            <Navigate to="/invoicing" replace />
+                          </ProtectedRoute>
+                        } />
                         
                         <Route path="/training-manual" element={
                           <ProtectedRoute allowedRoles={['employee', 'admin']}>
@@ -157,6 +166,12 @@ const App = () => {
                           </ProtectedRoute>
                         } />
                         
+                        <Route path="/dashboard/employee" element={
+                          <ProtectedRoute allowedRoles={['employee', 'admin']}>
+                            <EmployeeDashboard />
+                          </ProtectedRoute>
+                        } />
+
                         <Route path="/employee-dashboard" element={
                           <ProtectedRoute allowedRoles={['employee', 'admin']}>
                             <EmployeeDashboard />

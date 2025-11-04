@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { Link, useLocation } from "react-router-dom";
 import { Button } from "@/components/ui/button";
-import { Menu, X } from "lucide-react";
+import { Menu, X, UserCog } from "lucide-react";
 import { getCurrentUser, logout } from "@/lib/auth";
 import logo from "@/assets/logo-3inch.png";
 
