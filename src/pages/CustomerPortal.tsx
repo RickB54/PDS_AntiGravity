@@ -1,5 +1,4 @@
 import { useState } from "react";
-import { Navbar } from "@/components/Navbar";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
@@ -32,7 +31,6 @@ const CustomerPortal = () => {
 
   return (
     <div className="min-h-screen bg-background">
-      <Navbar />
       <PageHeader title="Premium Auto Detailing Services" />
       <main className="container mx-auto px-4 py-8 max-w-7xl">
         {/* Vehicle Type Selector - Centered */}

@@ -4,7 +4,22 @@ import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { getCurrentUser } from "@/lib/auth";
-import { FileText, Download, Search, Filter } from "lucide-react";
+import { FileText, Download, Search, Filter, Trash2, Eye } from "lucide-react";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
+import {
+  Dialog,
+  DialogContent,
+} from "@/components/ui/dialog";
+import { useToast } from "@/hooks/use-toast";
 import {
   Select,
   SelectContent,
@@ -34,10 +49,13 @@ interface PDFRecord {
 
 const FileManager = () => {
   const user = getCurrentUser();
+  const { toast } = useToast();
   const [records, setRecords] = useState<PDFRecord[]>([]);
   const [searchTerm, setSearchTerm] = useState("");
   const [typeFilter, setTypeFilter] = useState("all");
   const [dateFilter, setDateFilter] = useState("all");
+  const [deleteId, setDeleteId] = useState<string | null>(null);
+  const [previewPDF, setPreviewPDF] = useState<string | null>(null);
 
   useEffect(() => {
     // Only admins can access
@@ -79,11 +97,21 @@ const FileManager = () => {
   });
 
   const downloadPDF = (record: PDFRecord) => {
-    // For now, create a simple download link
     const link = document.createElement('a');
     link.href = record.pdfData;
     link.download = record.fileName;
     link.click();
+  };
+
+  const handleDelete = (id: string) => {
+    const updated = records.filter(r => r.id !== id);
+    localStorage.setItem('pdfArchive', JSON.stringify(updated));
+    setRecords(updated);
+    setDeleteId(null);
+    toast({
+      title: "Deleted",
+      description: "File deleted successfully"
+    });
   };
 
   if (user?.role !== 'admin') {
@@ -179,9 +207,17 @@ const FileManager = () => {
                         {new Date(record.timestamp).toLocaleString()}
                       </TableCell>
                       <TableCell className="text-right">
-                        <Button size="icon" variant="ghost" onClick={() => downloadPDF(record)}>
-                          <Download className="h-4 w-4" />
-                        </Button>
+                        <div className="flex gap-2 justify-end">
+                          <Button size="icon" variant="ghost" onClick={() => setPreviewPDF(record.pdfData)}>
+                            <Eye className="h-4 w-4" />
+                          </Button>
+                          <Button size="icon" variant="ghost" onClick={() => downloadPDF(record)}>
+                            <Download className="h-4 w-4" />
+                          </Button>
+                          <Button size="icon" variant="ghost" onClick={() => setDeleteId(record.id)}>
+                            <Trash2 className="h-4 w-4 text-destructive" />
+                          </Button>
+                        </div>
                       </TableCell>
                     </TableRow>
                   ))
@@ -191,6 +227,40 @@ const FileManager = () => {
           </Card>
         </div>
       </main>
+
+      {/* Delete Confirmation Dialog */}
+      <AlertDialog open={!!deleteId} onOpenChange={() => setDeleteId(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete Forever?</AlertDialogTitle>
+            <AlertDialogDescription>
+              This action cannot be undone. The file will be permanently deleted.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction 
+              onClick={() => deleteId && handleDelete(deleteId)}
+              className="bg-destructive"
+            >
+              Yes, Delete
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      {/* PDF Preview Dialog */}
+      <Dialog open={!!previewPDF} onOpenChange={() => setPreviewPDF(null)}>
+        <DialogContent className="max-w-4xl max-h-[90vh] p-0">
+          {previewPDF && (
+            <iframe
+              src={previewPDF}
+              className="w-full h-[85vh]"
+              title="PDF Preview"
+            />
+          )}
+        </DialogContent>
+      </Dialog>
     </div>
   );
 };

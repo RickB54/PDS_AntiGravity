@@ -12,13 +12,13 @@ export const Navbar = () => {
 
   const handleLogout = () => {
     logout();
-    window.location.href = "/login";
+    window.location.href = "/";
   };
 
   const navLinks = [
     { to: "/", label: "Home" },
     { to: "/about", label: "About" },
-    { to: "/customer-portal", label: "Services" },
+    { to: "/", label: "Services" },
     { to: "/faq", label: "FAQ" },
     { to: "/contact", label: "Contact" },
     { to: "/book", label: "Book Now" },

@@ -94,7 +94,12 @@ const Settings = () => {
         });
         await localforage.setItem("chemicalUsage", filtered);
       } else if (type === "all") {
+        // Delete all data
         await localforage.clear();
+        // Also clear pdfArchive from localStorage
+        localStorage.removeItem('pdfArchive');
+        // Clear any job records
+        localStorage.removeItem('completedJobs');
       }
 
       toast({ title: "Data Deleted", description: `${type} data has been removed.` });

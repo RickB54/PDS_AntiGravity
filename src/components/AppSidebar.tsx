@@ -10,7 +10,8 @@ import {
   Package,
   FileBarChart,
   DollarSign,
-  LayoutDashboard
+  LayoutDashboard,
+  Globe
 } from "lucide-react";
 import { Link } from "react-router-dom";
 import {
@@ -125,6 +126,15 @@ export function AppSidebar() {
 
           {isAdmin && (
             <>
+              <SidebarMenuItem>
+                <SidebarMenuButton asChild onClick={handleNavClick}>
+                  <a href="/" target="_blank" rel="noopener noreferrer">
+                    <Globe className="h-4 w-4" />
+                    <span>Visit Website</span>
+                  </a>
+                </SidebarMenuButton>
+              </SidebarMenuItem>
+
               <SidebarMenuItem>
                 <SidebarMenuButton asChild onClick={handleNavClick}>
                   <Link to="/invoicing">

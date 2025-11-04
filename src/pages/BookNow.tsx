@@ -203,13 +203,12 @@ const BookNow = () => {
               </div>
 
               <div className="space-y-2">
-                <Label htmlFor="datetime">Preferred Date/Time *</Label>
+                <Label htmlFor="datetime">Preferred Date/Time (Optional)</Label>
                 <Input
                   id="datetime"
                   type="datetime-local"
                   value={formData.datetime}
                   onChange={(e) => setFormData({ ...formData, datetime: e.target.value })}
-                  required
                 />
               </div>
 

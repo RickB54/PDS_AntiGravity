@@ -28,6 +28,7 @@ import About from "./pages/About";
 import Contact from "./pages/Contact";
 import FAQ from "./pages/FAQ";
 import BookNow from "./pages/BookNow";
+import CustomerAccount from "./pages/CustomerAccount";
 
 const queryClient = new QueryClient();
 
@@ -69,15 +70,30 @@ const App = () => {
                     {user && <AppSidebar />}
                     <div className="flex-1">
                       <Routes>
-                        <Route path="/" element={
-                          user?.role === 'customer' ? <CustomerPortal /> :
-                          user?.role === 'employee' || user?.role === 'admin' ? <Index /> :
+          <Route path="/" element={<Index />} />
+                        
+                        <Route path="/dashboard" element={
+                          user?.role === 'admin' ? <Navigate to="/" replace /> :
+                          user?.role === 'employee' ? <Navigate to="/employee-dashboard" replace /> :
+                          user?.role === 'customer' ? <Navigate to="/customer-portal" replace /> :
                           <Navigate to="/login" replace />
+                        } />
+                        
+                        <Route path="/customer-portal" element={
+                          <ProtectedRoute allowedRoles={['customer']}>
+                            <CustomerPortal />
+                          </ProtectedRoute>
                         } />
                         
                         <Route path="/customer-dashboard" element={
                           <ProtectedRoute allowedRoles={['customer']}>
                             <CustomerDashboard />
+                          </ProtectedRoute>
+                        } />
+                        
+                        <Route path="/customer-account" element={
+                          <ProtectedRoute allowedRoles={['customer']}>
+                            <CustomerAccount />
                           </ProtectedRoute>
                         } />
                         

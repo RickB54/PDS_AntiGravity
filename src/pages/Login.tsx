@@ -15,16 +15,9 @@ const Login = () => {
   const [password, setPassword] = useState("");
   const [name, setName] = useState("");
 
-  const handleQuickAccess = (role: 'customer' | 'employee' | 'admin') => {
+  const handleQuickAccess = (role: 'employee' | 'admin') => {
     quickAccessLogin(role);
-    
-    if (role === 'customer') {
-      navigate('/customer-portal');
-    } else if (role === 'employee') {
-      navigate('/employee-dashboard');
-    } else {
-      navigate('/');
-    }
+    navigate('/dashboard');
   };
 
   const handleLogin = (e: React.FormEvent) => {
@@ -33,10 +26,8 @@ const Login = () => {
     
     if (user.role === 'customer') {
       navigate('/customer-portal');
-    } else if (user.role === 'employee') {
-      navigate('/employee-dashboard');
     } else {
-      navigate('/');
+      navigate('/dashboard');
     }
   };
 
@@ -62,15 +53,7 @@ const Login = () => {
         <Card className="p-6 space-y-6">
           <div className="space-y-3">
             <h2 className="text-lg font-semibold text-foreground">Quick Access</h2>
-            <div className="grid grid-cols-3 gap-3">
-              <Button
-                onClick={() => handleQuickAccess('customer')}
-                variant="outline"
-                className="flex-col h-auto py-4 gap-2"
-              >
-                <Users className="h-6 w-6" />
-                <span className="text-xs">Customer</span>
-              </Button>
+            <div className="grid grid-cols-2 gap-3">
               <Button
                 onClick={() => handleQuickAccess('employee')}
                 variant="outline"
