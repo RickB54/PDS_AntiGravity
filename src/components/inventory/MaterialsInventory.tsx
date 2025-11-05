@@ -17,6 +17,7 @@ interface MaterialItem {
   quantity: number;
   costPerItem?: number;
   notes?: string;
+  lowThreshold?: number;
   createdAt: string;
 }
 
@@ -31,6 +32,7 @@ export default function MaterialsInventory() {
     quantity: "0",
     costPerItem: "",
     notes: "",
+    lowThreshold: "",
   });
 
   useEffect(() => { load(); }, []);
@@ -47,7 +49,7 @@ export default function MaterialsInventory() {
 
   const openAdd = () => {
     setEditing(null);
-    setForm({ name: "", category: "Rag", subtype: "", quantity: "0", costPerItem: "", notes: "" });
+    setForm({ name: "", category: "Rag", subtype: "", quantity: "0", costPerItem: "", notes: "", lowThreshold: "" });
     setModalOpen(true);
   };
 
@@ -60,6 +62,7 @@ export default function MaterialsInventory() {
       quantity: String(item.quantity),
       costPerItem: item.costPerItem ? String(item.costPerItem) : "",
       notes: item.notes || "",
+      lowThreshold: item.lowThreshold ? String(item.lowThreshold) : "",
     });
     setModalOpen(true);
   };
@@ -73,6 +76,7 @@ export default function MaterialsInventory() {
       quantity: parseInt(form.quantity) || 0,
       costPerItem: form.costPerItem ? parseFloat(form.costPerItem) : undefined,
       notes: form.notes || undefined,
+      lowThreshold: form.lowThreshold ? parseInt(form.lowThreshold) : undefined,
       createdAt: editing?.createdAt || new Date().toISOString(),
     };
 
@@ -175,6 +179,10 @@ export default function MaterialsInventory() {
             <div className="space-y-1">
               <Label>Notes</Label>
               <Input value={form.notes} onChange={(e) => setForm({ ...form, notes: e.target.value })} placeholder="Optional notes" />
+            </div>
+            <div className="space-y-1">
+              <Label>Low Inventory Threshold</Label>
+              <Input type="number" value={form.lowThreshold} onChange={(e) => setForm({ ...form, lowThreshold: e.target.value })} placeholder="Alert when below this quantity" />
             </div>
           </div>
           <DialogFooter>

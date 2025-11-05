@@ -7,6 +7,22 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { servicePackages, addOns, VehicleType, getServicePrice, getAddOnPrice, calculateDestinationFee } from "@/lib/services";
 import { Check, ChevronDown, ChevronUp } from "lucide-react";
+import { HeroSection } from "@/components/HeroSection";
+import packageBasic from "@/assets/package-basic.jpg";
+import packageExpress from "@/assets/package-express.jpg";
+import packageExterior from "@/assets/package-exterior.jpg";
+import packageInterior from "@/assets/package-interior.jpg";
+import packageFull from "@/assets/package-full.jpg";
+import packagePremium from "@/assets/package-premium.jpg";
+
+const packageImages: Record<string, string> = {
+  "basic-exterior": packageBasic,
+  "express-detail": packageExpress,
+  "full-exterior": packageExterior,
+  "interior-cleaning": packageInterior,
+  "full-detail": packageFull,
+  "premium-detail": packagePremium,
+};
 
 const CustomerPortal = () => {
   const [vehicleType, setVehicleType] = useState<VehicleType>('compact');
@@ -30,9 +46,7 @@ const CustomerPortal = () => {
 
   return (
     <div className="min-h-screen bg-background">
-      <div className="bg-gradient-hero py-8 mb-8">
-        <h1 className="text-4xl font-bold text-white text-center">Premium Auto Detailing Services</h1>
-      </div>
+      <HeroSection />
       <main className="container mx-auto px-4 py-8 max-w-7xl">
         {/* Vehicle Type Selector - Centered */}
         <div className="flex justify-center mb-12">
@@ -71,13 +85,24 @@ const CustomerPortal = () => {
                   ${isBestValue ? 'border-primary/70' : ''}
                 `}
                 style={{
-                  background: 'linear-gradient(180deg, hsl(0, 0%, 8%) 0%, hsl(0, 0%, 5%) 100%)',
+                  background: 'linear-gradient(180deg, hsl(0, 0%, 100%) 0%, hsl(0, 0%, 98%) 100%)',
                 }}
                 onClick={() => setSelectedService(pkg.id)}
               >
                 {isBestValue && (
-                  <div className="absolute top-0 left-0 right-0 bg-gradient-hero py-1 text-center">
+                  <div className="absolute top-0 left-0 right-0 bg-gradient-hero py-1 text-center z-10">
                     <span className="text-xs font-bold text-white tracking-wider">★ BEST VALUE ★</span>
+                  </div>
+                )}
+                
+                {/* Package Image */}
+                {packageImages[pkg.id] && (
+                  <div className="relative h-48 overflow-hidden">
+                    <img 
+                      src={packageImages[pkg.id]} 
+                      alt={pkg.name}
+                      className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
+                    />
                   </div>
                 )}
                 

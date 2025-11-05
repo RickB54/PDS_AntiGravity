@@ -29,6 +29,8 @@ const BookNow = () => {
   });
   
   const [addOns, setAddOns] = useState<string[]>([]);
+  const [errors, setErrors] = useState<Record<string, string>>({});
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
   const packages = [
     "Basic Exterior Wash - $50-$90",
@@ -47,8 +49,42 @@ const BookNow = () => {
     "Ceramic Coating - $150-$300"
   ];
 
+  const validateForm = () => {
+    const newErrors: Record<string, string> = {};
+    
+    if (!formData.name.trim()) newErrors.name = "Name is required";
+    if (!formData.email.trim()) {
+      newErrors.email = "Email is required";
+    } else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(formData.email)) {
+      newErrors.email = "Invalid email format";
+    }
+    if (!formData.phone.trim()) {
+      newErrors.phone = "Phone is required";
+    } else if (!/^\d{10}$/.test(formData.phone.replace(/\D/g, ''))) {
+      newErrors.phone = "Phone must be 10 digits";
+    }
+    if (!formData.make.trim()) newErrors.make = "Vehicle make is required";
+    if (!formData.model.trim()) newErrors.model = "Vehicle model is required";
+    if (!formData.year.trim()) newErrors.year = "Year is required";
+    if (!formData.package) newErrors.package = "Please select a package";
+    
+    setErrors(newErrors);
+    return Object.keys(newErrors).length === 0;
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+
+    if (!validateForm()) {
+      toast({
+        title: "Please fix errors",
+        description: "Check the form for validation errors",
+        variant: "destructive"
+      });
+      return;
+    }
+
+    setIsSubmitting(true);
 
     // Auto-create customer account
     const autoPassword = `PDS${Math.random().toString(36).slice(2, 10)}`;
@@ -109,6 +145,8 @@ const BookNow = () => {
       message: ""
     });
     setAddOns([]);
+    setErrors({});
+    setIsSubmitting(false);
 
     setTimeout(() => navigate("/"), 2000);
   };
@@ -148,7 +186,9 @@ const BookNow = () => {
                     value={formData.name}
                     onChange={(e) => setFormData({ ...formData, name: e.target.value })}
                     required
+                    className={errors.name ? "border-destructive" : ""}
                   />
+                  {errors.name && <p className="text-xs text-destructive">{errors.name}</p>}
                 </div>
 
                 <div className="space-y-2">
@@ -159,7 +199,9 @@ const BookNow = () => {
                     value={formData.email}
                     onChange={(e) => setFormData({ ...formData, email: e.target.value })}
                     required
+                    className={errors.email ? "border-destructive" : ""}
                   />
+                  {errors.email && <p className="text-xs text-destructive">{errors.email}</p>}
                 </div>
 
                 <div className="space-y-2">
@@ -170,7 +212,9 @@ const BookNow = () => {
                     value={formData.phone}
                     onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
                     required
+                    className={errors.phone ? "border-destructive" : ""}
                   />
+                  {errors.phone && <p className="text-xs text-destructive">{errors.phone}</p>}
                 </div>
 
                 <div className="space-y-2">
@@ -260,8 +304,8 @@ const BookNow = () => {
                 />
               </div>
 
-              <Button type="submit" className="w-full bg-gradient-hero text-lg py-6">
-                Submit Booking Request
+              <Button type="submit" className="w-full bg-gradient-hero text-lg py-6 min-h-[56px]" disabled={isSubmitting}>
+                {isSubmitting ? "Submitting..." : "Submit Booking Request"}
               </Button>
             </form>
           </Card>

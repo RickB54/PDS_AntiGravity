@@ -21,14 +21,30 @@ const Contact = () => {
     message: ""
   });
   const [submitting, setSubmitting] = useState(false);
+  const [errors, setErrors] = useState<Record<string, string>>({});
+
+  const validateForm = () => {
+    const newErrors: Record<string, string> = {};
+    
+    if (!formData.name.trim()) newErrors.name = "Name is required";
+    if (!formData.email.trim()) {
+      newErrors.email = "Email is required";
+    } else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(formData.email)) {
+      newErrors.email = "Invalid email format";
+    }
+    if (!formData.message.trim()) newErrors.message = "Message is required";
+    
+    setErrors(newErrors);
+    return Object.keys(newErrors).length === 0;
+  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     
-    if (!formData.name || !formData.email || !formData.message) {
+    if (!validateForm()) {
       toast({
-        title: "Missing Information",
-        description: "Please fill in all required fields",
+        title: "Please fix errors",
+        description: "Check the form for validation errors",
         variant: "destructive"
       });
       return;
@@ -89,6 +105,7 @@ ${formData.message}
       vehicle: "",
       message: ""
     });
+    setErrors({});
 
     setSubmitting(false);
   };
@@ -125,7 +142,9 @@ ${formData.message}
                   onChange={(e) => setFormData({ ...formData, name: e.target.value })}
                   placeholder="Your name"
                   required
+                  className={errors.name ? "border-destructive" : ""}
                 />
+                {errors.name && <p className="text-xs text-destructive mt-1">{errors.name}</p>}
               </div>
 
               <div>
@@ -137,7 +156,9 @@ ${formData.message}
                   onChange={(e) => setFormData({ ...formData, email: e.target.value })}
                   placeholder="your@email.com"
                   required
+                  className={errors.email ? "border-destructive" : ""}
                 />
+                {errors.email && <p className="text-xs text-destructive mt-1">{errors.email}</p>}
               </div>
 
               <div>
@@ -170,12 +191,14 @@ ${formData.message}
                   placeholder="Tell us about your detailing needs..."
                   rows={5}
                   required
+                  className={errors.message ? "border-destructive" : ""}
                 />
+                {errors.message && <p className="text-xs text-destructive mt-1">{errors.message}</p>}
               </div>
 
               <Button 
                 type="submit" 
-                className="w-full bg-gradient-hero"
+                className="w-full bg-gradient-hero min-h-[56px]"
                 disabled={submitting}
               >
                 {submitting ? "Sending..." : "Send Message"}

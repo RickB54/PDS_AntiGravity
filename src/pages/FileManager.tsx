@@ -257,6 +257,7 @@ const FileManager = () => {
               src={previewPDF}
               className="w-full h-[85vh]"
               title="PDF Preview"
+              sandbox="allow-same-origin allow-scripts"
             />
           )}
         </DialogContent>

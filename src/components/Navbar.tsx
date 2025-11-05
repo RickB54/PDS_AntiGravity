@@ -57,18 +57,21 @@ export const Navbar = () => {
             ))}
             
             {user ? (
-              <Button onClick={handleLogout} variant="outline" size="sm">
-                Logout
-              </Button>
+              <>
+                <span className="text-sm text-muted-foreground">Hi, {user.email}</span>
+                <Button onClick={handleLogout} variant="outline" size="sm">
+                  Logout
+                </Button>
+              </>
             ) : (
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
-                  <Button variant="default" size="sm" className="bg-gradient-hero">
+                  <Button variant="default" size="sm" className="bg-gradient-hero min-h-[48px]">
                     <UserCog className="h-4 w-4 mr-2" />
                     Staff Login
                   </Button>
                 </DropdownMenuTrigger>
-                <DropdownMenuContent align="end" className="w-48">
+                <DropdownMenuContent align="end" className="w-48 bg-popover z-50">
                   <DropdownMenuItem asChild>
                     <Link to="/login" className="w-full cursor-pointer">
                       Access Portal
@@ -111,12 +114,15 @@ export const Navbar = () => {
               ))}
               
               {user ? (
-                <Button onClick={handleLogout} variant="outline" size="sm" className="w-full">
-                  Logout
-                </Button>
+                <>
+                  <span className="text-sm text-muted-foreground px-2">Hi, {user.email}</span>
+                  <Button onClick={handleLogout} variant="outline" size="sm" className="w-full">
+                    Logout
+                  </Button>
+                </>
               ) : (
                 <Link to="/login" onClick={() => setMobileMenuOpen(false)}>
-                  <Button variant="default" size="sm" className="w-full bg-gradient-hero">
+                  <Button variant="default" size="sm" className="w-full bg-gradient-hero min-h-[48px]">
                     <UserCog className="h-4 w-4 mr-2" />
                     Staff Login
                   </Button>

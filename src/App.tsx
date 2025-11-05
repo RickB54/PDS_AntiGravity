@@ -68,13 +68,13 @@ const App = () => {
               path="/*"
               element={
                 <SidebarProvider>
-                  <div className="flex min-h-screen w-full">
+                  <div className="flex min-h-screen w-full dark-theme">
                     {user && <AppSidebar />}
                     <div className="flex-1">
-                      <Routes>
-          <Route path="/" element={<Index />} />
+            <Routes>
+              <Route path="/" element={<Index />} />
                         
-                        <Route path="/dashboard" element={
+              <Route path="/dashboard" element={
                           user?.role === 'admin' ? <Navigate to="/dashboard/admin" replace /> :
                           user?.role === 'employee' ? <Navigate to="/dashboard/employee" replace /> :
                           user?.role === 'customer' ? <Navigate to="/customer-portal" replace /> :
