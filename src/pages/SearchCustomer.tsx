@@ -4,8 +4,10 @@ import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
-import CustomerModal from "@/components/customers/CustomerModal";
-import { getCustomers, upsertCustomer, deleteCustomer as removeCustomer, purgeTestCustomers, getInvoices } from "@/lib/db";
+import CustomerModal, { type Customer as ModalCustomer } from "@/components/customers/CustomerModal";
+import { getCustomers, deleteCustomer as removeCustomer, purgeTestCustomers, getInvoices, upsertCustomer } from "@/lib/db";
+import { getUnifiedCustomers } from "@/lib/customers";
+import api from "@/lib/api";
 import { Search, Pencil, Trash2, Plus, Printer, Save, ChevronDown, ChevronUp, ChevronsDown, ChevronsUp, FileBarChart, Eye, Edit } from "lucide-react";
 import { Link } from "react-router-dom";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
@@ -57,24 +59,36 @@ const [dateFilter, setDateFilter] = useState<"all" | "daily" | "weekly" | "month
 
 useEffect(() => {
     (async () => {
-      await purgeTestCustomers();
-      const list = await getCustomers();
+      const list = await getUnifiedCustomers();
       setCustomers(list as Customer[]);
     })();
   }, []);
 
 const refresh = async () => {
-    await purgeTestCustomers();
-    const list = await getCustomers();
+    const list = await getUnifiedCustomers();
     setCustomers(list as Customer[]);
   };
 
   const openAdd = () => { setEditing(null); setModalOpen(true); };
   const openEdit = (c: Customer) => { setEditing(c); setModalOpen(true); };
-  const onSaveModal = async (data: Customer) => {
-    await upsertCustomer(data);
-    await refresh();
-    toast({ title: "Customer Saved", description: "Record stored locally." });
+  const onSaveModal = async (data: ModalCustomer) => {
+    try {
+      await api('/api/customers', { method: 'POST', body: JSON.stringify(data) });
+      await refresh();
+      setModalOpen(false);
+      toast({ title: "Customer Saved", description: "Record stored." });
+    } catch (err: any) {
+      // Fallback to local IndexedDB when backend is unavailable
+      try {
+        const saved = await upsertCustomer(data as any);
+        const list = await getCustomers();
+        setCustomers(list as Customer[]);
+        setModalOpen(false);
+        toast({ title: "Saved locally", description: "Backend unavailable; stored offline.", variant: 'default' });
+      } catch (err2: any) {
+        toast({ title: "Save failed", description: err2?.message || String(err2), variant: 'destructive' });
+      }
+    }
   };
 
 const filterByDate = (customer: Customer) => {
@@ -96,7 +110,7 @@ const filterByDate = (customer: Customer) => {
     return passQuick && passRange;
   };
 
-  const filteredCustomers = customers.filter(customer => {
+  const filteredCustomers = (Array.isArray(customers) ? customers : []).filter(customer => {
     const matchesSearch = customer.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
       customer.phone.includes(searchTerm) ||
       customer.vehicle.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -134,9 +148,8 @@ const filterByDate = (customer: Customer) => {
   const [allExpanded, setAllExpanded] = useState(false);
 
   const toggleCustomer = (id: string) => {
-    setExpandedCustomers(prev => 
-      prev.includes(id) ? prev.filter(cid => cid !== id) : [...prev, id]
-    );
+    setExpandedCustomers(prev => (prev.includes(id) ? [] : [id]));
+    setAllExpanded(false);
   };
 
   const toggleAll = () => {
@@ -202,22 +215,43 @@ const filterByDate = (customer: Customer) => {
                 </div>
               )}
               
-              <div className="relative">
-                <Search className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
-                <Input
-                  value={searchTerm}
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div className="relative">
+                  <Search className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
+                  <Input
+                    value={searchTerm}
+                    onChange={(e) => setSearchTerm(e.target.value)}
+                    placeholder="Search by name, phone, vehicle make, model, or year..."
+                    className="pl-10 bg-background border-border"
+                  />
+                </div>
+                <select
+                  className="h-10 rounded-md border border-input bg-background px-3 py-2 text-sm"
                   onChange={(e) => setSearchTerm(e.target.value)}
-                  placeholder="Search by name, phone, vehicle make, model, or year..."
-                  className="pl-10 bg-background border-border"
-                />
+                  value={""}
+                >
+                  <option value="" disabled>All Customers</option>
+                  {[...customers].sort((a,b) => a.name.localeCompare(b.name)).map(c => (
+                    <option key={c.id || c.name} value={c.name}>{c.name}</option>
+                  ))}
+                </select>
               </div>
             </div>
           </Card>
 
           {/* Customer List */}
           <div className="space-y-4">
-            {filteredCustomers.map((customer) => {
+            {[...filteredCustomers]
+              .sort((a,b) => {
+                const da = a.updatedAt || a.createdAt || a.lastService || "";
+                const db = b.updatedAt || b.createdAt || b.lastService || "";
+                return (db ? new Date(db).getTime() : 0) - (da ? new Date(da).getTime() : 0);
+              })
+              .map((customer) => {
               const isExpanded = expandedCustomers.includes(customer.id!);
+              if (!allExpanded && expandedCustomers.length > 0 && !isExpanded) {
+                return null;
+              }
               return (
                 <Card 
                   key={customer.id} 
@@ -251,6 +285,11 @@ const filterByDate = (customer: Customer) => {
                             onClick={() => setDeleteCustomerId(customer.id)}
                           >
                             <Trash2 className="h-4 w-4" />
+                          </Button>
+                          <Button asChild variant="outline" size="sm" className="ml-2">
+                            <Link to={`/service-checklist?customerId=${customer.id}`}>
+                              Start Job
+                            </Link>
                           </Button>
                         </div>
                       </div>

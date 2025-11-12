@@ -77,20 +77,18 @@ const Contact = () => {
     // Save to File Manager
     savePDFToArchive("Customer", formData.name, `contact_${Date.now()}`, pdfDataUrl);
 
-    // Create mailto link
-    const subject = `Contact Form: ${formData.name}`;
-    const body = `
-Name: ${formData.name}
-Email: ${formData.email}
-Phone: ${formData.phone || "N/A"}
-Vehicle: ${formData.vehicle || "N/A"}
-
-Message:
-${formData.message}
-    `.trim();
-
-    const mailtoLink = `mailto:primedetailsolutions.ma.nh@gmail.com?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
-    window.location.href = mailtoLink;
+    // Open Gmail compose directly with full subject and body
+    const subject = `Contact: ${formData.name} (${formData.email})`;
+    const body = `New Contact Submission\n\n` +
+      `Name: ${formData.name}\n` +
+      `Email: ${formData.email}\n` +
+      `Phone: ${formData.phone || 'N/A'}\n` +
+      `Vehicle: ${formData.vehicle || 'N/A'}\n\n` +
+      `Message:\n${formData.message}\n\n` +
+      `Submitted: ${new Date().toLocaleString()}\n` +
+      `Portal Link (auto): ${window.location.origin}/portal?token=auto-${Date.now()}`;
+    const gmailLink = `https://mail.google.com/mail/?view=cm&fs=1&tf=1&to=primedetailsolutions.ma.nh@gmail.com&su=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
+    window.open(gmailLink, "_blank");
 
     toast({
       title: "Message Sent!",
@@ -216,7 +214,9 @@ ${formData.message}
                 <div>
                   <h3 className="font-semibold text-foreground mb-1">Email</h3>
                   <a 
-                    href="mailto:primedetailsolutions.ma.nh@gmail.com"
+                    href="https://mail.google.com/mail/?view=cm&fs=1&tf=1&to=primedetailsolutions.ma.nh@gmail.com&su=Website%20Inquiry"
+                    target="_blank"
+                    rel="noopener noreferrer"
                     className="text-muted-foreground hover:text-primary transition-colors"
                   >
                     primedetailsolutions.ma.nh@gmail.com

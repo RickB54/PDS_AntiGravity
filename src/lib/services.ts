@@ -32,13 +32,22 @@ export interface AddOn {
   };
 }
 
+// Pricing overrides (persisted) allow admin to update package pricing globally
+function getPricingOverrides(): Record<string, Partial<ServicePackage["pricing"]>> {
+  try {
+    return JSON.parse(localStorage.getItem("servicePricingOverrides") || "{}");
+  } catch { return {}; }
+}
+
+const overrides = getPricingOverrides();
+
 export const servicePackages: ServicePackage[] = [
   {
     id: 'basic-exterior',
     name: 'Basic Exterior Wash',
     description: 'Essential exterior cleaning',
-    basePrice: 50,
-    pricing: { compact: 50, midsize: 60, truck: 75, luxury: 90 },
+    basePrice: 40,
+    pricing: overrides["basic-exterior"] || { compact: 40, midsize: 50, truck: 60, luxury: 75 },
     steps: [
       { id: 'pre-rinse-foam', name: 'Pre-rinse & foam', category: 'exterior' },
       { id: 'two-bucket-wash', name: 'Two-bucket wash', category: 'exterior' },
@@ -50,8 +59,8 @@ export const servicePackages: ServicePackage[] = [
     id: 'express-wax',
     name: 'Express Wash & Wax',
     description: 'Quick wash with protective wax',
-    basePrice: 75,
-    pricing: { compact: 75, midsize: 90, truck: 110, luxury: 135 },
+    basePrice: 60,
+    pricing: overrides["express-wax"] || { compact: 60, midsize: 75, truck: 90, luxury: 110 },
     steps: [
       { id: 'quick-wash', name: 'Quick wash', category: 'exterior' },
       { id: 'spray-wax', name: 'Spray wax', category: 'exterior' },
@@ -63,8 +72,8 @@ export const servicePackages: ServicePackage[] = [
     id: 'full-exterior',
     name: 'Full Exterior Detail',
     description: 'Complete exterior restoration',
-    basePrice: 150,
-    pricing: { compact: 150, midsize: 180, truck: 220, luxury: 275 },
+    basePrice: 120,
+    pricing: overrides["full-exterior"] || { compact: 120, midsize: 150, truck: 180, luxury: 210 },
     steps: [
       { id: 'pre-rinse-vehicle', name: 'Pre-rinse vehicle', category: 'exterior' },
       { id: 'apply-foam-cannon', name: 'Apply foam cannon', category: 'exterior' },
@@ -82,8 +91,8 @@ export const servicePackages: ServicePackage[] = [
     id: 'interior-cleaning',
     name: 'Interior Cleaning',
     description: 'Deep interior detailing',
-    basePrice: 100,
-    pricing: { compact: 100, midsize: 120, truck: 150, luxury: 185 },
+    basePrice: 80,
+    pricing: overrides["interior-cleaning"] || { compact: 80, midsize: 100, truck: 120, luxury: 150 },
     steps: [
       { id: 'vacuum-interior', name: 'Vacuum all surfaces', category: 'interior' },
       { id: 'clean-dashboard', name: 'Clean dashboard', category: 'interior' },
@@ -99,8 +108,8 @@ export const servicePackages: ServicePackage[] = [
     id: 'full-detail',
     name: 'Full Detail (BEST VALUE)',
     description: 'Complete interior and exterior',
-    basePrice: 225,
-    pricing: { compact: 225, midsize: 275, truck: 340, luxury: 425 },
+    basePrice: 180,
+    pricing: overrides["full-detail"] || { compact: 180, midsize: 225, truck: 270, luxury: 320 },
     steps: [
       // Exterior
       { id: 'pre-rinse-full', name: 'Pre-rinse vehicle', category: 'exterior' },
@@ -127,8 +136,8 @@ export const servicePackages: ServicePackage[] = [
     id: 'premium-detail',
     name: 'Premium Detail',
     description: 'Ultimate detailing experience',
-    basePrice: 350,
-    pricing: { compact: 350, midsize: 425, truck: 525, luxury: 650 },
+    basePrice: 280,
+    pricing: overrides["premium-detail"] || { compact: 280, midsize: 350, truck: 420, luxury: 500 },
     steps: [
       // Exterior
       { id: 'pre-rinse-premium', name: 'Pre-rinse vehicle', category: 'exterior' },
@@ -154,29 +163,42 @@ export const servicePackages: ServicePackage[] = [
 ];
 
 export const addOns: AddOn[] = [
-  { id: 'wheel-cleaning', name: 'Wheel Cleaning', basePrice: 25, pricing: { compact: 25, midsize: 30, truck: 35, luxury: 40 } },
-  { id: 'leather-conditioning', name: 'Leather Conditioning', basePrice: 30, pricing: { compact: 30, midsize: 35, truck: 40, luxury: 50 } },
-  { id: 'odor-eliminator', name: 'Odor Eliminator', basePrice: 20, pricing: { compact: 20, midsize: 25, truck: 30, luxury: 35 } },
-  { id: 'headlight-restoration', name: 'Headlight Restoration', basePrice: 40, pricing: { compact: 40, midsize: 45, truck: 50, luxury: 60 } },
-  { id: 'ceramic-trim-coat', name: 'Ceramic Trim Coat Restoration', basePrice: 75, pricing: { compact: 75, midsize: 85, truck: 95, luxury: 110 } },
-  { id: 'engine-bay', name: 'Engine Bay Cleaning', basePrice: 85, pricing: { compact: 85, midsize: 95, truck: 110, luxury: 130 } },
-  { id: 'wheel-rim-detailing', name: 'Wheel & Rim Detailing', basePrice: 60, pricing: { compact: 60, midsize: 70, truck: 80, luxury: 95 } },
-  { id: 'clay-bar-decon', name: 'Clay Bar Decontamination', basePrice: 80, pricing: { compact: 80, midsize: 90, truck: 105, luxury: 125 } },
-  { id: 'paint-sealant', name: 'Paint Sealant Application', basePrice: 110, pricing: { compact: 110, midsize: 130, truck: 150, luxury: 180 } },
-  { id: 'pet-hair-removal', name: 'Pet Hair Removal', basePrice: 70, pricing: { compact: 70, midsize: 80, truck: 95, luxury: 110 } },
-  { id: 'paint-touch-up', name: 'Minor Paint Touch-Up', basePrice: 90, pricing: { compact: 90, midsize: 105, truck: 120, luxury: 145 } }
+  { id: 'wheel-cleaning', name: 'Wheel Cleaning', basePrice: 20, pricing: { compact: 20, midsize: 25, truck: 30, luxury: 40 } },
+  { id: 'leather-conditioning', name: 'Leather Conditioning', basePrice: 25, pricing: { compact: 25, midsize: 30, truck: 35, luxury: 45 } },
+  { id: 'odor-eliminator', name: 'Odor Eliminator', basePrice: 15, pricing: { compact: 15, midsize: 20, truck: 25, luxury: 35 } },
+  { id: 'headlight-restoration', name: 'Headlight Restoration', basePrice: 35, pricing: { compact: 35, midsize: 40, truck: 50, luxury: 65 } },
+  { id: 'ceramic-trim-coat', name: 'Ceramic Trim Coat Restoration', basePrice: 60, pricing: { compact: 60, midsize: 75, truck: 95, luxury: 125 } },
+  { id: 'engine-bay', name: 'Engine Bay Cleaning', basePrice: 70, pricing: { compact: 70, midsize: 85, truck: 100, luxury: 120 } },
+  { id: 'wheel-rim-detailing', name: 'Wheel & Rim Detailing', basePrice: 50, pricing: { compact: 50, midsize: 60, truck: 75, luxury: 90 } },
+  { id: 'clay-bar-decon', name: 'Clay Bar Decontamination', basePrice: 65, pricing: { compact: 65, midsize: 80, truck: 95, luxury: 120 } },
+  { id: 'paint-sealant', name: 'Paint Sealant Application', basePrice: 90, pricing: { compact: 90, midsize: 110, truck: 130, luxury: 160 } },
+  { id: 'pet-hair-removal', name: 'Pet Hair Removal', basePrice: 55, pricing: { compact: 55, midsize: 70, truck: 85, luxury: 100 } },
+  { id: 'paint-touch-up', name: 'Minor Paint Touch-Up', basePrice: 75, pricing: { compact: 75, midsize: 90, truck: 110, luxury: 140 } }
 ];
 
 export type VehicleType = 'compact' | 'midsize' | 'truck' | 'luxury';
 
+// Read latest overrides on each getter to ensure immediate reflection without reload
 export function getServicePrice(serviceId: string, vehicleType: VehicleType): number {
   const service = servicePackages.find(s => s.id === serviceId);
-  return service ? service.pricing[vehicleType] : 0;
+  if (!service) return 0;
+  const currentOverrides = getPricingOverrides();
+  const merged = { ...service.pricing, ...(currentOverrides[serviceId] || {}) } as ServicePackage["pricing"];
+  return merged[vehicleType] || 0;
+}
+
+function getAddOnOverrides(): Record<string, Partial<AddOn["pricing"]>> {
+  try {
+    return JSON.parse(localStorage.getItem("addOnPricingOverrides") || "{}");
+  } catch { return {}; }
 }
 
 export function getAddOnPrice(addOnId: string, vehicleType: VehicleType): number {
   const addOn = addOns.find(a => a.id === addOnId);
-  return addOn ? addOn.pricing[vehicleType] : 0;
+  if (!addOn) return 0;
+  const overrides = getAddOnOverrides();
+  const merged = { ...addOn.pricing, ...(overrides[addOnId] || {}) } as AddOn["pricing"];
+  return merged[vehicleType] || 0;
 }
 
 export function calculateDestinationFee(miles: number): number {
@@ -186,4 +208,18 @@ export function calculateDestinationFee(miles: number): number {
   if (miles <= 30) return 30 + ((miles - 20) * 1.5);
   if (miles <= 50) return 50 + ((miles - 30) * 1.25);
   return 75;
+}
+
+// Admin API: update pricing overrides and refresh consumers without reloading
+export function setServicePricingOverride(serviceId: string, pricing: ServicePackage["pricing"]) {
+  const current = getPricingOverrides();
+  current[serviceId] = pricing;
+  localStorage.setItem("servicePricingOverrides", JSON.stringify(current));
+}
+
+// Admin API: update add-on pricing overrides
+export function setAddOnPricingOverride(addOnId: string, pricing: AddOn["pricing"]) {
+  const current = getAddOnOverrides();
+  current[addOnId] = pricing;
+  localStorage.setItem("addOnPricingOverrides", JSON.stringify(current));
 }

@@ -5,8 +5,10 @@ import { getCurrentUser, logout } from "@/lib/auth";
 import { useNavigate } from "react-router-dom";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { useState } from "react";
-import { LogOut, Info } from "lucide-react";
+import { LogOut, Info, Globe, User } from "lucide-react";
 import logo from "@/assets/logo-3inch.png";
+import NotificationBell from "@/components/NotificationBell";
+import { Link } from "react-router-dom";
 
 interface PageHeaderProps {
   title?: string;
@@ -45,10 +47,20 @@ export function PageHeader({ title }: PageHeaderProps) {
               About
             </Button>
             
+            <Button asChild variant="outline" size="sm" className="gap-2">
+              <Link to="/">
+                <Globe className="h-4 w-4" />
+                Website
+              </Link>
+            </Button>
+
+            {user?.role === 'admin' && <NotificationBell />}
+
             {user && (
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
-                  <Button variant="ghost" size="sm">
+                  <Button variant="ghost" size="sm" className="flex items-center gap-2">
+                    <User className="h-4 w-4 text-purple-500" />
                     Hi, {user.email}
                   </Button>
                 </DropdownMenuTrigger>

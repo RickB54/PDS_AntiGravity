@@ -8,6 +8,10 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "
 import { Plus, Printer, Save } from "lucide-react";
 import localforage from "localforage";
 import jsPDF from "jspdf";
+import { toast } from "sonner";
+import { markViewed } from "@/lib/viewTracker";
+import api from "@/lib/api";
+import UnifiedInventoryModal from "@/components/inventory/UnifiedInventoryModal";
 
 interface MaterialItem {
   id: string;
@@ -25,15 +29,7 @@ export default function MaterialsInventory() {
   const [items, setItems] = useState<MaterialItem[]>([]);
   const [modalOpen, setModalOpen] = useState(false);
   const [editing, setEditing] = useState<MaterialItem | null>(null);
-  const [form, setForm] = useState({
-    name: "",
-    category: "Rag",
-    subtype: "",
-    quantity: "0",
-    costPerItem: "",
-    notes: "",
-    lowThreshold: "",
-  });
+  // Using UnifiedInventoryModal; local form state removed
 
   useEffect(() => { load(); }, []);
 
@@ -49,40 +45,37 @@ export default function MaterialsInventory() {
 
   const openAdd = () => {
     setEditing(null);
-    setForm({ name: "", category: "Rag", subtype: "", quantity: "0", costPerItem: "", notes: "", lowThreshold: "" });
     setModalOpen(true);
   };
 
   const openEdit = (item: MaterialItem) => {
     setEditing(item);
-    setForm({
-      name: item.name,
-      category: item.category,
-      subtype: item.subtype || "",
-      quantity: String(item.quantity),
-      costPerItem: item.costPerItem ? String(item.costPerItem) : "",
-      notes: item.notes || "",
-      lowThreshold: item.lowThreshold ? String(item.lowThreshold) : "",
-    });
     setModalOpen(true);
   };
 
-  const handleSave = async () => {
-    const data: MaterialItem = {
-      id: editing?.id || `mat-${Date.now()}`,
-      name: form.name,
-      category: form.category,
-      subtype: form.subtype,
-      quantity: parseInt(form.quantity) || 0,
-      costPerItem: form.costPerItem ? parseFloat(form.costPerItem) : undefined,
-      notes: form.notes || undefined,
-      lowThreshold: form.lowThreshold ? parseInt(form.lowThreshold) : undefined,
-      createdAt: editing?.createdAt || new Date().toISOString(),
-    };
+  // Save handled inside UnifiedInventoryModal; refresh list on onSaved
 
-    const next = editing ? items.map(i => i.id === editing.id ? data : i) : [...items, data];
-    await saveList(next);
-    setModalOpen(false);
+  // Restore helpers used by the previous working version
+  const loadMaterials = async () => {
+    await load();
+  };
+
+  const saveMaterial = async (newMaterial: any) => {
+    const list = (await localforage.getItem<MaterialItem[]>("materials")) || [];
+    const data: MaterialItem = {
+      id: newMaterial.id,
+      name: String(newMaterial.name || "").trim(),
+      category: String(newMaterial.category || "Rag"),
+      subtype: newMaterial.subtype || "",
+      quantity: parseInt(newMaterial.quantity) || 0,
+      costPerItem: newMaterial.costPerItem ? parseFloat(newMaterial.costPerItem) : undefined,
+      notes: newMaterial.notes || undefined,
+      lowThreshold: newMaterial.lowThreshold ? parseInt(newMaterial.lowThreshold) : undefined,
+      createdAt: new Date().toISOString(),
+    };
+    const next = [...list, data];
+    await localforage.setItem("materials", next);
+    setItems(next);
   };
 
   const printOrSave = (download = false) => {
@@ -119,77 +112,35 @@ export default function MaterialsInventory() {
             <TableHead className="hidden md:table-cell">Subtype/Size</TableHead>
             <TableHead>Qty</TableHead>
             <TableHead className="hidden md:table-cell">Cost</TableHead>
+            <TableHead className="hidden md:table-cell">Threshold</TableHead>
           </TableRow>
         </TableHeader>
         <TableBody>
           {items.map(i => (
-            <TableRow key={i.id} className="cursor-pointer" onClick={() => openEdit(i)}>
+            <TableRow key={i.id} className="cursor-pointer" onClick={() => { markViewed("inventory", i.id); openEdit(i); }}>
               <TableCell className="font-medium">{i.name}</TableCell>
               <TableCell className="hidden md:table-cell">{i.category}</TableCell>
               <TableCell className="hidden md:table-cell">{i.subtype || "-"}</TableCell>
               <TableCell>{i.quantity}</TableCell>
               <TableCell className="hidden md:table-cell">{i.costPerItem ? `$${i.costPerItem.toFixed(2)}` : "-"}</TableCell>
+              <TableCell className="hidden md:table-cell">{typeof i.lowThreshold === 'number' ? i.lowThreshold : '-'}</TableCell>
             </TableRow>
           ))}
           {items.length === 0 && (
             <TableRow>
-              <TableCell colSpan={5} className="text-center text-muted-foreground py-8">No materials added yet.</TableCell>
+              <TableCell colSpan={6} className="text-center text-muted-foreground py-8">No materials added yet.</TableCell>
             </TableRow>
           )}
         </TableBody>
       </Table>
 
-      <Dialog open={modalOpen} onOpenChange={setModalOpen}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>{editing ? "Edit Material" : "Add Material"}</DialogTitle>
-          </DialogHeader>
-          <div className="space-y-3 py-2">
-            <div className="space-y-1">
-              <Label>Item Name</Label>
-              <Input value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} placeholder="e.g., Microfiber Rags" />
-            </div>
-            <div className="space-y-1">
-              <Label>Category</Label>
-              <select
-                value={form.category}
-                onChange={(e) => setForm({ ...form, category: e.target.value })}
-                className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
-              >
-                <option>Rag</option>
-                <option>Brush</option>
-                <option>Tool</option>
-                <option>Other</option>
-              </select>
-            </div>
-            <div className="space-y-1">
-              <Label>Subtype / Size</Label>
-              <Input value={form.subtype} onChange={(e) => setForm({ ...form, subtype: e.target.value })} placeholder="e.g., Microfiber - Large" />
-            </div>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-              <div className="space-y-1">
-                <Label>Quantity</Label>
-                <Input type="number" value={form.quantity} onChange={(e) => setForm({ ...form, quantity: e.target.value })} />
-              </div>
-              <div className="space-y-1">
-                <Label>Cost per Item</Label>
-                <Input type="number" step="0.01" value={form.costPerItem} onChange={(e) => setForm({ ...form, costPerItem: e.target.value })} />
-              </div>
-            </div>
-            <div className="space-y-1">
-              <Label>Notes</Label>
-              <Input value={form.notes} onChange={(e) => setForm({ ...form, notes: e.target.value })} placeholder="Optional notes" />
-            </div>
-            <div className="space-y-1">
-              <Label>Low Inventory Threshold</Label>
-              <Input type="number" value={form.lowThreshold} onChange={(e) => setForm({ ...form, lowThreshold: e.target.value })} placeholder="Alert when below this quantity" />
-            </div>
-          </div>
-          <DialogFooter>
-            <Button onClick={handleSave} className="bg-gradient-hero">Save</Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+      <UnifiedInventoryModal
+        mode="material"
+        open={modalOpen}
+        onOpenChange={setModalOpen}
+        initial={editing || null}
+        onSaved={async () => { await load(); }}
+      />
     </Card>
   );
 }

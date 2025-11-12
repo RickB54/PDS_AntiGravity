@@ -196,23 +196,28 @@ const Invoicing = () => {
     .reduce((sum, inv) => sum + (inv.total - (inv.paidAmount || 0)), 0);
 
   const updatePayment = async () => {
-    if (!paymentDialog || !paymentAmount) return;
-    const paid = parseFloat(paymentAmount);
-    const newPaidAmount = (paymentDialog.paidAmount || 0) + paid;
-    const newStatus: "unpaid" | "partially-paid" | "paid" = 
-      newPaidAmount >= paymentDialog.total ? "paid" : newPaidAmount > 0 ? "partially-paid" : "unpaid";
-    
-    await upsertInvoice({
-      ...paymentDialog,
-      paidAmount: newPaidAmount,
-      paymentStatus: newStatus,
-      paidDate: new Date().toISOString()
-    });
-    
-    await loadData();
-    setPaymentDialog(null);
-    setPaymentAmount("");
-    toast({ title: "Payment Recorded", description: "Invoice payment updated." });
+    try {
+      if (!paymentDialog || !paymentAmount) return;
+      const paid = parseFloat(paymentAmount);
+      const newPaidAmount = (paymentDialog.paidAmount || 0) + paid;
+      const newStatus: "unpaid" | "partially-paid" | "paid" = 
+        newPaidAmount >= paymentDialog.total ? "paid" : newPaidAmount > 0 ? "partially-paid" : "unpaid";
+
+      await upsertInvoice({
+        ...paymentDialog,
+        paidAmount: newPaidAmount,
+        paymentStatus: newStatus,
+        paidDate: new Date().toISOString()
+      });
+
+      await loadData();
+      setPaymentDialog(null);
+      setPaymentAmount("");
+      toast({ title: "Payment Recorded", description: "Invoice payment updated." });
+    } catch (err) {
+      console.error('Failed to update payment', err);
+      toast({ title: "Payment Failed", description: "Could not update invoice payment.", variant: "destructive" });
+    }
   };
 
   const generateListPDF = (download = false) => {

@@ -1,11 +1,13 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { servicePackages, addOns, VehicleType, getServicePrice, getAddOnPrice, calculateDestinationFee } from "@/lib/services";
+import { servicePackages as builtInPackages, addOns as builtInAddOns, VehicleType, calculateDestinationFee } from "@/lib/services";
+import { getCustomServices, getAllPackageMeta, getAllAddOnMeta, buildFullSyncPayload } from "@/lib/servicesMeta";
+import { useNavigate } from "react-router-dom";
 import { Check, ChevronDown, ChevronUp } from "lucide-react";
 import { HeroSection } from "@/components/HeroSection";
 import packageBasic from "@/assets/package-basic.jpg";
@@ -17,7 +19,7 @@ import packagePremium from "@/assets/package-premium.jpg";
 
 const packageImages: Record<string, string> = {
   "basic-exterior": packageBasic,
-  "express-detail": packageExpress,
+  "express-wax": packageExpress,
   "full-exterior": packageExterior,
   "interior-cleaning": packageInterior,
   "full-detail": packageFull,
@@ -25,16 +27,109 @@ const packageImages: Record<string, string> = {
 };
 
 const CustomerPortal = () => {
+  const navigate = useNavigate();
   const [vehicleType, setVehicleType] = useState<VehicleType>('compact');
   const [selectedService, setSelectedService] = useState<string | null>(null);
   const [selectedAddOns, setSelectedAddOns] = useState<string[]>([]);
   const [distance, setDistance] = useState(0);
   const [addOnsExpanded, setAddOnsExpanded] = useState(false);
-  const [learnMorePackage, setLearnMorePackage] = useState<typeof servicePackages[0] | null>(null);
+  const [learnMorePackage, setLearnMorePackage] = useState<any | null>(null);
 
-  const service = servicePackages.find(s => s.id === selectedService);
-  const servicePrice = service ? getServicePrice(service.id, vehicleType) : 0;
-  const addOnsTotal = selectedAddOns.reduce((sum, id) => sum + getAddOnPrice(id, vehicleType), 0);
+  // Live data pulled from backend
+  const [savedPricesLive, setSavedPricesLive] = useState<Record<string,string>>({});
+  const [packageMetaLive, setPackageMetaLive] = useState<Record<string, any>>({});
+  const [addOnMetaLive, setAddOnMetaLive] = useState<Record<string, any>>({});
+  const [customPackagesLive, setCustomPackagesLive] = useState<any[]>([]);
+  const [customAddOnsLive, setCustomAddOnsLive] = useState<any[]>([]);
+  const [lastSyncTs, setLastSyncTs] = useState<number | null>(null);
+
+  const getKey = (type: 'package'|'addon', id: string, size: VehicleType) => `${type}:${id}:${size}`;
+
+  const fetchLive = async () => {
+    try {
+      const res = await fetch(`http://localhost:6061/api/packages/live?v=${Date.now()}` , {
+        headers: { 'Cache-Control': 'no-cache' }
+      });
+      if (res.ok) {
+        const contentType = res.headers.get('Content-Type') || '';
+        if (contentType.includes('application/json')) {
+          const data = await res.json();
+          setSavedPricesLive(data.savedPrices || {});
+          setPackageMetaLive(data.packageMeta || {});
+          setAddOnMetaLive(data.addOnMeta || {});
+          setCustomPackagesLive(data.customPackages || []);
+          setCustomAddOnsLive(data.customAddOns || []);
+          setLastSyncTs(Date.now());
+          return;
+        }
+        // Fall through to local snapshot if server returned HTML due to SPA redirects
+      }
+    } catch {}
+    // Local fallback snapshot when backend is unavailable or returns non-JSON
+    try {
+      const snapshot = await buildFullSyncPayload();
+      setSavedPricesLive(snapshot.savedPrices || {});
+      setPackageMetaLive(snapshot.packageMeta || {});
+      setAddOnMetaLive(snapshot.addOnMeta || {});
+      setCustomPackagesLive(snapshot.customPackages || []);
+      setCustomAddOnsLive(snapshot.customAddOns || []);
+      setLastSyncTs(Date.now());
+    } catch {}
+  };
+
+  useEffect(() => {
+    fetchLive();
+    const intervalId = setInterval(fetchLive, 2000);
+    return () => {
+      clearInterval(intervalId);
+    };
+  }, []);
+
+  // Build live packages and add-ons arrays
+  const allBuiltInSteps: Record<string, { id: string; name: string }> = Object.fromEntries(
+    builtInPackages.flatMap(p => p.steps.map(s => [typeof s === 'string' ? s : s.id, typeof s === 'string' ? s : s.name]))
+      .map(([id, name]) => [id as string, { id: id as string, name: name as string }])
+  );
+  const customServicesMap: Record<string, string> = Object.fromEntries(getCustomServices().map(s => [s.id, s.name]));
+
+  const visibleBuiltIns = builtInPackages.filter(p => (packageMetaLive[p.id]?.visible) !== false);
+  const visibleCustomPkgs = customPackagesLive.filter((p: any) => (packageMetaLive[p.id]?.visible) !== false);
+  const livePackages = [...visibleBuiltIns, ...visibleCustomPkgs].map((p: any) => {
+    const pricing = {
+      compact: parseFloat(savedPricesLive[getKey('package', p.id, 'compact')]) || p.pricing.compact,
+      midsize: parseFloat(savedPricesLive[getKey('package', p.id, 'midsize')]) || p.pricing.midsize,
+      truck: parseFloat(savedPricesLive[getKey('package', p.id, 'truck')]) || p.pricing.truck,
+      luxury: parseFloat(savedPricesLive[getKey('package', p.id, 'luxury')]) || p.pricing.luxury,
+    } as Record<VehicleType, number>;
+    const metaSteps: string[] | undefined = packageMetaLive[p.id]?.stepIds;
+    const steps = metaSteps && metaSteps.length > 0
+      ? metaSteps.map(id => ({ id, name: allBuiltInSteps[id]?.name || customServicesMap[id] || id }))
+      : p.steps.map((s: any) => (typeof s === 'string' ? { id: s, name: s } : s));
+    return { ...p, pricing, steps };
+  });
+
+  const visibleBuiltAddOns = builtInAddOns.filter(a => (addOnMetaLive[a.id]?.visible) !== false);
+  const visibleCustomAddOns = customAddOnsLive.filter((a: any) => (addOnMetaLive[a.id]?.visible) !== false);
+  const liveAddOns = [...visibleBuiltAddOns, ...visibleCustomAddOns].map((a: any) => {
+    const pricing = {
+      compact: parseFloat(savedPricesLive[getKey('addon', a.id, 'compact')]) || a.pricing.compact,
+      midsize: parseFloat(savedPricesLive[getKey('addon', a.id, 'midsize')]) || a.pricing.midsize,
+      truck: parseFloat(savedPricesLive[getKey('addon', a.id, 'truck')]) || a.pricing.truck,
+      luxury: parseFloat(savedPricesLive[getKey('addon', a.id, 'luxury')]) || a.pricing.luxury,
+    } as Record<VehicleType, number>;
+    const metaSteps: string[] | undefined = addOnMetaLive[a.id]?.stepIds;
+    const steps = metaSteps && metaSteps.length > 0
+      ? metaSteps.map(id => ({ id, name: allBuiltInSteps[id]?.name || customServicesMap[id] || id }))
+      : (a.steps ? a.steps.map((s: any) => (typeof s === 'string' ? { id: s, name: s } : s)) : []);
+    return { ...a, pricing, steps };
+  });
+
+  const service = livePackages.find(s => s.id === selectedService);
+  const servicePrice = service ? service.pricing[vehicleType] : 0;
+  const addOnsTotal = selectedAddOns.reduce((sum, id) => {
+    const found = liveAddOns.find(a => a.id === id);
+    return sum + (found ? found.pricing[vehicleType] : 0);
+  }, 0);
   const destinationFee = calculateDestinationFee(distance);
   const total = servicePrice + addOnsTotal + destinationFee;
 
@@ -59,10 +154,10 @@ const CustomerPortal = () => {
                 <SelectValue />
               </SelectTrigger>
               <SelectContent className="bg-popover border-border z-50">
-                <SelectItem value="compact">Compact / Sedan</SelectItem>
-                <SelectItem value="midsize">Midsize SUV</SelectItem>
-                <SelectItem value="truck">Truck / Large SUV</SelectItem>
-                <SelectItem value="luxury">Luxury Vehicle</SelectItem>
+                <SelectItem value="compact">Compact/Sedan</SelectItem>
+                <SelectItem value="midsize">Mid-Size/SUV</SelectItem>
+                <SelectItem value="truck">Truck/Van/Large SUV</SelectItem>
+                <SelectItem value="luxury">Luxury/High-End</SelectItem>
               </SelectContent>
             </Select>
           </div>
@@ -70,7 +165,7 @@ const CustomerPortal = () => {
 
         {/* Premium 6-Box Service Grid */}
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8 mb-16">
-          {servicePackages.map((pkg, index) => {
+          {livePackages.map((pkg: any, index: number) => {
             const isSelected = selectedService === pkg.id;
             const isBestValue = pkg.name.includes("BEST VALUE");
             
@@ -95,11 +190,11 @@ const CustomerPortal = () => {
                   </div>
                 )}
                 
-                {/* Package Image */}
-                {packageImages[pkg.id] && (
+                {/* Package Image (prefer live uploaded image if available) */}
+                {(packageMetaLive[pkg.id]?.imageDataUrl || packageImages[pkg.id]) && (
                   <div className="relative h-48 overflow-hidden">
                     <img 
-                      src={packageImages[pkg.id]} 
+                      src={packageMetaLive[pkg.id]?.imageDataUrl || packageImages[pkg.id]} 
                       alt={pkg.name}
                       className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
                     />
@@ -130,7 +225,7 @@ const CustomerPortal = () => {
                       ${pkg.pricing[vehicleType]}
                     </div>
                     <div className="text-xs text-muted-foreground mt-1">
-                      For {vehicleType === 'compact' ? 'Compact/Sedan' : vehicleType === 'midsize' ? 'Midsize SUV' : vehicleType === 'truck' ? 'Truck/Large SUV' : 'Luxury Vehicle'}
+                      For {vehicleType === 'compact' ? 'Compact/Sedan' : vehicleType === 'midsize' ? 'Mid-Size/SUV' : vehicleType === 'truck' ? 'Truck/Van/Large SUV' : 'Luxury/High-End'}
                     </div>
                   </div>
 
@@ -184,7 +279,7 @@ const CustomerPortal = () => {
           {addOnsExpanded && (
             <div className="px-6 pb-6">
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                {addOns.map((addon) => {
+                {liveAddOns.map((addon: any) => {
                   const isSelected = selectedAddOns.includes(addon.id);
                   return (
                     <Card
@@ -253,7 +348,7 @@ const CustomerPortal = () => {
               
               <div className="flex justify-between py-2 border-b border-border">
                 <span className="text-foreground font-medium">Vehicle:</span>
-                <span className="text-foreground capitalize">{vehicleType === 'compact' ? 'Compact/Sedan' : vehicleType === 'midsize' ? 'Midsize SUV' : vehicleType === 'truck' ? 'Truck/Large SUV' : 'Luxury Vehicle'}</span>
+                <span className="text-foreground capitalize">{vehicleType === 'compact' ? 'Compact/Sedan' : vehicleType === 'midsize' ? 'Mid-Size/SUV' : vehicleType === 'truck' ? 'Truck/Van/Large SUV' : 'Luxury/High-End'}</span>
               </div>
 
               {selectedAddOns.length > 0 && (
@@ -281,7 +376,19 @@ const CustomerPortal = () => {
             </div>
             
             <div className="space-y-3">
-              <Button className="w-full h-12 bg-gradient-hero text-white font-semibold text-lg shadow-glow hover:shadow-[0_0_40px_rgba(220,38,38,0.4)]">
+              <Button 
+                className="w-full h-12 bg-gradient-hero text-white font-semibold text-lg shadow-glow hover:shadow-[0_0_40px_rgba(220,38,38,0.4)]"
+                onClick={() => {
+                  const selectedPkg = livePackages.find(s => s.id === selectedService);
+                  const price = selectedPkg ? selectedPkg.pricing[vehicleType] : 0;
+                  const params = new URLSearchParams();
+                  if (selectedPkg) params.set('package', selectedPkg.id);
+                  if (price > 0) params.set('price', String(price));
+                  params.set('vehicle', vehicleType);
+                  if (selectedAddOns.length > 0) params.set('addons', selectedAddOns.join(','));
+                  window.location.href = `/book-now?${params.toString()}`;
+                }}
+              >
                 BOOK NOW → GET ESTIMATE
               </Button>
               <Button variant="outline" className="w-full h-12 border-primary text-primary hover:bg-primary/10">
@@ -305,11 +412,22 @@ const CustomerPortal = () => {
               All quotes are estimates until vehicle is inspected.
             </p>
           </div>
-          <Button variant="destructive" className="mt-4 w-full bg-destructive hover:bg-destructive/90">
-            Got it
-          </Button>
+          {/* Removed confirmation button per request */}
         </Card>
       </main>
+      {/* Debug Bar - fixed overlay at bottom */}
+      <div className="fixed bottom-0 left-0 right-0 z-[9999] bg-red-600 text-white px-4 py-2 text-sm flex items-center justify-between shadow-lg">
+        <div>
+          <span className="font-semibold">LAST SYNC:</span> {lastSyncTs ? new Date(lastSyncTs).toLocaleTimeString() : '—'}
+        </div>
+        <div>
+          <span className="font-semibold">PACKAGES:</span> {(() => {
+            const visibleBuiltIns = builtInPackages.filter(p => (packageMetaLive[p.id]?.visible) !== false);
+            const visibleCustomPkgs = customPackagesLive.filter((p: any) => (packageMetaLive[p.id]?.visible) !== false);
+            return [...visibleBuiltIns, ...visibleCustomPkgs].length;
+          })()}
+        </div>
+      </div>
 
       {/* Learn More Dialog */}
       <Dialog open={!!learnMorePackage} onOpenChange={() => setLearnMorePackage(null)}>
@@ -317,7 +435,7 @@ const CustomerPortal = () => {
           <DialogHeader>
             <DialogTitle className="text-2xl">{learnMorePackage?.name.replace(' (BEST VALUE)', '')}</DialogTitle>
             <DialogDescription>
-              ${learnMorePackage ? getServicePrice(learnMorePackage.id, vehicleType) : 0}
+              ${learnMorePackage ? learnMorePackage.pricing[vehicleType] : 0}
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-4">
@@ -329,7 +447,7 @@ const CustomerPortal = () => {
             <div>
               <h4 className="font-semibold mb-2 text-foreground">What's Included:</h4>
               <ul className="space-y-2">
-                {learnMorePackage?.steps.map((step, idx) => (
+                {learnMorePackage?.steps.map((step: any, idx: number) => (
                   <li key={idx} className="flex items-start gap-2">
                     <span className="text-primary mt-1">✓</span>
                     <span className="text-muted-foreground">{typeof step === 'string' ? step : step.name}</span>

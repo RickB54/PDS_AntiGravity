@@ -1,9 +1,10 @@
 import { useState } from "react";
 import { Link, useLocation } from "react-router-dom";
 import { Button } from "@/components/ui/button";
-import { Menu, X, UserCog } from "lucide-react";
+import { Menu, X, UserCog, User } from "lucide-react";
 import { getCurrentUser, logout } from "@/lib/auth";
 import logo from "@/assets/logo-3inch.png";
+import NotificationBell from "@/components/NotificationBell";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -22,7 +23,6 @@ export const Navbar = () => {
   };
 
   const navLinks = [
-    { to: "/", label: "Home" },
     { to: "/about", label: "About" },
     { to: "/", label: "Services" },
     { to: "/faq", label: "FAQ" },
@@ -46,7 +46,7 @@ export const Navbar = () => {
           <div className="hidden md:flex items-center gap-6">
             {navLinks.map(link => (
               <Link
-                key={link.to}
+                key={`${link.to}-${link.label}`}
                 to={link.to}
                 className={`text-sm font-medium transition-colors hover:text-primary ${
                   isActive(link.to) ? "text-primary" : "text-muted-foreground"
@@ -58,7 +58,13 @@ export const Navbar = () => {
             
             {user ? (
               <>
-                <span className="text-sm text-muted-foreground">Hi, {user.email}</span>
+                <span className="text-sm text-muted-foreground flex items-center">
+                  <User className="h-4 w-4 text-purple-500 mr-1" />
+                  {user.role === 'admin' ? 'Hi, admin' : user.role === 'employee' ? 'Hi, employee' : `Hi, ${user.email}`}
+                </span>
+                {user.role === 'admin' && (
+                  <div className="ml-2"><NotificationBell /></div>
+                )}
                 <Button onClick={handleLogout} variant="outline" size="sm">
                   Logout
                 </Button>
@@ -71,10 +77,20 @@ export const Navbar = () => {
                     Staff Login
                   </Button>
                 </DropdownMenuTrigger>
-                <DropdownMenuContent align="end" className="w-48 bg-popover z-50">
+                <DropdownMenuContent align="end" className="w-56 bg-popover z-50">
                   <DropdownMenuItem asChild>
                     <Link to="/login" className="w-full cursor-pointer">
-                      Access Portal
+                      Access Portal (Credentials)
+                    </Link>
+                  </DropdownMenuItem>
+                  <DropdownMenuItem asChild>
+                    <Link to="/login/quick/admin" className="w-full cursor-pointer">
+                      Admin (Quick Access)
+                    </Link>
+                  </DropdownMenuItem>
+                  <DropdownMenuItem asChild>
+                    <Link to="/login/quick/employee" className="w-full cursor-pointer">
+                      Employee (Quick Access)
                     </Link>
                   </DropdownMenuItem>
                 </DropdownMenuContent>
@@ -102,7 +118,7 @@ export const Navbar = () => {
             <div className="flex flex-col gap-4">
               {navLinks.map(link => (
                 <Link
-                  key={link.to}
+                  key={`${link.to}-${link.label}`}
                   to={link.to}
                   onClick={() => setMobileMenuOpen(false)}
                   className={`text-sm font-medium transition-colors hover:text-primary px-2 py-1 ${
@@ -112,21 +128,39 @@ export const Navbar = () => {
                   {link.label}
                 </Link>
               ))}
-              
+
               {user ? (
                 <>
-                  <span className="text-sm text-muted-foreground px-2">Hi, {user.email}</span>
+                  <span className="text-sm text-muted-foreground px-2 flex items-center">
+                    <User className="h-4 w-4 text-purple-500 mr-1" />
+                    {user.role === 'admin' ? 'Hi, admin' : user.role === 'employee' ? 'Hi, employee' : `Hi, ${user.email}`}
+                  </span>
+                  {user.role === 'admin' && (
+                    <div className="px-2"><NotificationBell /></div>
+                  )}
                   <Button onClick={handleLogout} variant="outline" size="sm" className="w-full">
                     Logout
                   </Button>
                 </>
               ) : (
-                <Link to="/login" onClick={() => setMobileMenuOpen(false)}>
-                  <Button variant="default" size="sm" className="w-full bg-gradient-hero min-h-[48px]">
-                    <UserCog className="h-4 w-4 mr-2" />
-                    Staff Login
-                  </Button>
-                </Link>
+                <div className="grid grid-cols-1 gap-2">
+                  <Link to="/login" onClick={() => setMobileMenuOpen(false)}>
+                    <Button variant="default" size="sm" className="w-full bg-gradient-hero min-h-[48px]">
+                      <UserCog className="h-4 w-4 mr-2" />
+                      Staff Login
+                    </Button>
+                  </Link>
+                  <Link to="/login/quick/admin" onClick={() => setMobileMenuOpen(false)}>
+                    <Button variant="outline" size="sm" className="w-full">
+                      Admin (Quick Access)
+                    </Button>
+                  </Link>
+                  <Link to="/login/quick/employee" onClick={() => setMobileMenuOpen(false)}>
+                    <Button variant="outline" size="sm" className="w-full">
+                      Employee (Quick Access)
+                    </Button>
+                  </Link>
+                </div>
               )}
             </div>
           </div>

@@ -4,6 +4,9 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Button } from "@/components/ui/button";
+import { upsertCustomer } from "@/lib/db";
+import api from "@/lib/api";
+import { toast } from "sonner";
 
 export interface Customer {
   id?: string;
@@ -92,8 +95,37 @@ export default function CustomerModal({ open, onOpenChange, initial, onSave }: P
   };
 
   const handleSubmit = async () => {
-    await onSave(form);
-    onOpenChange(false);
+    const payload = { ...form };
+    if (!payload.id) {
+      payload.id = String(Date.now());
+    }
+    try {
+      const saved = await api('/api/customers', {
+        method: 'POST',
+        body: JSON.stringify(payload)
+      });
+      if (!saved || (saved && saved.ok === false)) {
+        // Fallback: save locally when backend fails or returns null
+        const localSaved = await upsertCustomer(payload as any);
+        onSave(localSaved as any);
+        toast.success("Customer added locally (offline)");
+        onOpenChange(false);
+        return;
+      }
+      onSave(saved as any);
+      toast.success("Customer added!");
+      onOpenChange(false);
+    } catch (err: any) {
+      // Fallback: save locally when backend throws
+      try {
+        const localSaved = await upsertCustomer(payload as any);
+        onSave(localSaved as any);
+        toast.success("Customer added locally (offline)");
+        onOpenChange(false);
+      } catch (err2: any) {
+        toast.error("Customer save failed: " + (err2?.message || String(err2)));
+      }
+    }
   };
 
   return (

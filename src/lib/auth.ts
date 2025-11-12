@@ -35,6 +35,12 @@ export function setCurrentUser(user: User | null): void {
   } else {
     localStorage.removeItem('currentUser');
   }
+  try {
+    // Notify app of auth state changes in same tab
+    window.dispatchEvent(new CustomEvent('auth-changed', { detail: user }));
+  } catch {
+    // noop
+  }
 }
 
 export function quickAccessLogin(role: 'customer' | 'employee' | 'admin'): User {

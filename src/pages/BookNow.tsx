@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Navbar } from "@/components/Navbar";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -10,12 +10,26 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { useToast } from "@/hooks/use-toast";
 import { Link, useNavigate } from "react-router-dom";
 import { ArrowLeft, Calendar } from "lucide-react";
+import { useBookingsStore } from "@/store/bookings";
+import { notify } from "@/store/alerts";
 import { savePDFToArchive } from "@/lib/pdfArchive";
 import jsPDF from "jspdf";
+import { servicePackages as builtInPackages, addOns as builtInAddOns, VehicleType } from "@/lib/services";
+import { getCustomServices, buildFullSyncPayload } from "@/lib/servicesMeta";
+import { generateBookingPDF, uploadToFileManager } from "@/lib/bookingsSync";
+import { useCouponsStore } from "@/store/coupons";
 
 const BookNow = () => {
   const { toast } = useToast();
   const navigate = useNavigate();
+  // AT THE VERY TOP — ONLY read from URL, never from localStorage
+  const urlParams = new URLSearchParams(window.location.search);
+  const preselectedServices = urlParams.get('services')?.split(',').filter(Boolean) || [];
+  const preselectedAddons = urlParams.get('addons')?.split(',').filter(Boolean) || [];
+  const urlPackage = urlParams.get('package') || '';
+  const urlPrice = parseFloat(urlParams.get('price') || '') || 0;
+  const urlVehicle = urlParams.get('vehicle') || '';
+
   const [formData, setFormData] = useState({
     name: "",
     email: "",
@@ -24,30 +38,151 @@ const BookNow = () => {
     model: "",
     year: "",
     datetime: "",
-    package: "",
+    package: urlPackage || preselectedServices[0] || "",
     message: ""
   });
-  
-  const [addOns, setAddOns] = useState<string[]>([]);
+  const validVehicles = ['compact','midsize','truck','luxury'] as const;
+  const initialVehicle: VehicleType = (validVehicles as readonly string[]).includes(urlVehicle) ? (urlVehicle as VehicleType) : 'compact';
+  const [vehicleType, setVehicleType] = useState<VehicleType>(initialVehicle);
+  const [addOns, setAddOns] = useState<string[]>(preselectedAddons);
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const addBooking = useBookingsStore(state => state.add);
+  // Coupon states
+  const [couponCode, setCouponCode] = useState('');
+  const [appliedCouponCode, setAppliedCouponCode] = useState('');
+  const [appliedDiscount, setAppliedDiscount] = useState(0);
 
-  const packages = [
-    "Basic Exterior Wash - $50-$90",
-    "Interior Only - $80-$120",
-    "Exterior Only - $100-$150",
-    "Express Detail - $150-$200",
-    "Full Detail - $200-$300",
-    "Premium Detail - $300-$450"
-  ];
+  // Live pricing + meta state
+  const [savedPricesLive, setSavedPricesLive] = useState<Record<string,string>>({});
+  const [packageMetaLive, setPackageMetaLive] = useState<Record<string, any>>({});
+  const [addOnMetaLive, setAddOnMetaLive] = useState<Record<string, any>>({});
+  const [customPackagesLive, setCustomPackagesLive] = useState<any[]>([]);
+  const [customAddOnsLive, setCustomAddOnsLive] = useState<any[]>([]);
+  const [lastSyncTs, setLastSyncTs] = useState<number | null>(null);
 
-  const availableAddOns = [
-    "Engine Bay Cleaning - $30-$50",
-    "Headlight Restoration - $40-$60",
-    "Pet Hair Removal - $25-$40",
-    "Clay Bar Treatment - $50-$75",
-    "Ceramic Coating - $150-$300"
-  ];
+  const getKey = (type: 'package'|'addon', id: string, size: VehicleType) => `${type}:${id}:${size}`;
+
+  const fetchLive = async () => {
+    try {
+      const res = await fetch(`http://localhost:6061/api/packages/live?v=${Date.now()}`, { headers: { 'Cache-Control': 'no-cache' } });
+      if (res.ok) {
+        const ct = res.headers.get('Content-Type') || '';
+        if (ct.includes('application/json')) {
+          const data = await res.json();
+          setSavedPricesLive(data.savedPrices || {});
+          setPackageMetaLive(data.packageMeta || {});
+          setAddOnMetaLive(data.addOnMeta || {});
+          setCustomPackagesLive(data.customPackages || []);
+          setCustomAddOnsLive(data.customAddOns || []);
+          setLastSyncTs(Date.now());
+          return;
+        }
+      }
+    } catch {}
+    try {
+      const snapshot = await buildFullSyncPayload();
+      setSavedPricesLive(snapshot.savedPrices || {});
+      setPackageMetaLive(snapshot.packageMeta || {});
+      setAddOnMetaLive(snapshot.addOnMeta || {});
+      setCustomPackagesLive(snapshot.customPackages || []);
+      setCustomAddOnsLive(snapshot.customAddOns || []);
+      setLastSyncTs(Date.now());
+    } catch {}
+  };
+
+  useEffect(() => {
+    fetchLive();
+    const intervalId = setInterval(fetchLive, 2000);
+    return () => clearInterval(intervalId);
+  }, []);
+
+  const allBuiltInSteps: Record<string, { id: string; name: string }> = Object.fromEntries(
+    builtInPackages.flatMap(p => p.steps.map(s => [typeof s === 'string' ? s : s.id, typeof s === 'string' ? s : s.name]))
+      .map(([id, name]) => [id as string, { id: id as string, name: name as string }])
+  );
+  const customServicesMap: Record<string, string> = Object.fromEntries(getCustomServices().map(s => [s.id, s.name]));
+
+  const visibleBuiltIns = builtInPackages.filter(p => (packageMetaLive[p.id]?.visible) !== false && !packageMetaLive[p.id]?.deleted);
+  const visibleCustomPkgs = customPackagesLive.filter((p: any) => (packageMetaLive[p.id]?.visible) !== false && !packageMetaLive[p.id]?.deleted);
+  const livePackages = [...visibleBuiltIns, ...visibleCustomPkgs].map((p: any) => {
+    const pricing = {
+      compact: parseFloat(savedPricesLive[getKey('package', p.id, 'compact')]) || p.pricing.compact,
+      midsize: parseFloat(savedPricesLive[getKey('package', p.id, 'midsize')]) || p.pricing.midsize,
+      truck: parseFloat(savedPricesLive[getKey('package', p.id, 'truck')]) || p.pricing.truck,
+      luxury: parseFloat(savedPricesLive[getKey('package', p.id, 'luxury')]) || p.pricing.luxury,
+    } as Record<VehicleType, number>;
+    const metaSteps: string[] | undefined = packageMetaLive[p.id]?.stepIds;
+    const steps = metaSteps && metaSteps.length > 0
+      ? metaSteps.map(id => ({ id, name: allBuiltInSteps[id]?.name || customServicesMap[id] || id }))
+      : p.steps.map((s: any) => (typeof s === 'string' ? { id: s, name: s } : s));
+    return { ...p, pricing, steps };
+  });
+
+  const visibleBuiltAddOns = builtInAddOns.filter(a => (addOnMetaLive[a.id]?.visible) !== false && !addOnMetaLive[a.id]?.deleted);
+  const visibleCustomAddOns = customAddOnsLive.filter((a: any) => (addOnMetaLive[a.id]?.visible) !== false && !addOnMetaLive[a.id]?.deleted);
+  const liveAddOns = [...visibleBuiltAddOns, ...visibleCustomAddOns].map((a: any) => {
+    const pricing = {
+      compact: parseFloat(savedPricesLive[getKey('addon', a.id, 'compact')]) || a.pricing.compact,
+      midsize: parseFloat(savedPricesLive[getKey('addon', a.id, 'midsize')]) || a.pricing.midsize,
+      truck: parseFloat(savedPricesLive[getKey('addon', a.id, 'truck')]) || a.pricing.truck,
+      luxury: parseFloat(savedPricesLive[getKey('addon', a.id, 'luxury')]) || a.pricing.luxury,
+    } as Record<VehicleType, number>;
+    const metaSteps: string[] | undefined = addOnMetaLive[a.id]?.stepIds;
+    const steps = metaSteps && metaSteps.length > 0
+      ? metaSteps.map(id => ({ id, name: allBuiltInSteps[id]?.name || customServicesMap[id] || id }))
+      : (a.steps ? a.steps.map((s: any) => (typeof s === 'string' ? { id: s, name: s } : s)) : []);
+    return { ...a, pricing, steps };
+  });
+
+  // Compute total (service + add-ons)
+  const selectedService = livePackages.find(s => s.id === formData.package);
+  const selectedServicePrice = selectedService ? selectedService.pricing[vehicleType] : 0;
+  const packagePrice = urlPrice > 0 ? urlPrice : selectedServicePrice;
+  const addOnsTotal = addOns.reduce((sum, id) => {
+    const found = liveAddOns.find(a => a.id === id);
+    return sum + (found ? found.pricing[vehicleType] : 0);
+  }, 0);
+  const total = packagePrice + addOnsTotal;
+  const discountedTotal = Math.max(0, total - appliedDiscount);
+
+  // NUKES ANY OLD GHOST DATA ON EVERY LOAD
+  useEffect(() => {
+    try {
+      localStorage.removeItem('selectedServices');
+      localStorage.removeItem('selectedAddons');
+      localStorage.removeItem('lastBookingServices');
+      localStorage.removeItem('lastBookingAddons');
+      localStorage.removeItem('bookingDraft');
+      localStorage.removeItem('selectedVehicleType');
+      localStorage.removeItem('selectedPackage');
+      localStorage.removeItem('selectedAddOns');
+    } catch {}
+  }, []);
+
+  // Apply coupon against live coupons
+  const applyCoupon = () => {
+    try {
+      const code = couponCode.trim().toUpperCase();
+      if (!code) return;
+      const now = new Date();
+      const coupons = useCouponsStore.getState().items.filter(
+        (c: any) => c.active && (c.liveOnWebsite === true) && c.usesLeft > 0 && (!c.startDate || new Date(c.startDate) <= now) && (!c.endDate || new Date(c.endDate) >= now)
+      );
+      const match = coupons.find((c: any) => c.code === code);
+      if (!match) {
+        setAppliedDiscount(0);
+        setAppliedCouponCode('');
+        return;
+      }
+      let newTotal = total;
+      if (match.percent) newTotal = Math.max(0, newTotal * (1 - match.percent / 100));
+      if (match.amount) newTotal = Math.max(0, newTotal - match.amount);
+      const discount = total - newTotal;
+      setAppliedDiscount(discount);
+      setAppliedCouponCode(match.code);
+    } catch {}
+  };
 
   const validateForm = () => {
     const newErrors: Record<string, string> = {};
@@ -86,51 +221,75 @@ const BookNow = () => {
 
     setIsSubmitting(true);
 
-    // Auto-create customer account
-    const autoPassword = `PDS${Math.random().toString(36).slice(2, 10)}`;
-    console.log(`Customer account created: ${formData.email} / ${autoPassword}`);
-    console.log(`Portal link: ${window.location.origin}/portal?token=auto-${Date.now()}`);
+    // Silent auto-create customer account
+    try {
+      const autoPassword = `PDS${Math.random().toString(36).slice(2, 10)}`;
+      console.log(`Customer account created: ${formData.email} / ${autoPassword}`);
+      console.log(`Portal link: ${window.location.origin}/portal?token=auto-${Date.now()}`);
+    } catch {}
 
-    // Create PDF
-    const doc = new jsPDF();
-    doc.setFontSize(18);
-    doc.text("Prime Detail Solutions", 20, 20);
-    doc.setFontSize(12);
-    doc.text("NEW BOOKING REQUEST", 20, 30);
-    doc.text(`Date: ${new Date().toLocaleDateString()}`, 20, 40);
-    doc.text("", 20, 50);
-    doc.text(`Customer: ${formData.name}`, 20, 60);
-    doc.text(`Email: ${formData.email}`, 20, 70);
-    doc.text(`Phone: ${formData.phone}`, 20, 80);
-    doc.text(`Vehicle: ${formData.year} ${formData.make} ${formData.model}`, 20, 90);
-    doc.text(`Preferred Date/Time: ${formData.datetime}`, 20, 100);
-    doc.text(`Package: ${formData.package}`, 20, 110);
-    
-    if (addOns.length > 0) {
-      doc.text("Add-ons:", 20, 120);
-      addOns.forEach((addon, idx) => {
-        doc.text(`  - ${addon}`, 20, 130 + (idx * 10));
-      });
-    }
-    
-    if (formData.message) {
-      doc.text("Message:", 20, 150);
-      const splitMessage = doc.splitTextToSize(formData.message, 170);
-      doc.text(splitMessage, 20, 160);
-    }
+    // 1) Save booking to API and local store for instant calendar
+    const dateIso = formData.datetime ? new Date(formData.datetime).toISOString() : new Date().toISOString();
+    const bookingPayload = {
+      customer: { name: formData.name, email: formData.email, phone: formData.phone },
+      vehicle: { year: formData.year, make: formData.make, model: formData.model, type: vehicleType },
+      service: selectedService ? selectedService.name : formData.package,
+      addOns: addOns.map(id => {
+        const a = addOnDefs.find(x => x.id === id);
+        return { id, name: a?.name || id, price: getAddOnPrice(id, vehicleType) };
+      }),
+      date: dateIso,
+      total: discountedTotal,
+      notes: formData.message,
+    };
+    try {
+      await fetch("http://localhost:6061/api/bookings", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(bookingPayload) });
+    } catch {}
+    const localBookingId = `booking_${Date.now()}`;
+    addBooking({ id: localBookingId, title: bookingPayload.service || "Booking", customer: formData.name, date: dateIso, status: "pending" });
 
-    const pdfData = doc.output('dataurlstring');
-    savePDFToArchive("Estimate", formData.name, `BOOKING_${Date.now()}`, pdfData);
-
-    // Send email (simulated)
-    console.log("Email sent to: primedetailsolutions.ma.nh@gmail.com");
-    console.log("Subject: New Booking:", formData.name, "-", formData.package);
-    console.log("Booking data:", { ...formData, addOns });
-
-    toast({
-      title: "Booking Received!",
-      description: "We'll send confirmation within 24 hours.",
+    // 2) Generate + upload PDF to File Manager
+    const bookingForPdf = { id: localBookingId, title: bookingPayload.service || "Booking", customer: formData.name, date: dateIso, status: "pending" } as any;
+    const pdfDataUrl = generateBookingPDF(bookingForPdf, {
+      vehicle: `${formData.year} ${formData.make} ${formData.model}`,
+      service: bookingPayload.service,
+      price: discountedTotal,
+      notes: formData.message,
     });
+    try {
+      const d = new Date(dateIso);
+      const year = d.getFullYear();
+      const monthName = d.toLocaleString(undefined, { month: "long" });
+      const path = `Bookings ${year}/${monthName}/`;
+      uploadToFileManager(pdfDataUrl, path, bookingForPdf, { service: bookingPayload.service, price: discountedTotal });
+    } catch {}
+
+    // 3) Hidden admin email
+    try {
+      await fetch("http://localhost:6061/api/email/admin", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ ...bookingPayload, pdfDataUrl }) });
+    } catch {}
+
+    // 4) Customer email
+    try {
+      await fetch("http://localhost:6061/api/email/customer", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ to: formData.email, ...bookingPayload, pdfDataUrl }) });
+    } catch {}
+
+    // 5) Admin toast + sound (local only)
+    try {
+      toast({ title: `NEW BOOKING! $${discountedTotal} — ${formData.name}`, description: `${new Date(dateIso).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`, duration: 8000 });
+      const audio = new Audio('/sounds/cash-register.mp3');
+      audio.play().catch(() => {});
+      if (typeof Notification !== 'undefined') {
+        if (Notification.permission === 'granted') {
+          new Notification('New Booking', { body: `${formData.name} — $${total}`, icon: '/favicon.ico' });
+        } else if (Notification.permission !== 'denied') {
+          Notification.requestPermission().then((p) => { if (p === 'granted') new Notification('New Booking', { body: `${formData.name} — $${total}`, icon: '/favicon.ico' }); });
+        }
+      }
+    } catch {}
+
+    // 6) Redirect to thank you
+    window.location.href = `/thank-you?total=${encodeURIComponent(discountedTotal)}&name=${encodeURIComponent(formData.name)}&time=${encodeURIComponent(new Date(dateIso).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }))}&date=${encodeURIComponent(new Date(dateIso).toLocaleDateString())}`;
 
     // Reset form
     setFormData({
@@ -147,13 +306,11 @@ const BookNow = () => {
     setAddOns([]);
     setErrors({});
     setIsSubmitting(false);
-
-    setTimeout(() => navigate("/"), 2000);
   };
 
-  const toggleAddOn = (addon: string) => {
+  const toggleAddOn = (addonId: string) => {
     setAddOns(prev => 
-      prev.includes(addon) ? prev.filter(a => a !== addon) : [...prev, addon]
+      prev.includes(addonId) ? prev.filter(a => a !== addonId) : [...prev, addonId]
     );
   };
 
@@ -252,6 +409,21 @@ const BookNow = () => {
               </div>
 
               <div className="space-y-2">
+                <Label>Vehicle Type</Label>
+                <Select value={vehicleType} onValueChange={(v) => setVehicleType(v as VehicleType)}>
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="compact">Compact/Sedan</SelectItem>
+                    <SelectItem value="midsize">Mid-Size/SUV</SelectItem>
+                    <SelectItem value="truck">Truck/Van/Large SUV</SelectItem>
+                    <SelectItem value="luxury">Luxury/High-End</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <div className="space-y-2">
                 <Label htmlFor="datetime">Preferred Date/Time (Optional)</Label>
                 <Input
                   id="datetime"
@@ -262,34 +434,63 @@ const BookNow = () => {
               </div>
 
               <div className="space-y-2">
-                <Label htmlFor="package">Package *</Label>
-                <Select value={formData.package} onValueChange={(val) => setFormData({ ...formData, package: val })}>
-                  <SelectTrigger id="package">
-                    <SelectValue placeholder="Select a package" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {packages.map((pkg) => (
-                      <SelectItem key={pkg} value={pkg}>{pkg}</SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+                <Label>Package *</Label>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  {livePackages.map((pkg: any) => {
+                    const isSelected = formData.package === pkg.id;
+                    const isBestValue = pkg.name.includes('BEST VALUE');
+                    const imageSrc = packageMetaLive[pkg.id]?.imageDataUrl;
+                    return (
+                      <Card
+                        key={pkg.id}
+                        className={`relative overflow-hidden cursor-pointer transition-all ${isSelected ? 'border-primary ring-2 ring-primary/40' : 'border-border hover:border-primary/30'}`}
+                        onClick={() => setFormData({ ...formData, package: pkg.id })}
+                      >
+                        {isBestValue && (
+                          <div className="absolute top-0 left-0 right-0 bg-gradient-hero py-1 text-center z-10">
+                            <span className="text-xs font-bold text-white tracking-wider">★ BEST VALUE ★</span>
+                          </div>
+                        )}
+                        {imageSrc && (
+                          <div className="relative h-32 overflow-hidden">
+                            <img src={imageSrc} alt={pkg.name} className="w-full h-full object-cover" />
+                          </div>
+                        )}
+                        <div className={`p-4 ${isBestValue ? 'pt-6' : ''}`}>
+                          <div className="flex items-start justify-between">
+                            <h3 className="font-semibold text-foreground pr-2">{pkg.name.replace(' (BEST VALUE)', '')}</h3>
+                            {isSelected && <div className="bg-primary rounded-full px-2 py-1 text-xs text-white">Selected</div>}
+                          </div>
+                          <div className="mt-2 text-primary font-bold text-xl">${pkg.pricing[vehicleType]}</div>
+                        </div>
+                      </Card>
+                    );
+                  })}
+                </div>
+                {errors.package && <p className="text-xs text-destructive">{errors.package}</p>}
               </div>
 
               <div className="space-y-2">
                 <Label>Add-Ons (Optional)</Label>
-                <div className="space-y-2 p-4 border border-border rounded-md">
-                  {availableAddOns.map((addon) => (
-                    <div key={addon} className="flex items-center space-x-2">
-                      <Checkbox
-                        id={addon}
-                        checked={addOns.includes(addon)}
-                        onCheckedChange={() => toggleAddOn(addon)}
-                      />
-                      <label htmlFor={addon} className="text-sm cursor-pointer">
-                        {addon}
-                      </label>
-                    </div>
-                  ))}
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-3 p-4 border border-border rounded-md">
+                  {liveAddOns.map((addon: any) => {
+                    const isSelected = addOns.includes(addon.id);
+                    return (
+                      <Card
+                        key={addon.id}
+                        className={`p-3 cursor-pointer transition-all ${isSelected ? 'border-primary ring-2 ring-primary/40 bg-primary/5' : 'border-border hover:border-primary/30'}`}
+                        onClick={() => toggleAddOn(addon.id)}
+                      >
+                        <div className="flex items-center justify-between">
+                          <div>
+                            <div className="text-sm font-semibold text-foreground">{addon.name}</div>
+                            <div className="text-primary font-bold">${addon.pricing[vehicleType]}</div>
+                          </div>
+                          {isSelected && <div className="bg-primary rounded-full px-2 py-1 text-xs text-white">✓</div>}
+                        </div>
+                      </Card>
+                    );
+                  })}
                 </div>
               </div>
 
@@ -304,7 +505,41 @@ const BookNow = () => {
                 />
               </div>
 
-              <Button type="submit" className="w-full bg-gradient-hero text-lg py-6 min-h-[56px]" disabled={isSubmitting}>
+              {/* === LIVE COUPONS FROM ADMIN === */}
+              <div className="mt-8 p-6 bg-zinc-900 border border-zinc-700 rounded-xl">
+                <h3 className="text-xl font-bold text-white mb-4">Coupon Code</h3>
+                
+                <div className="flex gap-3">
+                  <Input 
+                    type="text" 
+                    placeholder="Enter code" 
+                    className="flex-1 px-5 py-4 bg-black border border-zinc-600 rounded-lg text-white focus:border-red-500 focus:outline-none" 
+                    value={couponCode} 
+                    onChange={(e) => setCouponCode(e.target.value.toUpperCase())} 
+                    onKeyDown={(e) => e.key === 'Enter' && applyCoupon()} 
+                  /> 
+                  <Button 
+                    className="bg-red-600 hover:bg-red-700 font-bold px-8" 
+                    onClick={applyCoupon} 
+                  > 
+                    Apply 
+                  </Button> 
+                </div>
+
+                {appliedDiscount > 0 && (
+                  <div className="mt-4 text-green-400 font-bold text-lg"> 
+                    ✓ {appliedCouponCode} applied — You saved ${appliedDiscount.toFixed(2)}! 
+                  </div> 
+                )}
+              </div>
+
+              {/* Estimated total */}
+              <div className="flex items-center justify-between p-4 border border-border rounded-md">
+                <div className="text-sm text-muted-foreground">Estimated Total</div>
+                <div className="text-xl font-bold text-foreground">${discountedTotal}</div>
+              </div>
+
+              <Button type="submit" className="w-full bg-gradient-hero text-lg py-6 min-h-[56px] mt-4" disabled={isSubmitting}>
                 {isSubmitting ? "Submitting..." : "Submit Booking Request"}
               </Button>
             </form>
@@ -315,6 +550,11 @@ const BookNow = () => {
           </p>
         </div>
       </main>
+      <div style={{background:'red',color:'white',padding:'10px',fontWeight:'bold',position:'fixed',bottom:0,left:0,right:0,zIndex:9999}}>
+        BOOK NOW LOADED: <span id="book-sync">{lastSyncTs ? new Date(lastSyncTs).toLocaleTimeString() : 'Never'}</span> | 
+        PACKAGES: <span id="book-pkgs">{livePackages.length}</span> | 
+        ADD-ONS: <span id="book-addons">{liveAddOns.length}</span>
+      </div>
     </div>
   );
 };

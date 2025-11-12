@@ -1,0 +1,81 @@
+import { useEffect, useMemo, useRef, useState } from "react";
+import { Bell } from "lucide-react";
+import { useAlertsStore } from "@/store/alerts";
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
+import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
+
+export default function NotificationBell() {
+  const { latest, unreadCount, markAllRead, markRead, dismissAll, refresh } = useAlertsStore();
+  const [ring, setRing] = useState(false);
+  const prevUnreadRef = useRef(unreadCount);
+
+  useEffect(() => {
+    if (unreadCount > prevUnreadRef.current) {
+      setRing(true);
+      // Tiny sound via WebAudio
+      try {
+        const ctx = new (window.AudioContext || (window as any).webkitAudioContext)();
+        const o = ctx.createOscillator();
+        const g = ctx.createGain();
+        o.type = "sine"; o.frequency.value = 880;
+        g.gain.value = 0.02;
+        o.connect(g); g.connect(ctx.destination);
+        o.start(); setTimeout(() => { o.stop(); ctx.close(); }, 180);
+      } catch {}
+      setTimeout(() => setRing(false), 600);
+    }
+    prevUnreadRef.current = unreadCount;
+  }, [unreadCount]);
+
+  // Keep dropdown in sync when alerts change in localStorage across tabs/actions
+  useEffect(() => {
+    const onStorage = (e: StorageEvent) => {
+      if (e.key === 'admin_alerts') {
+        try { refresh(); } catch {}
+      }
+    };
+    const onLocal = (e: Event) => { try { refresh(); } catch {} };
+    window.addEventListener('storage', onStorage);
+    window.addEventListener('admin_alerts_updated', onLocal as EventListener);
+    try { refresh(); } catch {}
+    return () => { 
+      window.removeEventListener('storage', onStorage);
+      window.removeEventListener('admin_alerts_updated', onLocal as EventListener);
+    };
+  }, [refresh]);
+
+  const items = useMemo(() => [...latest].reverse().slice(0, 10), [latest]);
+
+  const bellColorClass = unreadCount > 0 ? "text-yellow-400" : "text-red-500";
+
+  return (
+    <DropdownMenu>
+      <DropdownMenuTrigger asChild>
+        <Button variant="ghost" className="relative">
+          <Bell className={`h-5 w-5 ${bellColorClass} ${ring ? 'animate-bounce' : ''}`} />
+          {unreadCount > 0 && (
+            <Badge className="absolute -top-1 -right-1 bg-yellow-500 text-black">{unreadCount}</Badge>
+          )}
+        </Button>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="end" className="w-80">
+        <div className="px-3 py-2 text-sm font-semibold">Alerts</div>
+        {items.length === 0 ? (
+          <div className="px-3 py-2 text-sm text-muted-foreground">No alerts</div>
+        ) : (
+          items.map(a => (
+            <DropdownMenuItem key={a.id} className="flex items-center justify-between">
+              <div className="text-sm">{a.title}</div>
+              <a href={a.href} className="text-xs text-blue-600 hover:underline" onClick={() => markRead(a.id)}>Open</a>
+              <button className="text-xs text-muted-foreground hover:text-red-600" onClick={() => { try { useAlertsStore.getState().dismiss(a.id); } catch {} }}>Dismiss</button>
+            </DropdownMenuItem>
+          ))
+        )}
+        <div className="px-3 py-2">
+          <Button variant="outline" size="sm" onClick={dismissAll} className="w-full">Dismiss all</Button>
+        </div>
+      </DropdownMenuContent>
+    </DropdownMenu>
+  );
+}

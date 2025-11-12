@@ -1,4 +1,5 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
+import { useSearchParams } from "react-router-dom";
 import { PageHeader } from "@/components/PageHeader";
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -6,20 +7,28 @@ import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Textarea } from "@/components/ui/textarea";
-import { ChevronDown, ChevronUp, Save, FileText, Info } from "lucide-react";
-import { addEstimate, getCustomers, upsertCustomer, upsertInvoice, purgeTestCustomers, getInvoices } from "@/lib/db";
+import { ChevronDown, ChevronUp, Save, FileText, Info, Plus, Trash2, CheckCircle2 } from "lucide-react";
+import localforage from "localforage";
+import api from "@/lib/api";
+import { addEstimate, upsertCustomer, upsertInvoice, purgeTestCustomers, getInvoices } from "@/lib/db";
+import { getUnifiedCustomers } from "@/lib/customers";
 import { useToast } from "@/hooks/use-toast";
 import jsPDF from "jspdf";
+import { savePDFToArchive } from "@/lib/pdfArchive";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import CustomerModal, { Customer as CustomerType } from "@/components/customers/CustomerModal";
+import { servicePackages, addOns, getServicePrice, getAddOnPrice, VehicleType as VehKey } from "@/lib/services";
+import { getCustomPackages, getCustomAddOns, getPackageMeta, getAddOnMeta } from "@/lib/servicesMeta";
+import { Progress } from "@/components/ui/progress";
+import MaterialsUsedModal from "@/components/checklist/MaterialsUsedModal";
 
-interface Service {
+type DisplayService = {
   id: string;
   name: string;
-  prices: { [key: string]: number };
-  description: string;
-  chemicals: string[];
-}
+  description?: string;
+  chemicals?: string[];
+  kind: 'package' | 'addon' | 'special';
+};
 
 interface Customer {
   id?: string;
@@ -27,143 +36,48 @@ interface Customer {
   vehicleType: string;
 }
 
-const coreServices: Service[] = [
-  {
-    id: "basic-wash",
-    name: "Basic Exterior Wash",
-    prices: { "Compact/Sedan": 40, "Mid-Size/SUV": 50, "Truck/Van/Large SUV": 60, "Luxury/High-End": 75 },
-    description: "Pre-rinse, foam cannon, two-bucket wash, drying",
-    chemicals: ["Meguiar's Foam Soap", "Chemical Guys Tire Dressing"]
-  },
-  {
-    id: "express-wash-wax",
-    name: "Express Wash & Wax",
-    prices: { "Compact/Sedan": 60, "Mid-Size/SUV": 75, "Truck/Van/Large SUV": 90, "Luxury/High-End": 110 },
-    description: "Quick exterior wash with spray wax (30-45 min)",
-    chemicals: ["Meguiar's Foam Soap", "Turtle Wax Spray Wax"]
-  },
-  {
-    id: "full-exterior",
-    name: "Full Exterior Detail",
-    prices: { "Compact/Sedan": 120, "Mid-Size/SUV": 150, "Truck/Van/Large SUV": 180, "Luxury/High-End": 210 },
-    description: "Basic wash + clay bar, iron remover, sealant/wax, tire dressing",
-    chemicals: ["Meguiar's Foam Soap", "Mothers Clay Lube", "3M Sealant", "Chemical Guys Tire Dressing"]
-  },
-  {
-    id: "interior-cleaning",
-    name: "Interior Cleaning",
-    prices: { "Compact/Sedan": 80, "Mid-Size/SUV": 100, "Truck/Van/Large SUV": 120, "Luxury/High-End": 150 },
-    description: "Vacuum, APC cleaning, glass cleaning, UV protectant",
-    chemicals: ["APC Cleaner", "Glass Cleaner", "UV Protectant Spray"]
-  },
-  {
-    id: "full-detail",
-    name: "Full Detail (Interior + Exterior)",
-    prices: { "Compact/Sedan": 180, "Mid-Size/SUV": 225, "Truck/Van/Large SUV": 270, "Luxury/High-End": 320 },
-    description: "Combines Full Exterior + Interior",
-    chemicals: ["Meguiar's Foam Soap", "Mothers Clay Lube", "3M Sealant", "Chemical Guys Tire Dressing", "APC Cleaner", "Glass Cleaner", "UV Protectant Spray"]
-  },
-  {
-    id: "premium-detail",
-    name: "Premium Detail",
-    prices: { "Compact/Sedan": 280, "Mid-Size/SUV": 350, "Truck/Van/Large SUV": 420, "Luxury/High-End": 500 },
-    description: "Full Detail + paint correction, ceramic spray",
-    chemicals: ["Meguiar's Foam Soap", "Mothers Clay Lube", "3M Sealant", "Chemical Guys Tire Dressing", "APC Cleaner", "Glass Cleaner", "UV Protectant Spray", "Griot's Polishing Compound", "Ceramic Pro Spray"]
-  }
-];
+// Vehicle UI labels to dynamic keys
+const VEHICLE_UI_TO_KEY: Record<string, VehKey> = {
+  "Compact/Sedan": "compact",
+  "Mid-Size/SUV": "midsize",
+  "Truck/Van/Large SUV": "truck",
+  "Luxury/High-End": "luxury",
+};
+const KEY_TO_VEHICLE_UI: Record<VehKey, string> = {
+  compact: "Compact/Sedan",
+  midsize: "Mid-Size/SUV",
+  truck: "Truck/Van/Large SUV",
+  luxury: "Luxury/High-End",
+};
 
-const addOnServices: Service[] = [
-  {
-    id: "wheel-cleaning",
-    name: "Wheel Cleaning",
-    prices: { "Compact/Sedan": 20, "Mid-Size/SUV": 25, "Truck/Van/Large SUV": 30, "Luxury/High-End": 40 },
-    description: "Deep wheel and barrel cleaning",
-    chemicals: ["P21S Wheel Cleaner"]
-  },
-  {
-    id: "leather-conditioning",
-    name: "Leather Conditioning",
-    prices: { "Compact/Sedan": 25, "Mid-Size/SUV": 30, "Truck/Van/Large SUV": 35, "Luxury/High-End": 45 },
-    description: "Clean and condition leather surfaces",
-    chemicals: ["Lexol Leather Conditioner"]
-  },
-  {
-    id: "odor-eliminator",
-    name: "Odor Eliminator",
-    prices: { "Compact/Sedan": 15, "Mid-Size/SUV": 20, "Truck/Van/Large SUV": 25, "Luxury/High-End": 35 },
-    description: "Eliminate unwanted odors",
-    chemicals: ["Ozium Odor Eliminator"]
-  },
-  {
-    id: "headlight-restoration",
-    name: "Headlight Restoration",
-    prices: { "Compact/Sedan": 35, "Mid-Size/SUV": 40, "Truck/Van/Large SUV": 50, "Luxury/High-End": 65 },
-    description: "Restore clarity to headlights",
-    chemicals: ["3M Polishing Compound", "Meguiar's UV Sealant"]
-  },
-  {
-    id: "ceramic-trim",
-    name: "Ceramic Trim Coat Restoration",
-    prices: { "Compact/Sedan": 60, "Mid-Size/SUV": 75, "Truck/Van/Large SUV": 95, "Luxury/High-End": 125 },
-    description: "Restores faded black plastic trim with ceramic coating",
-    chemicals: ["Cerakote Trim Coat"]
-  },
-  {
-    id: "engine-bay",
-    name: "Engine Bay Cleaning",
-    prices: { "Compact/Sedan": 70, "Mid-Size/SUV": 85, "Truck/Van/Large SUV": 100, "Luxury/High-End": 120 },
-    description: "Degreases and dresses engine compartment, low-water method",
-    chemicals: ["Simple Green Degreaser", "Chemical Guys Dressing"]
-  },
-  {
-    id: "wheel-rim-detail",
-    name: "Wheel & Rim Detailing",
-    prices: { "Compact/Sedan": 50, "Mid-Size/SUV": 60, "Truck/Van/Large SUV": 75, "Luxury/High-End": 90 },
-    description: "Removes brake dust, polishes alloys, applies sealant",
-    chemicals: ["P21S Wheel Cleaner", "Meguiar's Sealant"]
-  },
-  {
-    id: "clay-bar",
-    name: "Clay Bar Decontamination",
-    prices: { "Compact/Sedan": 65, "Mid-Size/SUV": 80, "Truck/Van/Large SUV": 95, "Luxury/High-End": 120 },
-    description: "Removes embedded contaminants from paint",
-    chemicals: ["Mothers Clay Lube"]
-  },
-  {
-    id: "paint-sealant",
-    name: "Paint Sealant Application",
-    prices: { "Compact/Sedan": 90, "Mid-Size/SUV": 110, "Truck/Van/Large SUV": 130, "Luxury/High-End": 160 },
-    description: "Synthetic sealant for 3-6 months protection",
-    chemicals: ["3M Sealant"]
-  },
-  {
-    id: "pet-hair",
-    name: "Pet Hair Removal",
-    prices: { "Compact/Sedan": 55, "Mid-Size/SUV": 70, "Truck/Van/Large SUV": 85, "Luxury/High-End": 100 },
-    description: "Deep vacuuming and enzyme treatment for pet dander/hair",
-    chemicals: ["Enzyme Pet Cleaner"]
-  },
-  {
-    id: "paint-touchup",
-    name: "Minor Paint Touch-Up",
-    prices: { "Compact/Sedan": 75, "Mid-Size/SUV": 90, "Truck/Van/Large SUV": 110, "Luxury/High-End": 140 },
-    description: "Buffs light scratches/swirls, applies touch-up paint",
-    chemicals: ["Griot's Polishing Compound", "Dupli-Color Touch-Up Paint"]
-  },
-  {
-    id: "destination-fee",
-    name: "Destination Fee",
-    prices: { "Compact/Sedan": 0, "Mid-Size/SUV": 0, "Truck/Van/Large SUV": 0, "Luxury/High-End": 0 },
-    description: "Transportation fee (0-5 mi: Free, 6-10 mi: $10, 11-20 mi: $15-25, 21-30 mi: $30-45, 31-50 mi: $50-75, 50+ mi: Custom)",
-    chemicals: []
-  }
-];
+function toVehKey(label: string): VehKey {
+  // Ensure unknown labels like 'Other' map to a sane default
+  return VEHICLE_UI_TO_KEY[label] || "midsize";
+}
+
+// Build display lists from dynamic sources + admin customizations
+function buildCoreServices(): DisplayService[] {
+  const customs = getCustomPackages();
+  const pkgs = [...servicePackages, ...customs];
+  return pkgs
+    .filter(p => (getPackageMeta(p.id)?.deleted !== true) && (getPackageMeta(p.id)?.visible !== false))
+    .map(p => ({ id: p.id, name: p.name, description: (p as any).description || "", kind: 'package' }));
+}
+function buildAddOnServices(): DisplayService[] {
+  const customs = getCustomAddOns();
+  const base = addOns;
+  const merged = [
+    ...base.map(a => ({ id: a.id, name: a.name, kind: 'addon' as const })),
+    ...customs.map(a => ({ id: a.id, name: a.name, kind: 'addon' as const })),
+  ];
+  return merged.filter(a => (getAddOnMeta(a.id)?.deleted !== true) && (getAddOnMeta(a.id)?.visible !== false));
+}
 
 const ServiceChecklist = () => {
   const { toast } = useToast();
   const [customers, setCustomers] = useState<CustomerType[]>([]);
   const [selectedCustomer, setSelectedCustomer] = useState("");
-  const [vehicleType, setVehicleType] = useState("Mid-Size/SUV");
+  const [vehicleType, setVehicleType] = useState(KEY_TO_VEHICLE_UI.midsize);
   const [selectedServices, setSelectedServices] = useState<string[]>([]);
   const [addOnsExpanded, setAddOnsExpanded] = useState(false);
   const [discountType, setDiscountType] = useState<"percent" | "dollar">("percent");
@@ -172,19 +86,62 @@ const ServiceChecklist = () => {
   const [notes, setNotes] = useState("");
   const [customerModalOpen, setCustomerModalOpen] = useState(false);
 
-useEffect(() => {
+  // New generic job flow state
+  const [selectedPackage, setSelectedPackage] = useState<string>("");
+  const [selectedAddOns, setSelectedAddOns] = useState<string[]>([]);
+  const [liveAddOns, setLiveAddOns] = useState<any[]>([]);
+  const [estimatedTime, setEstimatedTime] = useState<string>("");
+  const [employeeAssigned, setEmployeeAssigned] = useState<string>("");
+  const [employees, setEmployees] = useState<any[]>([]);
+  const [checklistId, setChecklistId] = useState<string>("");
+  const [customerSearch, setCustomerSearch] = useState<string>("");
+  const [customerSearchResults, setCustomerSearchResults] = useState<CustomerType[]>([]);
+  const [vehicleTypeOther, setVehicleTypeOther] = useState<string>("");
+  type ChecklistStep = { id: string; name: string; category: 'preparation' | 'exterior' | 'interior' | 'final'; checked: boolean };
+  const [checklistSteps, setChecklistSteps] = useState<ChecklistStep[]>([]);
+  const [collapsedSections, setCollapsedSections] = useState<Record<string, boolean>>({});
+
+  // Materials Used state
+  type ChemItem = { id: string; name: string; threshold?: number; currentStock?: number };
+  type MatItem = { id: string; name: string; lowThreshold?: number; quantity?: number };
+  const [chemicalsList, setChemicalsList] = useState<ChemItem[]>([]);
+  const [materialsList, setMaterialsList] = useState<MatItem[]>([]);
+  type ChemRow = { chemicalId: string; fraction: '1/8'|'1/4'|'3/8'|'1/2'|'5/8'|'3/4'|'7/8'|'1'|''; notes?: string };
+  type MatRow = { materialId: string; quantityNote: string };
+  const [chemRows, setChemRows] = useState<ChemRow[]>([]);
+  const [matRows, setMatRows] = useState<MatRow[]>([]);
+  const [materialsModalOpen, setMaterialsModalOpen] = useState(false);
+
+const [params] = useSearchParams();
+
+  useEffect(() => {
     (async () => {
       await purgeTestCustomers();
-      const list = await getCustomers();
+      const list = await getUnifiedCustomers();
       setCustomers(list as CustomerType[]);
+      const prefill = params.get("customerId");
+      if (prefill && list.find((c: any) => c.id === prefill)) {
+        setSelectedCustomer(prefill);
+      }
+      // Load employees for assignment
+      const emps = (await localforage.getItem('company-employees')) || [];
+      setEmployees(emps as any[]);
+      // Load live add-ons via API
+      const live = await api('/api/addons/live', { method: 'GET' });
+      setLiveAddOns(Array.isArray(live) ? live : []);
+      // Preselect default employee if present
+      const defaultEmp = (emps as any[])[0];
+      if (defaultEmp) setEmployeeAssigned(String(defaultEmp.id || defaultEmp.name || ''));
     })();
-  }, []);
+  }, [params]);
 
   useEffect(() => {
     if (selectedCustomer) {
       const customer = customers.find(c => c.id === selectedCustomer);
       if (customer?.vehicleType) {
-        setVehicleType(customer.vehicleType);
+        // Attempt to map stored value to UI label
+        const key = toVehKey(customer.vehicleType);
+        setVehicleType(KEY_TO_VEHICLE_UI[key]);
       }
       // Pre-check previous services from the latest invoice
       (async () => {
@@ -193,7 +150,7 @@ useEffect(() => {
         custInvs.sort((a, b) => new Date(b.createdAt || b.date).getTime() - new Date(a.createdAt || a.date).getTime());
         const last = custInvs[0];
         if (last?.services?.length) {
-          const all = [...coreServices, ...addOnServices];
+          const all = [...buildCoreServices(), ...buildAddOnServices(), { id: 'destination-fee', name: 'Destination Fee', kind: 'special' as const }];
           const ids = last.services
             .map((s: any) => all.find(x => x.name === s.name)?.id)
             .filter(Boolean) as string[];
@@ -203,6 +160,140 @@ useEffect(() => {
     }
   }, [selectedCustomer, customers]);
 
+  // Load inventory lists for Materials Used selector (preferred split endpoints, fallback to /all)
+  useEffect(() => {
+    (async () => {
+      try {
+        const chems = await api('/api/inventory/chemicals', { method: 'GET' });
+        const mats = await api('/api/inventory/materials', { method: 'GET' });
+        setChemicalsList(Array.isArray(chems) ? chems as ChemItem[] : []);
+        setMaterialsList(Array.isArray(mats) ? mats as MatItem[] : []);
+        // Fallback if either is empty
+        if ((Array.isArray(chems) && chems.length === 0) || (Array.isArray(mats) && mats.length === 0)) {
+          const res = await api('/api/inventory/all', { method: 'GET' });
+          const { chemicals = [], materials = [] } = (res as any) || {};
+          if ((Array.isArray(chems) && chems.length === 0)) setChemicalsList(chemicals as ChemItem[]);
+          if ((Array.isArray(mats) && mats.length === 0)) setMaterialsList(materials as MatItem[]);
+        }
+      } catch {
+        try {
+          const res = await api('/api/inventory/all', { method: 'GET' });
+          const { chemicals = [], materials = [] } = (res as any) || {};
+          setChemicalsList(chemicals as ChemItem[]);
+          setMaterialsList(materials as MatItem[]);
+        } catch {
+          setChemicalsList([]);
+          setMaterialsList([]);
+        }
+      }
+    })();
+  }, []);
+
+  // Materials helpers
+  const FRACTIONS: ChemRow['fraction'][] = ['1/8','1/4','3/8','1/2','5/8','3/4','7/8','1'];
+  const addChemicalRow = () => setChemRows(prev => ([...prev, { chemicalId: '', fraction: '', notes: '' }]));
+  const updateChemicalRow = (idx: number, patch: Partial<ChemRow>) => setChemRows(prev => prev.map((r,i) => i===idx ? { ...r, ...patch } : r));
+  const removeChemicalRow = (idx: number) => setChemRows(prev => prev.filter((_,i) => i!==idx));
+  const addMaterialRow = () => setMatRows(prev => ([...prev, { materialId: '', quantityNote: '' }]));
+  const updateMaterialRow = (idx: number, patch: Partial<MatRow>) => setMatRows(prev => prev.map((r,i) => i===idx ? { ...r, ...patch } : r));
+  const removeMaterialRow = (idx: number) => setMatRows(prev => prev.filter((_,i) => i!==idx));
+
+  const postChecklistMaterials = async (jobId: string, finalize = false) => {
+    // Map fractional selections to numeric quantities for inventory decrement
+    const FRACTION_TO_NUM: Record<string, number> = {
+      '1/8': 0.125,
+      '1/4': 0.25,
+      '3/8': 0.375,
+      '1/2': 0.5,
+      '5/8': 0.625,
+      '3/4': 0.75,
+      '7/8': 0.875,
+      '1': 1,
+      '': 0,
+    };
+    const serviceName = (servicePackages.find(p => p.id === selectedPackage)?.name
+      || getCustomPackages().find((p: any) => p.id === selectedPackage)?.name
+      || 'Service');
+    const nowIso = new Date().toISOString();
+    const chemItems = chemRows
+      .filter(r => r.chemicalId)
+      .map(r => ({
+        chemicalId: r.chemicalId,
+        quantity: FRACTION_TO_NUM[r.fraction || ''] || 0,
+        serviceName,
+        date: nowIso,
+        employee: employeeAssigned || '',
+      }))
+      .filter(i => i.quantity > 0);
+    const matItems = matRows
+      .filter(r => r.materialId)
+      .map(r => {
+        const match = String(r.quantityNote || '').match(/\d+(\.\d+)?/);
+        const quantity = match ? Number(match[0]) : 0;
+        return {
+          materialId: r.materialId,
+          quantity,
+          serviceName,
+          date: nowIso,
+          employee: employeeAssigned || '',
+        };
+      })
+      .filter(i => i.quantity > 0);
+    const items = [...chemItems, ...matItems];
+    try {
+      const res = await api('/api/checklist/materials', { method: 'POST', body: JSON.stringify(items) });
+      if ((res as any)?.ok || res === null) {
+        toast({ title: finalize ? 'Materials finalized' : 'Materials saved', description: finalize ? 'Inventory updated and usage history logged.' : 'Materials usage recorded for this job.' });
+
+        // On finalize, generate an Admin Updates PDF summarizing materials/chemicals used
+        if (finalize && items.length > 0) {
+          const doc = new jsPDF();
+          let y = 20;
+          doc.setFontSize(16);
+          doc.text('Admin Updates', 20, y);
+          y += 10;
+          doc.setFontSize(12);
+          doc.text(`Materials Update — Job ${jobId}`, 20, y);
+          y += 8;
+          doc.text(`Service: ${serviceName}`, 20, y);
+          y += 8;
+          if (employeeAssigned) { doc.text(`Employee: ${employeeAssigned}`, 20, y); y += 8; }
+          doc.text(`Date: ${new Date().toLocaleString()}`, 20, y);
+          y += 12;
+
+          doc.setFontSize(12);
+          doc.text('Chemicals Used:', 20, y);
+          y += 8;
+          const chemLines = chemItems.map(ci => `• ${String(chemicalsList.find(c => String(c.id) === String(ci.chemicalId))?.name || ci.chemicalId)} — ${ci.quantity} unit(s)`);
+          const chemText = doc.splitTextToSize(chemLines.length ? chemLines.join('\n') : '(none)', 170);
+          doc.text(chemText, 20, y);
+          y += chemText.length * 6 + 8;
+
+          doc.text('Materials Used:', 20, y);
+          y += 8;
+          const matLines = matItems.map(mi => `• ${String(materialsList.find(m => String(m.id) === String(mi.materialId))?.name || mi.materialId)} — ${mi.quantity}`);
+          const matText = doc.splitTextToSize(matLines.length ? matLines.join('\n') : '(none)', 170);
+          doc.text(matText, 20, y);
+          y += matText.length * 6 + 8;
+
+          const pdfDataUrl = doc.output('datauristring');
+          const fileName = `Admin_Update_Materials_${new Date().toLocaleDateString().replace(/\//g, '-')}.pdf`;
+          savePDFToArchive('Admin Updates', 'Admin', `materials-${jobId}`, pdfDataUrl, { fileName, path: 'Admin Updates/' });
+        }
+      } else {
+        throw new Error('Failed to sync materials');
+      }
+    } catch {
+      toast({ title: 'Sync failed', description: 'Could not sync materials to inventory.', variant: 'destructive' });
+    }
+  };
+
+  // Build dynamic display lists
+  // Build dynamic display lists
+  const coreServicesDisplay = useMemo(() => buildCoreServices(), []);
+  const addOnServicesDisplay = useMemo(() => buildAddOnServices(), []);
+  const destinationFeeDisplay: DisplayService = useMemo(() => ({ id: 'destination-fee', name: 'Destination Fee', description: 'Transportation fee based on miles', kind: 'special' }), []);
+
   const toggleService = (serviceId: string) => {
     setSelectedServices(prev =>
       prev.includes(serviceId) ? prev.filter(id => id !== serviceId) : [...prev, serviceId]
@@ -210,11 +301,90 @@ useEffect(() => {
   };
 
   const calculateSubtotal = () => {
-    const allServices = [...coreServices, ...addOnServices];
-    return selectedServices.reduce((sum, id) => {
-      const service = allServices.find(s => s.id === id);
-      return sum + (service?.prices[vehicleType] || 0);
-    }, 0) + destinationFee;
+    const vkey = toVehKey(vehicleType);
+    const allServices = [...coreServicesDisplay, ...addOnServicesDisplay, destinationFeeDisplay];
+    const total = selectedServices.reduce((sum, id) => {
+      const svc = allServices.find(s => s.id === id);
+      if (!svc) return sum;
+      if (svc.kind === 'package') return sum + getServicePrice(svc.id, vkey);
+      if (svc.kind === 'addon') return sum + getAddOnPrice(svc.id, vkey);
+      return sum; // special handled separately
+    }, 0);
+    return total + destinationFee;
+  };
+
+  // When package or add-ons change, re-sync selectedServices and build checklist
+  useEffect(() => {
+    const vkey = toVehKey(vehicleType);
+    const selected = [selectedPackage, ...selectedAddOns].filter(Boolean);
+    setSelectedServices(selected);
+    // Build steps from selected package
+    const pkg = servicePackages.find(p => p.id === selectedPackage) || (getCustomPackages().find((p: any) => p.id === selectedPackage) as any);
+    let baseSteps: ChecklistStep[] = [];
+    if (pkg && (pkg as any).steps) {
+      baseSteps = (pkg as any).steps.map((s: any) => ({ id: s.id || s, name: s.name || s, category: (s.category || 'exterior'), checked: false }));
+    }
+    // Preparation static steps
+    const prep: ChecklistStep[] = [
+      { id: 'prep-inspect', name: 'Inspect vehicle', category: 'preparation', checked: false },
+      { id: 'prep-tools', name: 'Gather tools', category: 'preparation', checked: false },
+      { id: 'prep-walkaround', name: 'Customer walkaround', category: 'preparation', checked: false },
+    ];
+    // Add-on steps: treat each add-on as a single step under exterior
+    const addonSteps: ChecklistStep[] = selectedAddOns.map((aid) => {
+      const found = (liveAddOns || []).find((a: any) => a.id === aid) || addOns.find(a => a.id === aid);
+      return { id: `addon-${aid}`, name: found?.name || aid, category: 'exterior', checked: false };
+    });
+    setChecklistSteps([...prep, ...baseSteps, ...addonSteps]);
+  }, [selectedPackage, selectedAddOns, vehicleType]);
+
+  const progressPercent = useMemo(() => {
+    const total = checklistSteps.length || 0;
+    const done = checklistSteps.filter(s => s.checked).length;
+    return total ? Math.round((done / total) * 100) : 0;
+  }, [checklistSteps]);
+
+  // Save generic checklist progress
+  const saveGenericChecklist = async () => {
+    if (!selectedPackage || !vehicleType) {
+      toast({ title: 'Select package and vehicle', description: 'Choose a package and vehicle type first.', variant: 'destructive' });
+      return;
+    }
+    const payload = {
+      packageId: selectedPackage,
+      vehicleType: toVehKey(vehicleType),
+      vehicleTypeNote: vehicleType === 'Other' ? vehicleTypeOther : '',
+      addons: selectedAddOns,
+      tasks: checklistSteps.map(s => ({ id: s.id, name: s.name, category: s.category, checked: s.checked })),
+      progress: progressPercent,
+      // materials saved through dedicated endpoint below
+      employeeId: employeeAssigned || '',
+      estimatedTime,
+    };
+    const res = await api('/api/checklist/generic', { method: 'POST', body: JSON.stringify(payload) });
+    if ((res as any)?.id) {
+      setChecklistId((res as any).id);
+      toast({ title: 'Progress Saved', description: 'Generic checklist saved.' });
+      // Post materials usage on save (no subtract)
+      await postChecklistMaterials((res as any).id, false);
+      const externalCustomerId = params.get('customerId') || selectedCustomer;
+      if (externalCustomerId) {
+        await linkJobToCustomer(String(externalCustomerId));
+      }
+    } else {
+      toast({ title: 'Save Failed', description: 'Could not save checklist locally.', variant: 'destructive' });
+    }
+  };
+
+  // Link job to customer
+  const linkJobToCustomer = async (customerId: string, jobId?: string) => {
+    if (!checklistId) return;
+    const res = await api(`/api/checklist/${checklistId}/link-customer`, { method: 'PUT', body: JSON.stringify({ customerId, jobId }) });
+    if ((res as any)?.ok || res === null) {
+      toast({ title: 'Job Linked', description: 'Checklist attached to customer.' });
+    } else {
+      toast({ title: 'Link Failed', description: 'Could not link to customer.', variant: 'destructive' });
+    }
   };
 
   const calculateDiscount = () => {
@@ -233,13 +403,16 @@ useEffect(() => {
 
 const handleSave = async () => {
     const customer = customers.find(c => c.id === selectedCustomer);
-    const allServices = [...coreServices, ...addOnServices];
+    const vkey = toVehKey(vehicleType);
+    const allServices = [...coreServicesDisplay, ...addOnServicesDisplay, destinationFeeDisplay];
     const selectedItems = selectedServices.map(id => {
-      const service = allServices.find(s => s.id === id);
+      const svc = allServices.find(s => s.id === id);
+      if (!svc) return { name: '', price: 0, chemicals: [] as string[] };
+      const price = svc.kind === 'package' ? getServicePrice(svc.id, vkey) : (svc.kind === 'addon' ? getAddOnPrice(svc.id, vkey) : destinationFee);
       return {
-        name: service?.name || "",
-        price: service?.prices[vehicleType] || 0,
-        chemicals: service?.chemicals || []
+        name: svc.name || "",
+        price,
+        chemicals: svc.chemicals || []
       };
     });
 
@@ -260,14 +433,16 @@ const handleSave = async () => {
 
   const handleCreateInvoice = async () => {
     const customer = customers.find(c => c.id === selectedCustomer);
-    const allServices = [...coreServices, ...addOnServices];
+    const vkey = toVehKey(vehicleType);
+    const allServices = [...coreServicesDisplay, ...addOnServicesDisplay, destinationFeeDisplay];
     const selectedItems = selectedServices.map(id => {
-      const service = allServices.find(s => s.id === id);
+      const svc = allServices.find(s => s.id === id);
+      const price = svc?.kind === 'package' ? getServicePrice(svc.id, vkey) : (svc?.kind === 'addon' ? getAddOnPrice(svc.id, vkey) : destinationFee);
       return {
         id,
-        name: service?.name || "",
-        price: service?.prices[vehicleType] || 0,
-        chemicals: service?.chemicals || [],
+        name: svc?.name || "",
+        price: price || 0,
+        chemicals: svc?.chemicals || [],
       };
     });
 
@@ -339,12 +514,14 @@ const handleSave = async () => {
     doc.text("Selected Services:", 20, y);
     y += 8;
     
-    const allServices = [...coreServices, ...addOnServices];
+    const allServices = [...coreServicesDisplay, ...addOnServicesDisplay, destinationFeeDisplay];
     selectedServices.forEach(id => {
       const service = allServices.find(s => s.id === id);
       if (service) {
         doc.setFontSize(11);
-        doc.text(`${service.name}: $${service.prices[vehicleType]}`, 25, y);
+        const vkey = toVehKey(vehicleType);
+        const price = service.kind === 'package' ? getServicePrice(service.id, vkey) : (service.kind === 'addon' ? getAddOnPrice(service.id, vkey) : destinationFee);
+        doc.text(`${service.name}: $${price}`, 25, y);
         y += 6;
       }
     });
@@ -382,188 +559,240 @@ const handleSave = async () => {
   return (
     <div className="min-h-screen bg-background">
       <PageHeader title="Service Checklist" />
-      
+
       <main className="container mx-auto px-4 py-6 max-w-6xl">
         <div className="space-y-6 animate-fade-in">
+          {/* Job Setup - Generic, no forced customer link */}
           <Card className="p-6 bg-gradient-card border-border">
-            <h2 className="text-2xl font-bold text-foreground mb-4">Customer & Vehicle Info</h2>
-            
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
-              <div className="space-y-2 md:col-span-2">
-                <Label>Select Customer</Label>
-                <div className="flex gap-2">
-                  <select
-                    value={selectedCustomer}
-                    onChange={(e) => setSelectedCustomer(e.target.value)}
-                    className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
-                  >
-                    <option value="">Select a customer...</option>
-                    {customers.map(c => (
-                      <option key={c.id} value={c.id}>{c.name}</option>
-                    ))}
-                  </select>
-                  <Button type="button" variant="outline" onClick={() => setCustomerModalOpen(true)}>Add New</Button>
-                </div>
+            <h2 className="text-2xl font-bold text-foreground mb-4">Job Setup</h2>
+            <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-4">
+              <div className="space-y-2">
+                <Label>Package</Label>
+                <select
+                  value={selectedPackage}
+                  onChange={(e) => setSelectedPackage(e.target.value)}
+                  className="flex h-10 w-full rounded-md border border-white/20 bg-black text-white px-3 py-2 text-sm"
+                >
+                  <option value="">Select a package...</option>
+                  {coreServicesDisplay.map(p => (
+                    <option key={p.id} value={p.id}>{p.name}</option>
+                  ))}
+                </select>
               </div>
-
               <div className="space-y-2">
                 <Label>Vehicle Type</Label>
                 <select
                   value={vehicleType}
                   onChange={(e) => setVehicleType(e.target.value)}
-                  className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+                  className="flex h-10 w-full rounded-md border border-white/20 bg-black text-white px-3 py-2 text-sm"
                 >
                   <option value="Compact/Sedan">Compact/Sedan</option>
                   <option value="Mid-Size/SUV">Mid-Size/SUV</option>
                   <option value="Truck/Van/Large SUV">Truck/Van/Large SUV</option>
                   <option value="Luxury/High-End">Luxury/High-End</option>
+                  <option value="Other">Other</option>
+                </select>
+                {vehicleType === 'Other' && (
+                  <Input placeholder="Enter vehicle type" value={vehicleTypeOther} onChange={(e) => setVehicleTypeOther(e.target.value)} className="mt-2" />
+                )}
+              </div>
+              <div className="space-y-2">
+                <Label>Estimated Time</Label>
+                <Input placeholder="e.g., 4 hours" value={estimatedTime} onChange={(e) => setEstimatedTime(e.target.value)} />
+              </div>
+              <div className="space-y-2">
+                <Label>Employee Assigned</Label>
+                <select
+                  value={employeeAssigned}
+                  onChange={(e) => setEmployeeAssigned(e.target.value)}
+                  className="flex h-10 w-full rounded-md border border-white/20 bg-black text-white px-3 py-2 text-sm"
+                >
+                  <option value="">Select employee...</option>
+                  {employees.map((e: any) => (
+                    <option key={e.id || e.name} value={String(e.id || e.name)}>{e.name || e.id}</option>
+                  ))}
                 </select>
               </div>
             </div>
-
-            {selectedCustomer && (
-              <div className="mt-4 grid grid-cols-1 md:grid-cols-3 gap-4">
-                {(() => {
-                  const c = customers.find(x => x.id === selectedCustomer);
-                  if (!c) return null;
-                  return (
-                    <>
-                      <div>
-                        <Label>Contact</Label>
-                        <p className="text-sm text-muted-foreground">{c.phone || "-"}</p>
-                        <p className="text-sm text-muted-foreground">{c.email || "-"}</p>
-                        <p className="text-sm text-muted-foreground">{c.address || "-"}</p>
-                      </div>
-                      <div>
-                        <Label>Vehicle</Label>
-                        <p className="text-sm text-muted-foreground">{[c.year, c.vehicle, c.model].filter(Boolean).join(" ") || "-"}</p>
-                        <p className="text-sm text-muted-foreground">Color: {c.color || "-"}</p>
-                        <p className="text-sm text-muted-foreground">Mileage: {c.mileage || "-"}</p>
-                      </div>
-                      <div>
-                        <Label>Condition & Notes</Label>
-                        <p className="text-sm text-muted-foreground">Inside: {c.conditionInside || "-"}</p>
-                        <p className="text-sm text-muted-foreground">Outside: {c.conditionOutside || "-"}</p>
-                        <p className="text-sm text-muted-foreground">Notes: {c.notes || "-"}</p>
-                      </div>
-                    </>
-                  );
-                })()}
+            {liveAddOns.length > 0 && (
+              <div className="space-y-2">
+                <Label>Optional Add-Ons</Label>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+                  {liveAddOns.map((a: any) => (
+                    <label key={a.id} className="flex items-center gap-2 text-sm">
+                      <input type="checkbox" checked={selectedAddOns.includes(a.id)} onChange={(e) => {
+                        setSelectedAddOns(prev => e.target.checked ? [...prev, a.id] : prev.filter(id => id !== a.id));
+                      }} />
+                      <span>{a.name}</span>
+                    </label>
+                  ))}
+                </div>
               </div>
             )}
-
-            <div className="mt-4">
-              <Button type="button" variant="outline" onClick={() => setCustomerModalOpen(true)} disabled={!selectedCustomer}>
-                Edit Details
-              </Button>
-            </div>
           </Card>
 
-          {/* Core Services */}
+          {/* Checklist - dynamic from package and add-ons */}
           <Card className="p-6 bg-gradient-card border-border">
-            <h2 className="text-2xl font-bold text-foreground mb-4">Core Services</h2>
-            <div className="space-y-3">
-              {coreServices.map(service => (
-                <TooltipProvider key={service.id}>
-                  <div className="flex items-start gap-3 p-3 rounded-lg hover:bg-muted/50 transition-colors">
-                    <Checkbox
-                      checked={selectedServices.includes(service.id)}
-                      onCheckedChange={() => toggleService(service.id)}
-                      className="mt-1"
-                    />
-                    <div className="flex-1">
-                      <div className="flex items-center gap-2">
-                        <Label className="font-medium text-base cursor-pointer">
-                          {service.name}
-                        </Label>
-                        <Tooltip>
-                          <TooltipTrigger>
-                            <Info className="h-4 w-4 text-muted-foreground" />
-                          </TooltipTrigger>
-                          <TooltipContent>
-                            <p className="font-semibold">Chemicals:</p>
-                            <ul className="text-xs">
-                              {service.chemicals.map((chem, i) => (
-                                <li key={i}>• {chem}</li>
-                              ))}
-                            </ul>
-                          </TooltipContent>
-                        </Tooltip>
+            <div className="flex items-center justify-between mb-4">
+              <h2 className="text-2xl font-bold text-foreground">Checklist</h2>
+              <div className="flex items-center gap-3">
+                <Progress value={progressPercent} className="w-40" />
+                <span className="text-sm">{progressPercent}%</span>
+              </div>
+            </div>
+            {(!selectedPackage || !vehicleType) && (
+              <p className="text-sm text-muted-foreground">Select a package and vehicle type to load checklist.</p>
+            )}
+            {selectedPackage && (
+              <div className="space-y-6 max-h-[50vh] overflow-auto pr-2">
+                {(['preparation','exterior','interior','final'] as const).map(section => (
+                  <div key={section}>
+                    <button
+                      className="w-full text-left text-xl font-semibold mb-2 flex items-center justify-between"
+                      onClick={() => setCollapsedSections(prev => ({ ...prev, [section]: !prev[section] }))}
+                    >
+                      <span>{section === 'final' ? 'Final Inspection' : section.charAt(0).toUpperCase() + section.slice(1)}</span>
+                      {collapsedSections[section] ? <ChevronDown className="h-5 w-5" /> : <ChevronUp className="h-5 w-5" />}
+                    </button>
+                    {!collapsedSections[section] && (
+                      <div className="space-y-2">
+                        {checklistSteps.filter(s => s.category === section).map((step) => (
+                          <label key={step.id} className="flex items-center gap-2 text-sm">
+                            <input type="checkbox" checked={step.checked} onChange={(e) => setChecklistSteps(prev => prev.map(ps => ps.id === step.id ? { ...ps, checked: e.target.checked } : ps))} />
+                            <span>{step.name}</span>
+                          </label>
+                        ))}
                       </div>
-                      <p className="text-sm text-muted-foreground">{service.description}</p>
-                    </div>
-                    <span className="font-bold text-primary">${service.prices[vehicleType]}</span>
+                    )}
                   </div>
-                </TooltipProvider>
-              ))}
-            </div>
-          </Card>
-
-          {/* Add-Ons */}
-          <Card className="p-6 bg-gradient-card border-border">
-            <button
-              onClick={() => setAddOnsExpanded(!addOnsExpanded)}
-              className="w-full flex items-center justify-between text-2xl font-bold text-foreground mb-4"
-            >
-              <span>Add-On Services</span>
-              {addOnsExpanded ? <ChevronUp /> : <ChevronDown />}
-            </button>
-            
-            {addOnsExpanded && (
-              <div className="space-y-3">
-                {addOnServices.map(service => (
-                  <TooltipProvider key={service.id}>
-                    <div className="flex items-start gap-3 p-3 rounded-lg hover:bg-muted/50 transition-colors">
-                      <Checkbox
-                        checked={selectedServices.includes(service.id)}
-                        onCheckedChange={() => toggleService(service.id)}
-                        className="mt-1"
-                      />
-                      <div className="flex-1">
-                        <div className="flex items-center gap-2">
-                          <Label className="font-medium text-base cursor-pointer">
-                            {service.name}
-                          </Label>
-                          {service.chemicals.length > 0 && (
-                            <Tooltip>
-                              <TooltipTrigger>
-                                <Info className="h-4 w-4 text-muted-foreground" />
-                              </TooltipTrigger>
-                              <TooltipContent>
-                                <p className="font-semibold">Chemicals:</p>
-                                <ul className="text-xs">
-                                  {service.chemicals.map((chem, i) => (
-                                    <li key={i}>• {chem}</li>
-                                  ))}
-                                </ul>
-                              </TooltipContent>
-                            </Tooltip>
-                          )}
-                        </div>
-                        <p className="text-sm text-muted-foreground">{service.description}</p>
-                      </div>
-                      <span className="font-bold text-primary">
-                        {service.id === "destination-fee" ? "Varies" : `$${service.prices[vehicleType]}`}
-                      </span>
-                    </div>
-                  </TooltipProvider>
                 ))}
-                
-                {selectedServices.includes("destination-fee") && (
-                  <div className="ml-8 mt-2">
-                    <Label>Enter Destination Fee</Label>
-                    <Input
-                      type="number"
-                      placeholder="Enter fee amount"
-                      value={destinationFee || ""}
-                      onChange={(e) => setDestinationFee(parseFloat(e.target.value) || 0)}
-                      className="max-w-xs"
-                    />
-                  </div>
-                )}
               </div>
             )}
+            <div className="mt-4">
+              <Label>Notes</Label>
+              <Textarea value={notes} onChange={(e) => setNotes(e.target.value)} placeholder="Add notes..." className="mt-2 min-h-[100px]" />
+            </div>
+            {/* Save moved below Materials Used section */}
           </Card>
+
+          {/* Destination Fee (optional) */}
+          <Card className="p-6 bg-gradient-card border-border">
+            <Label>Destination Fee (optional)</Label>
+            <Input type="number" placeholder="Enter fee amount" value={destinationFee || ''} onChange={(e) => setDestinationFee(parseFloat(e.target.value) || 0)} className="mt-2 max-w-xs" />
+          </Card>
+
+          {/* Materials Used */}
+          <Card className="p-6 bg-gradient-card border-border">
+            <div className="mb-4 flex items-center justify-between">
+              <h2 className="text-2xl font-bold text-white pb-2 border-b border-red-600">Materials Used</h2>
+              <Button variant="outline" className="h-9" onClick={() => setMaterialsModalOpen(true)}>Material Updates</Button>
+            </div>
+
+            {/* Chemicals subsection */}
+            <div className="mb-6">
+              <div className="flex items-center justify-between mb-2">
+                <h3 className="text-lg font-semibold text-white">Chemicals (fractional)</h3>
+                <Button onClick={addChemicalRow} className="bg-red-600 text-white h-9"><Plus className="h-4 w-4 mr-2" />Add Chemical Row</Button>
+              </div>
+              {chemRows.length === 0 && (
+                <p className="text-sm text-muted-foreground">Add chemicals used (e.g., Wax 1/2).</p>
+              )}
+              <div className="space-y-3">
+                {chemRows.map((row, idx) => (
+                  <div key={`chem-${idx}`} className="grid grid-cols-1 md:grid-cols-12 gap-2 items-end">
+                    <div className="md:col-span-4">
+                      <Label>Chemical</Label>
+                      <select
+                        value={row.chemicalId}
+                        onChange={(e) => updateChemicalRow(idx, { chemicalId: e.target.value })}
+                        className="flex h-10 w-full rounded-md border border-red-600 bg-black text-white px-3 py-2 text-sm"
+                      >
+                        <option value="">Select a chemical...</option>
+                        {chemicalsList.map(it => (<option key={it.id} value={it.id}>{it.name}</option>))}
+                      </select>
+                    </div>
+                    <div className="md:col-span-6">
+                      <Label>Quantity Used</Label>
+                      <div className="flex flex-wrap gap-2 mt-1">
+                        {FRACTIONS.map(f => (
+                          <label key={f} className="flex items-center gap-1 text-sm px-2 py-1 rounded border border-red-600 text-white">
+                            <input type="checkbox" checked={row.fraction === f} onChange={() => updateChemicalRow(idx, { fraction: row.fraction === f ? '' : f })} />
+                            <span>{f}</span>
+                          </label>
+                        ))}
+                      </div>
+                    </div>
+                    <div className="md:col-span-2">
+                      <Label>Notes</Label>
+                      <Input type="text" value={row.notes || ''} onChange={(e) => updateChemicalRow(idx, { notes: e.target.value })} placeholder="Optional note" />
+                    </div>
+                    <div className="md:col-span-1 flex items-end">
+                      <Button variant="destructive" className="h-10 w-full" onClick={() => removeChemicalRow(idx)}>
+                        <Trash2 className="h-4 w-4" />
+                      </Button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            {/* Materials subsection */}
+            <div>
+              <div className="flex items-center justify-between mb-2">
+                <h3 className="text-lg font-semibold text-white">Materials (note-based)</h3>
+                <Button onClick={addMaterialRow} className="bg-red-600 text-white h-9"><Plus className="h-4 w-4 mr-2" />Add Material Row</Button>
+              </div>
+              {matRows.length === 0 && (
+                <p className="text-sm text-muted-foreground">Add materials used (e.g., 5 rags, 2 brushes).</p>
+              )}
+              <div className="space-y-3">
+                {matRows.map((row, idx) => (
+                  <div key={`mat-${idx}`} className="grid grid-cols-1 md:grid-cols-12 gap-2 items-end">
+                    <div className="md:col-span-5">
+                      <Label>Material</Label>
+                      <select
+                        value={row.materialId}
+                        onChange={(e) => updateMaterialRow(idx, { materialId: e.target.value })}
+                        className="flex h-10 w-full rounded-md border border-red-600 bg-black text-white px-3 py-2 text-sm"
+                      >
+                        <option value="">Select a material...</option>
+                        {materialsList.map(it => (<option key={it.id} value={it.id}>{it.name}</option>))}
+                      </select>
+                    </div>
+                    <div className="md:col-span-6">
+                      <Label>Quantity Used</Label>
+                      <Input type="text" value={row.quantityNote} onChange={(e) => updateMaterialRow(idx, { quantityNote: e.target.value })} placeholder="e.g., 5 rags, 2 brushes" />
+                    </div>
+                    <div className="md:col-span-1 flex items-end">
+                      <Button variant="destructive" className="h-10 w-full" onClick={() => removeMaterialRow(idx)}>
+                        <Trash2 className="h-4 w-4" />
+                      </Button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </Card>
+
+          {/* Materials Used Modal */}
+          <MaterialsUsedModal
+            open={materialsModalOpen}
+            onOpenChange={setMaterialsModalOpen}
+            chemicalsList={chemicalsList}
+            materialsList={materialsList}
+            initialChemRows={chemRows}
+            initialMatRows={matRows}
+            onSave={(newChemRows, newMatRows) => { setChemRows(newChemRows); setMatRows(newMatRows); }}
+          />
+
+          {/* Complete & Save controls */}
+          <div className="flex items-center gap-3">
+            <Button onClick={async () => { if (!checklistId) { await saveGenericChecklist(); } if (checklistId) await postChecklistMaterials(checklistId, true); }} className="bg-red-600 text-white">
+              <Save className="h-4 w-4 mr-2" />Finish Job
+            </Button>
+            <Button onClick={saveGenericChecklist} className="bg-gradient-hero"><Save className="h-4 w-4 mr-2" />Save Progress</Button>
+            {checklistId && <span className="text-sm text-muted-foreground flex items-center gap-2"><CheckCircle2 className="h-4 w-4 text-green-500" />Saved</span>}
+          </div>
 
           {/* Discount & Total */}
           <Card className="p-6 bg-gradient-card border-border">
@@ -635,13 +864,52 @@ const handleSave = async () => {
             </Button>
           </div>
 
+          {/* Link to Customer (Optional) */}
+          {checklistId && (
+            <Card className="p-6 bg-gradient-card border-border">
+              <h2 className="text-2xl font-bold text-foreground mb-4">Link to Customer (Optional)</h2>
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <div className="space-y-2 md:col-span-2">
+                  <Label>Search Customer</Label>
+                  <div className="flex gap-2">
+                    <Input value={customerSearch} onChange={async (e) => {
+                      const q = e.target.value; setCustomerSearch(q);
+                      const res = await api(`/api/customers/search?q=${encodeURIComponent(q)}`, { method: 'GET' });
+                      setCustomerSearchResults(Array.isArray(res) ? res : []);
+                    }} placeholder="Type name, phone, or email" />
+                    <Button variant="outline" onClick={() => setCustomerModalOpen(true)}>Add New</Button>
+                  </div>
+                  <div className="mt-2 max-h-[200px] overflow-auto space-y-2">
+                    {customerSearchResults.map((c) => (
+                      <div key={c.id} className="flex items-center justify-between">
+                        <div>
+                          <p className="text-sm font-medium">{c.name}</p>
+                          <p className="text-xs text-muted-foreground">{c.phone} {c.email}</p>
+                        </div>
+                        <Button size="sm" onClick={() => linkJobToCustomer(String(c.id))}>Link Job</Button>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+                <div className="space-y-2">
+                  <Label>Job ID (optional)</Label>
+                  <Input placeholder="Auto or manual" onBlur={(e) => {
+                    const jobId = (e.target as HTMLInputElement).value.trim();
+                    if (jobId) linkJobToCustomer(String(selectedCustomer || customerSearchResults[0]?.id || ''), jobId);
+                  }} />
+                  <Button variant="outline" onClick={() => { /* skip */ toast({ title: 'Saved as generic', description: 'You can link later from history.' }); }}>Skip</Button>
+                </div>
+              </div>
+            </Card>
+          )}
+
       <CustomerModal
         open={customerModalOpen}
         onOpenChange={setCustomerModalOpen}
         initial={customers.find(c => c.id === selectedCustomer) as any}
         onSave={async (data) => {
           const saved = await upsertCustomer(data as any);
-          const list = await getCustomers();
+          const list = await getUnifiedCustomers();
           setCustomers(list as CustomerType[]);
           setSelectedCustomer((saved as any).id);
         }}

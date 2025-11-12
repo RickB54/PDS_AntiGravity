@@ -10,14 +10,14 @@ const About = () => {
     <div className="min-h-screen bg-background">
       <Navbar />
       
-      {/* Hero Section with Video Background */}
+      {/* Hero Section with Video Background (deferred to avoid network aborts) */}
       <section className="relative h-[60vh] flex items-center justify-center overflow-hidden">
         <div className="absolute inset-0 bg-black/60 z-10" />
         <video 
-          autoPlay 
-          loop 
-          muted 
+          preload="none"
+          muted
           playsInline
+          poster={logo}
           className="absolute inset-0 w-full h-full object-cover"
         >
           <source src="https://cdn.pixabay.com/video/2019/10/08/27833-365006009_large.mp4" type="video/mp4" />

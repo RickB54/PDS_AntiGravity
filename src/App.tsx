@@ -3,6 +3,7 @@ import { Toaster as Sonner } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
+import { useEffect, useState } from "react";
 import { SidebarProvider } from "@/components/ui/sidebar";
 import { AppSidebar } from "@/components/AppSidebar";
 import { getCurrentUser } from "@/lib/auth";
@@ -11,13 +12,14 @@ import Login from "./pages/Login";
 import CustomerPortal from "./pages/CustomerPortal";
 import CustomerDashboard from "./pages/CustomerDashboard";
 import ServiceChecklist from "./pages/ServiceChecklist";
-import EmployeeChecklist from "./pages/EmployeeChecklist";
+// Legacy EmployeeChecklist removed; redirect old route to ServiceChecklist
 import SearchCustomer from "./pages/SearchCustomer";
 import InventoryControl from "./pages/InventoryControl";
 import Invoicing from "./pages/Invoicing";
 import Accounting from "./pages/Accounting";
 import Reports from "./pages/Reports";
 import TrainingManual from "./pages/TrainingManual";
+import EmployeeTrainingCourse from "./pages/EmployeeTrainingCourse";
 import EmployeeDashboard from "./pages/EmployeeDashboard";
 import CompanyEmployees from "./pages/CompanyEmployees";
 import FileManager from "./pages/FileManager";
@@ -28,8 +30,16 @@ import About from "./pages/About";
 import Contact from "./pages/Contact";
 import FAQ from "./pages/FAQ";
 import BookNow from "./pages/BookNow";
+import ThankYou from "./pages/ThankYou";
 import CustomerAccount from "./pages/CustomerAccount";
 import Portal from "./pages/Portal";
+import QuickLogin from "./pages/QuickLogin";
+import AdminDashboard from "./pages/AdminDashboard";
+import BookingsPage from "./pages/BookingsPage";
+import DiscountCoupons from "./pages/DiscountCoupons";
+import PackagePricing from "./pages/PackagePricing";
+import Payroll from "./pages/Payroll";
+import ErrorBoundary from "./components/ErrorBoundary";
 
 const queryClient = new QueryClient();
 
@@ -48,7 +58,17 @@ const ProtectedRoute = ({ children, allowedRoles }: { children: React.ReactNode;
 };
 
 const App = () => {
-  const user = getCurrentUser();
+  const [user, setUser] = useState(getCurrentUser());
+
+  useEffect(() => {
+    const updateUser = () => setUser(getCurrentUser());
+    window.addEventListener('auth-changed', updateUser as EventListener);
+    window.addEventListener('storage', updateUser);
+    return () => {
+      window.removeEventListener('auth-changed', updateUser as EventListener);
+      window.removeEventListener('storage', updateUser);
+    };
+  }, []);
 
   return (
     <QueryClientProvider client={queryClient}>
@@ -56,143 +76,161 @@ const App = () => {
         <Toaster />
         <Sonner />
         <BrowserRouter>
-        <Routes>
-          <Route path="/login" element={<Login />} />
-          <Route path="/about" element={<About />} />
-          <Route path="/contact" element={<Contact />} />
-          <Route path="/faq" element={<FAQ />} />
-          <Route path="/book" element={<BookNow />} />
-          <Route path="/portal" element={<Portal />} />
-            
-            <Route
-              path="/*"
-              element={
-                <SidebarProvider>
-                  <div className="flex min-h-screen w-full dark-theme">
-                    {user && <AppSidebar />}
-                    <div className="flex-1">
-            <Routes>
-              <Route path="/" element={<Index />} />
-                        
-              <Route path="/dashboard" element={
-                          user?.role === 'admin' ? <Navigate to="/dashboard/admin" replace /> :
-                          user?.role === 'employee' ? <Navigate to="/dashboard/employee" replace /> :
-                          user?.role === 'customer' ? <Navigate to="/customer-portal" replace /> :
-                          // If not logged in, show login screen (no redirect)
-                          <Login />
-                        } />
-                        
-                        <Route path="/customer-portal" element={
-                          <ProtectedRoute allowedRoles={['customer']}>
-                            <CustomerPortal />
-                          </ProtectedRoute>
-                        } />
-                        
-                        <Route path="/customer-dashboard" element={
-                          <ProtectedRoute allowedRoles={['customer']}>
-                            <CustomerDashboard />
-                          </ProtectedRoute>
-                        } />
-                        
-                        <Route path="/customer-account" element={
-                          <ProtectedRoute allowedRoles={['customer']}>
-                            <CustomerAccount />
-                          </ProtectedRoute>
-                        } />
-                        
-                        <Route path="/checklist" element={
-                          <ProtectedRoute allowedRoles={['employee', 'admin']}>
-                            <EmployeeChecklist />
-                          </ProtectedRoute>
-                        } />
-                        
-                        <Route path="/service-checklist" element={
-                          <ProtectedRoute allowedRoles={['employee', 'admin']}>
-                            <ServiceChecklist />
-                          </ProtectedRoute>
-                        } />
-                        
-                        <Route path="/search-customer" element={
-                          <ProtectedRoute allowedRoles={['employee', 'admin']}>
-                            <SearchCustomer />
-                          </ProtectedRoute>
-                        } />
-                        
-                        <Route path="/inventory-control" element={
-                          <ProtectedRoute allowedRoles={['admin']}>
-                            <InventoryControl />
-                          </ProtectedRoute>
-                        } />
-                        
-                        <Route path="/invoicing" element={
-                          <ProtectedRoute allowedRoles={['admin']}>
-                            <Invoicing />
-                          </ProtectedRoute>
-                        } />
-                        
-                        <Route path="/accounting" element={
-                          <ProtectedRoute allowedRoles={['admin']}>
-                            <Accounting />
-                          </ProtectedRoute>
-                        } />
-                        
-                        <Route path="/company-employees" element={
-                          <ProtectedRoute allowedRoles={['admin']}>
-                            <CompanyEmployees />
-                          </ProtectedRoute>
-                        } />
-                        
-                        <Route path="/file-manager" element={
-                          <ProtectedRoute allowedRoles={['admin']}>
-                            <FileManager />
-                          </ProtectedRoute>
-                        } />
-                        
-                        <Route path="/reports" element={
-                          <ProtectedRoute allowedRoles={['admin']}>
-                            <Reports />
-                          </ProtectedRoute>
-                        } />
-
-                        <Route path="/dashboard/admin" element={
-                          <ProtectedRoute allowedRoles={['admin']}>
-                            <Navigate to="/invoicing" replace />
-                          </ProtectedRoute>
-                        } />
-                        
-                        <Route path="/training-manual" element={
-                          <ProtectedRoute allowedRoles={['employee', 'admin']}>
-                            <TrainingManual />
-                          </ProtectedRoute>
-                        } />
-                        
-                        <Route path="/dashboard/employee" element={
-                          <ProtectedRoute allowedRoles={['employee', 'admin']}>
-                            <EmployeeDashboard />
-                          </ProtectedRoute>
-                        } />
-
-                        <Route path="/employee-dashboard" element={
-                          <ProtectedRoute allowedRoles={['employee', 'admin']}>
-                            <EmployeeDashboard />
-                          </ProtectedRoute>
-                        } />
-                        
-                        <Route path="/mobile-setup" element={
-                          <ProtectedRoute allowedRoles={['admin']}>
-                            <MobileSetup />
-                          </ProtectedRoute>
-                        } />
-                        
-                        <Route path="/settings" element={<Settings />} />
-                        <Route path="*" element={<NotFound />} />
-                      </Routes>
-                    </div>
-                  </div>
-                </SidebarProvider>
-              }
-            />
-          </Routes>
+          <SidebarProvider open={!!(user && (user.role === 'admin' || user.role === 'employee'))} defaultOpen={true}>
+            <div className={`flex min-h-screen w-full ${user?.role === 'admin' || user?.role === 'employee' ? 'dark-theme bg-black' : ''}`}>
+              {user && <AppSidebar />}
+              <div className="flex-1">
+                <ErrorBoundary>
+                  <Routes>
+                    <Route path="/login" element={<Login />} />
+                    <Route path="/login/quick/:role" element={<QuickLogin />} />
+                    {/* Public homepage routes */}
+                    <Route path="/about" element={<About />} />
+                    <Route path="/contact" element={<Contact />} />
+                    <Route path="/faq" element={<FAQ />} />
+                    <Route path="/thank-you" element={<ThankYou />} />
+                    <Route path="/book" element={<BookNow />} />
+                    <Route path="/book-now" element={<BookNow />} />
+                    {/* Public services page */}
+                    <Route path="/services" element={<CustomerPortal />} />
+                    <Route path="/portal" element={<Portal />} />
+                    <Route path="/" element={<Index />} />
+                    <Route
+                      path="/dashboard"
+                      element={
+                        user?.role === 'admin' ? <Navigate to="/dashboard/admin" replace /> :
+                        user?.role === 'employee' ? <Navigate to="/dashboard/employee" replace /> :
+                        user?.role === 'customer' ? <Navigate to="/customer-portal" replace /> :
+                        <Login />
+                      }
+                    />
+                    <Route path="/customer-portal" element={
+                      <ProtectedRoute allowedRoles={['customer']}>
+                        <CustomerPortal />
+                      </ProtectedRoute>
+                    } />
+                    <Route path="/customer-dashboard" element={
+                      <ProtectedRoute allowedRoles={['customer']}>
+                        <CustomerDashboard />
+                      </ProtectedRoute>
+                    } />
+                    <Route path="/customer-account" element={
+                      <ProtectedRoute allowedRoles={['customer']}>
+                        <CustomerAccount />
+                      </ProtectedRoute>
+                    } />
+                    <Route path="/checklist" element={
+                      <ProtectedRoute allowedRoles={['employee', 'admin']}>
+                        <ServiceChecklist />
+                      </ProtectedRoute>
+                    } />
+                    <Route path="/service-checklist" element={
+                      <ProtectedRoute allowedRoles={['employee', 'admin']}>
+                        <ServiceChecklist />
+                      </ProtectedRoute>
+                    } />
+                    <Route path="/search-customer" element={
+                      <ProtectedRoute allowedRoles={['employee', 'admin']}>
+                        <SearchCustomer />
+                      </ProtectedRoute>
+                    } />
+                    <Route path="/inventory-control" element={
+                      <ProtectedRoute allowedRoles={['admin']}>
+                        <InventoryControl />
+                      </ProtectedRoute>
+                    } />
+                    <Route path="/invoicing" element={
+                      <ProtectedRoute allowedRoles={['admin']}>
+                        <Invoicing />
+                      </ProtectedRoute>
+                    } />
+                    <Route path="/accounting" element={
+                      <ProtectedRoute allowedRoles={['admin']}>
+                        <Accounting />
+                      </ProtectedRoute>
+                    } />
+                    <Route path="/payroll" element={
+                      <ProtectedRoute allowedRoles={['admin']}>
+                        <Payroll />
+                      </ProtectedRoute>
+                    } />
+                    <Route path="/company-employees" element={
+                      <ProtectedRoute allowedRoles={['admin']}>
+                        <CompanyEmployees />
+                      </ProtectedRoute>
+                    } />
+                    <Route path="/file-manager" element={
+                      <ProtectedRoute allowedRoles={['admin']}>
+                        <FileManager />
+                      </ProtectedRoute>
+                    } />
+                    <Route path="/reports" element={
+                      <ProtectedRoute allowedRoles={['admin']}>
+                        <Reports />
+                      </ProtectedRoute>
+                    } />
+                    <Route path="/dashboard/admin" element={
+                      <ProtectedRoute allowedRoles={['admin']}>
+                        <Navigate to="/admin-dashboard" replace />
+                      </ProtectedRoute>
+                    } />
+                    <Route path="/admin-dashboard" element={
+                      <ProtectedRoute allowedRoles={['admin']}>
+                        <AdminDashboard />
+                      </ProtectedRoute>
+                    } />
+                    <Route path="/bookings" element={
+                      <ProtectedRoute allowedRoles={['admin', 'employee']}>
+                        <BookingsPage />
+                      </ProtectedRoute>
+                    } />
+                    <Route path="/discount-coupons" element={
+                      <ProtectedRoute allowedRoles={['admin']}>
+                        <DiscountCoupons />
+                      </ProtectedRoute>
+                    } />
+                    <Route path="/package-pricing" element={
+                      <ProtectedRoute allowedRoles={['admin']}>
+                        <PackagePricing />
+                      </ProtectedRoute>
+                    } />
+                    <Route path="/training-manual" element={
+                      <ProtectedRoute allowedRoles={['employee', 'admin']}>
+                        <TrainingManual />
+                      </ProtectedRoute>
+                    } />
+                    <Route path="/employee-training" element={
+                      <ProtectedRoute allowedRoles={['employee', 'admin']}>
+                        <EmployeeTrainingCourse />
+                      </ProtectedRoute>
+                    } />
+                    <Route path="/training-progress" element={
+                      <ProtectedRoute allowedRoles={['employee', 'admin']}>
+                        <EmployeeTrainingCourse />
+                      </ProtectedRoute>
+                    } />
+                    <Route path="/dashboard/employee" element={
+                      <ProtectedRoute allowedRoles={['employee', 'admin']}>
+                        <EmployeeDashboard />
+                      </ProtectedRoute>
+                    } />
+                    <Route path="/employee-dashboard" element={
+                      <ProtectedRoute allowedRoles={['employee', 'admin']}>
+                        <EmployeeDashboard />
+                      </ProtectedRoute>
+                    } />
+                    <Route path="/mobile-setup" element={
+                      <ProtectedRoute allowedRoles={['admin']}>
+                        <MobileSetup />
+                      </ProtectedRoute>
+                    } />
+                    <Route path="/settings" element={<Settings />} />
+                    <Route path="*" element={<NotFound />} />
+                  </Routes>
+                </ErrorBoundary>
+              </div>
+            </div>
+          </SidebarProvider>
         </BrowserRouter>
       </TooltipProvider>
     </QueryClientProvider>

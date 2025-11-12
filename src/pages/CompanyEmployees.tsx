@@ -3,7 +3,7 @@ import { PageHeader } from "@/components/PageHeader";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { getCurrentUser } from "@/lib/auth";
-import { Users, Clock, CheckCircle2, DollarSign } from "lucide-react";
+import { Users, Clock, CheckCircle2, DollarSign, Plus } from "lucide-react";
 import {
   Select,
   SelectContent,
@@ -19,12 +19,22 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import jsPDF from "jspdf";
+import localforage from "localforage";
+import api from "@/lib/api";
+import { servicePackages, addOns } from "@/lib/services";
 
 interface Employee {
   email: string;
   name: string;
-  role: string;
+  role: string; // 'Employee' | 'Admin'
+  flatRate?: number; // default hourly or per-job flat amount
+  bonuses?: number; // accumulated or default bonus for pay period
+  paymentByJob?: boolean; // if true, pay calculated per job rather than hourly
+  jobRates?: Record<string, number>; // mapping: service/add-on name -> payout
 }
 
 interface JobRecord {
@@ -40,11 +50,21 @@ interface JobRecord {
 
 const CompanyEmployees = () => {
   const user = getCurrentUser();
-  const [employees] = useState<Employee[]>([
-    { email: 'employee@gmail.com', name: 'Employee User', role: 'Employee' }
-  ]);
+  const [employees, setEmployees] = useState<Employee[]>([]);
   const [selectedEmployee, setSelectedEmployee] = useState('');
   const [jobRecords, setJobRecords] = useState<JobRecord[]>([]);
+  const [payrollHistory, setPayrollHistory] = useState<Array<{ employee?: string; amount?: number; status?: string }>>([]);
+  const [owedMap, setOwedMap] = useState<Record<string, number>>({}); // key by employee email
+  const [modalOpen, setModalOpen] = useState(false);
+  const [form, setForm] = useState<{
+    name: string;
+    email: string;
+    role: string;
+    flatRate: string;
+    bonuses: string;
+    paymentByJob: boolean;
+    jobRates: Record<string, string>;
+  }>({ name: "", email: "", role: "Employee", flatRate: "", bonuses: "", paymentByJob: false, jobRates: {} });
 
   useEffect(() => {
     // Only admins can access
@@ -52,13 +72,48 @@ const CompanyEmployees = () => {
       window.location.href = '/';
       return;
     }
+    loadEmployees();
     loadJobRecords();
+    loadPayrollHistory();
   }, [user]);
+
+  const loadEmployees = async () => {
+    const list = (await localforage.getItem<Employee[]>("company-employees")) || [
+      { email: 'employee@gmail.com', name: 'Employee User', role: 'Employee' }
+    ];
+    setEmployees(list);
+  };
+
+  const saveEmployees = async (list: Employee[]) => {
+    await localforage.setItem("company-employees", list);
+    setEmployees(list);
+  };
 
   const loadJobRecords = () => {
     const completed = JSON.parse(localStorage.getItem('completedJobs') || '[]');
     setJobRecords(completed);
   };
+
+  const loadPayrollHistory = async () => {
+    const list = (await localforage.getItem<any[]>('payroll-history')) || [];
+    setPayrollHistory(list);
+  };
+
+  // Compute owed per employee (unpaid jobs + pending history - adjustments)
+  useEffect(() => {
+    const adjRaw = localStorage.getItem('payroll_owed_adjustments') || '{}';
+    const adj = JSON.parse(adjRaw || '{}');
+    const next: Record<string, number> = {};
+    employees.forEach(emp => {
+      const unpaidJobs = jobRecords.filter(j => j.status === 'completed' && !j.paid && j.employee === emp.email);
+      const unpaidSum = unpaidJobs.reduce((s, j) => s + Number(j.totalRevenue || 0), 0);
+      const pendHist = payrollHistory.filter(h => String(h.status) === 'Pending' && (String(h.employee) === emp.name || String(h.employee) === emp.email));
+      const pendingSum = pendHist.reduce((s, h) => s + Number(h.amount || 0), 0);
+      const adjSum = Number(adj[emp.name] || 0) + Number(adj[emp.email] || 0);
+      next[emp.email] = Math.max(0, unpaidSum + pendingSum - adjSum);
+    });
+    setOwedMap(next);
+  }, [employees, jobRecords, payrollHistory]);
 
   const filteredJobs = selectedEmployee
     ? jobRecords.filter(j => j.employee === selectedEmployee)
@@ -99,6 +154,34 @@ const CompanyEmployees = () => {
     doc.save(`Employee_History_${new Date().toISOString().split('T')[0]}.pdf`);
   };
 
+  const openAdd = () => {
+    setForm({ name: "", email: "", role: "Employee", flatRate: "", bonuses: "", paymentByJob: false, jobRates: {} });
+    setModalOpen(true);
+  };
+
+  const handleSave = async () => {
+    const payload: Employee = {
+      name: form.name.trim(),
+      email: form.email.trim(),
+      role: form.role || 'Employee',
+      flatRate: form.flatRate ? parseFloat(form.flatRate) : undefined,
+      bonuses: form.bonuses ? parseFloat(form.bonuses) : undefined,
+      paymentByJob: !!form.paymentByJob,
+      jobRates: Object.fromEntries(Object.entries(form.jobRates || {}).filter(([_, v]) => v !== '' && !isNaN(parseFloat(v))).map(([k, v]) => [k, parseFloat(v)])),
+    };
+    if (!payload.name || !payload.email) return;
+
+    // Immediate local update for reliability
+    const existsIdx = employees.findIndex(e => e.email === payload.email);
+    const next = [...employees];
+    if (existsIdx >= 0) next[existsIdx] = { ...next[existsIdx], ...payload }; else next.push(payload);
+    await saveEmployees(next);
+    setModalOpen(false);
+
+    // Try syncing to API non-blocking
+    try { await api('/api/employees', { method: 'POST', body: JSON.stringify(payload) }); } catch {}
+  };
+
   if (user?.role !== 'admin') {
     return null;
   }
@@ -135,7 +218,26 @@ const CompanyEmployees = () => {
                   ))}
                 </SelectContent>
               </Select>
+              <Button className="ml-auto bg-gradient-hero" onClick={openAdd}>
+                <Plus className="h-4 w-4 mr-2" /> Add Employee
+              </Button>
             </div>
+            {selectedEmployee && (
+              <div className="mt-4 grid grid-cols-1 md:grid-cols-3 gap-4">
+                {(() => { const emp = employees.find(e => e.email === selectedEmployee); const lastPaid = (emp as any)?.lastPaid || '—'; const owed = owedMap[selectedEmployee] || 0; return (
+                <>
+                  <div className="p-3 rounded border border-border">
+                    <p className="text-sm text-muted-foreground">Last Paid</p>
+                    <p className="text-lg font-semibold text-foreground">{String(lastPaid)}</p>
+                  </div>
+                  <div className="p-3 rounded border border-border">
+                    <p className="text-sm text-muted-foreground">Owed Balance</p>
+                    <p className="text-lg font-semibold text-foreground">${owed.toFixed(2)}</p>
+                  </div>
+                </>
+                ); })()}
+              </div>
+            )}
           </Card>
 
           {/* Stats */}
@@ -221,6 +323,66 @@ const CompanyEmployees = () => {
           </Card>
         </div>
       </main>
+
+      {/* Add Employee Modal */}
+      <Dialog open={modalOpen} onOpenChange={setModalOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Add Employee</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-3 py-2">
+            <div className="space-y-1">
+              <Label>Name</Label>
+              <Input value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} />
+            </div>
+            <div className="space-y-1">
+              <Label>Email</Label>
+              <Input type="email" value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} />
+            </div>
+            <div className="space-y-1">
+              <Label>Role</Label>
+              <select
+                value={form.role}
+                onChange={(e) => setForm({ ...form, role: e.target.value })}
+                className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+              >
+                <option>Employee</option>
+                <option>Admin</option>
+              </select>
+            </div>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+              <div className="space-y-1">
+                <Label>Flat Rate</Label>
+                <Input type="number" step="0.01" value={form.flatRate} onChange={(e) => setForm({ ...form, flatRate: e.target.value })} placeholder="e.g., 20.00" />
+              </div>
+              <div className="space-y-1">
+                <Label>Bonuses</Label>
+                <Input type="number" step="0.01" value={form.bonuses} onChange={(e) => setForm({ ...form, bonuses: e.target.value })} placeholder="e.g., 50.00" />
+              </div>
+            </div>
+            <div className="flex items-center gap-2">
+              <input id="paymentByJob" type="checkbox" checked={form.paymentByJob} onChange={(e) => setForm({ ...form, paymentByJob: e.target.checked })} />
+              <Label htmlFor="paymentByJob">Payment by Job</Label>
+            </div>
+            {form.paymentByJob && (
+              <div className="mt-2 space-y-2">
+                <Label>Job Rate Editor (per service/add-on payout)</Label>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-3 max-h-[40vh] overflow-y-auto p-2 border rounded">
+                  {[...servicePackages.map((p: any) => ({ id: p.id, name: p.name })), ...addOns.map((a: any) => ({ id: a.id, name: a.name }))].map((item: any) => (
+                    <div key={item.id} className="space-y-1">
+                      <Label className="text-xs">{item.name}</Label>
+                      <Input type="number" step="0.01" value={form.jobRates[item.name] || ''} onChange={(e) => setForm({ ...form, jobRates: { ...form.jobRates, [item.name]: e.target.value } })} placeholder="e.g., 25.00" />
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
+          <DialogFooter>
+            <Button className="bg-gradient-hero" onClick={handleSave}>Save</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 };

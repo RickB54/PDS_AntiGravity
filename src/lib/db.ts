@@ -1,4 +1,5 @@
 import localforage from "localforage";
+import { pushAdminAlert } from "@/lib/adminAlerts";
 
 // Centralized local DB using IndexedDB via localforage
 localforage.config({ name: "prime-detail-db" });
@@ -51,6 +52,12 @@ export async function upsertCustomer<T extends Partial<GenericWithId>>(cust: T):
     list.push(saved);
   }
   await setArray(KEYS.customers, list);
+  try {
+    const isNew = !cust.id;
+    if (isNew) {
+      pushAdminAlert('customer_added', `New customer added: ${String((saved as any).name || '').trim()}`, 'system', { id: saved.id, recordType: 'Customer' });
+    }
+  } catch {}
   return saved;
 }
 
@@ -102,6 +109,18 @@ export async function upsertInvoice<T extends Partial<GenericWithId>>(inv: T): P
     list.push(saved);
   }
   await setArray(KEYS.invoices, list);
+  try {
+    const isNew = !inv.id;
+    if (isNew) {
+      pushAdminAlert('invoice_created', `Invoice created: #${String((saved as any).invoiceNumber || '')}`, 'system', { id: saved.id, recordType: 'Invoice', amount: (saved as any).total });
+    }
+    const status = String((saved as any).paymentStatus || 'unpaid');
+    if (status !== 'paid') {
+      pushAdminAlert('invoice_unpaid', `Invoice unpaid: #${String((saved as any).invoiceNumber || '')}`, 'system', { id: saved.id, recordType: 'Invoice', amountDue: ((saved as any).total || 0) - ((saved as any).paidAmount || 0) });
+    }
+    // Accounting updates reflect financial changes
+    pushAdminAlert('accounting_update', 'Accounting updated: invoices or expenses changed', 'system', { recordType: 'Accounting' });
+  } catch {}
   return saved;
 }
 
@@ -133,6 +152,7 @@ export async function upsertExpense<T extends Partial<GenericWithId>>(exp: T): P
     list.push(saved);
   }
   await setArray(KEYS.expenses, list);
+  try { pushAdminAlert('accounting_update', 'Accounting updated: expense recorded', 'system', { recordType: 'Accounting', id: saved.id }); } catch {}
   return saved;
 }
 

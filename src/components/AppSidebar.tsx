@@ -11,33 +11,103 @@ import {
   FileBarChart,
   DollarSign,
   LayoutDashboard,
-  Globe
+  Globe,
+  Calendar,
+  TicketPercent,
+  GraduationCap
 } from "lucide-react";
-import { Link } from "react-router-dom";
+import { NavLink, Link } from "react-router-dom";
+import { useEffect, useState } from "react";
 import {
   Sidebar,
   SidebarContent,
   SidebarMenu,
   SidebarMenuButton,
   SidebarMenuItem,
+  SidebarMenuBadge,
   useSidebar,
 } from "@/components/ui/sidebar";
 import { getCurrentUser } from "@/lib/auth";
 import logo from "@/assets/logo-3inch.png";
+import { useBookingsStore } from "@/store/bookings";
+import { getAdminAlerts } from "@/lib/adminAlerts";
+import api from "@/lib/api";
+import { isViewed } from "@/lib/viewTracker";
 
 export function AppSidebar() {
-  const { open, setOpenMobile } = useSidebar();
+  const { open, setOpenMobile, setOpen } = useSidebar();
   const user = getCurrentUser();
   const isAdmin = user?.role === 'admin';
   const isEmployee = user?.role === 'employee';
   const isCustomer = user?.role === 'customer';
 
+  const items = useBookingsStore((s) => s.items);
+  const refresh = useBookingsStore((s) => s.refresh);
+  const [tick, setTick] = useState(0);
+  useEffect(() => {
+    function onStorage(e: StorageEvent | Event) {
+      // If localStorage keys changed, refresh specific stores.
+      if ((e as StorageEvent).key === 'bookings') {
+        refresh();
+      }
+      // Any storage-driven change should cause sidebar counters to recompute.
+      setTick((t) => t + 1);
+    }
+    window.addEventListener('storage', onStorage as any);
+    return () => window.removeEventListener('storage', onStorage as any);
+  }, [refresh]);
+  const todayStr = new Date().toISOString().split('T')[0];
+  const requestFlags = (() => {
+    try { return JSON.parse(localStorage.getItem('bookingRequestFlags') || '{}'); } catch { return {}; }
+  })();
+  const pendingBookings = items.filter(b => {
+    const isToday = b.date.startsWith(todayStr);
+    const isPending = b.status === "pending";
+    const isRequested = !!requestFlags[b.id];
+    return isToday && (isPending || isRequested) && !isViewed("booking", b.id);
+  }).length;
+  // Red badge: number of unviewed PDFs (any type). Drops when you click the bell.
+  const fileCount = (() => {
+    try {
+      const list = JSON.parse(localStorage.getItem('pdfArchive') || '[]');
+      const today = new Date().toLocaleDateString().replace(/\//g, '-');
+      return list.filter((r: any) => String(r.date).includes(today) && !isViewed('file', String(r.id || r.fileName || r.timestamp || ''))).length;
+    } catch { return 0; }
+  })();
+  const inventoryCount = (() => {
+    try {
+      const c = Number(localStorage.getItem('inventory_low_count') || '0');
+      return isNaN(c) ? 0 : c;
+    } catch { return 0; }
+  })();
+  const [payrollDueCount, setPayrollDueCount] = useState(0);
+  useEffect(() => {
+    (async () => {
+      try {
+        const res = await api('/api/payroll/due-count', { method: 'GET' });
+        const count = Number(res?.count || 0);
+        setPayrollDueCount(count);
+      } catch { setPayrollDueCount(0); }
+    })();
+  }, [tick]);
+
   const handleNavClick = () => {
     setOpenMobile(false);
   };
 
+  const linkClass = ({ isActive }: { isActive: boolean }) =>
+    `flex items-center gap-2 ${isActive ? 'text-blue-400' : ''}`;
+
+  // Provider now controls open state; remove local role-based overrides
+  // This prevents race conditions and ensures persistent visibility.
+
+  // Make admin sidebar fixed (non-offcanvas) so it stays visible on scroll.
+  // Keep employee as-is unless requested; customers remain offcanvas.
+  // Make admin behave like employee: offcanvas with reserved layout gap.
+  const collapsibleMode = "offcanvas";
+  const sidebarClass = "border-r border-border";
   return (
-    <Sidebar className="border-r border-border">
+    <Sidebar className={sidebarClass} collapsible={collapsibleMode as any}>
       <div className="p-4 border-b border-border">
         {open && (
           <div className="flex items-center gap-3 animate-fade-in">
@@ -68,59 +138,105 @@ export function AppSidebar() {
 
           {(isAdmin || isEmployee) && (
             <>
+              {isAdmin && (
+                <SidebarMenuItem>
+                  <SidebarMenuButton asChild onClick={handleNavClick}>
+                    <NavLink to="/admin-dashboard" className={linkClass}>
+                      <LayoutDashboard className="h-4 w-4" />
+                      <span>Admin Dashboard</span>
+                    </NavLink>
+                  </SidebarMenuButton>
+                </SidebarMenuItem>
+              )}
+              {/* Removed Home (redundant) */}
               <SidebarMenuItem>
                 <SidebarMenuButton asChild onClick={handleNavClick}>
                   <Link to="/">
-                    <Home className="h-4 w-4" />
-                    <span>Home</span>
+                    <Globe className="h-4 w-4" />
+                    <span>Website</span>
                   </Link>
                 </SidebarMenuButton>
               </SidebarMenuItem>
 
               <SidebarMenuItem>
                 <SidebarMenuButton asChild onClick={handleNavClick}>
-                  <Link to="/checklist">
+                  <NavLink to="/service-checklist" className={linkClass}>
                     <ClipboardCheck className="h-4 w-4" />
                     <span>Service Checklist</span>
-                  </Link>
+                  </NavLink>
                 </SidebarMenuButton>
               </SidebarMenuItem>
 
               <SidebarMenuItem>
                 <SidebarMenuButton asChild onClick={handleNavClick}>
-                  <Link to="/search-customer">
+                  <NavLink to="/search-customer" className={linkClass}>
                     <Users className="h-4 w-4" />
-                    <span>Find Customer</span>
-                  </Link>
+                    <span>Customer Profiles</span>
+                  </NavLink>
                 </SidebarMenuButton>
               </SidebarMenuItem>
 
-              <SidebarMenuItem>
-                <SidebarMenuButton asChild onClick={handleNavClick}>
-                  <Link to="/service-checklist">
-                    <DollarSign className="h-4 w-4" />
-                    <span>Package Pricing</span>
-                  </Link>
-                </SidebarMenuButton>
-              </SidebarMenuItem>
+              {isAdmin && (
+                <SidebarMenuItem>
+                  <SidebarMenuButton asChild onClick={handleNavClick}>
+                    <NavLink to="/package-pricing" className={linkClass}>
+                      <DollarSign className="h-4 w-4" />
+                      <span>Package Pricing</span>
+                    </NavLink>
+                  </SidebarMenuButton>
+                </SidebarMenuItem>
+              )}
 
               <SidebarMenuItem>
                 <SidebarMenuButton asChild onClick={handleNavClick}>
-                  <Link to="/training-manual">
+                  <NavLink to="/training-manual" className={linkClass}>
                     <BookOpen className="h-4 w-4" />
                     <span>Training Manual</span>
-                  </Link>
+                  </NavLink>
                 </SidebarMenuButton>
               </SidebarMenuItem>
 
               <SidebarMenuItem>
                 <SidebarMenuButton asChild onClick={handleNavClick}>
-                  <Link to="/employee-dashboard">
+                  <NavLink to="/employee-dashboard" className={linkClass}>
                     <LayoutDashboard className="h-4 w-4" />
                     <span>Employee Dashboard</span>
-                  </Link>
+                  </NavLink>
                 </SidebarMenuButton>
               </SidebarMenuItem>
+              {isAdmin && (
+                <SidebarMenuItem>
+                  <SidebarMenuButton asChild onClick={handleNavClick}>
+                    <NavLink to="/discount-coupons" className={linkClass}>
+                      <TicketPercent className="h-4 w-4" />
+                      <span>Discount Coupons</span>
+                    </NavLink>
+                  </SidebarMenuButton>
+                </SidebarMenuItem>
+              )}
+              {(isAdmin || isEmployee) && (
+                <SidebarMenuItem>
+                  <SidebarMenuButton asChild onClick={handleNavClick}>
+                    <NavLink to="/bookings" className={linkClass}>
+                      <Calendar className="h-4 w-4" />
+                      <span>Bookings</span>
+                    </NavLink>
+                  </SidebarMenuButton>
+                  {pendingBookings > 0 && (
+                    <SidebarMenuBadge className="bg-red-600 text-white">{pendingBookings}</SidebarMenuBadge>
+                  )}
+                </SidebarMenuItem>
+              )}
+              {isAdmin && (
+                <SidebarMenuItem>
+                  <SidebarMenuButton asChild onClick={handleNavClick}>
+                    <NavLink to="/employee-training" className={linkClass}>
+                      <GraduationCap className="h-4 w-4" />
+                      <span>Employee Training Course</span>
+                    </NavLink>
+                  </SidebarMenuButton>
+                </SidebarMenuItem>
+              )}
             </>
           )}
 
@@ -137,64 +253,82 @@ export function AppSidebar() {
 
               <SidebarMenuItem>
                 <SidebarMenuButton asChild onClick={handleNavClick}>
-                  <Link to="/invoicing">
+                  <NavLink to="/invoicing" className={linkClass}>
                     <FileText className="h-4 w-4" />
                     <span>Invoicing</span>
-                  </Link>
+                  </NavLink>
                 </SidebarMenuButton>
               </SidebarMenuItem>
 
               <SidebarMenuItem>
                 <SidebarMenuButton asChild onClick={handleNavClick}>
-                  <Link to="/accounting">
+                  <NavLink to="/accounting" className={linkClass}>
                     <Calculator className="h-4 w-4" />
                     <span>Accounting</span>
-                  </Link>
+                  </NavLink>
                 </SidebarMenuButton>
               </SidebarMenuItem>
 
               <SidebarMenuItem>
                 <SidebarMenuButton asChild onClick={handleNavClick}>
-                  <Link to="/inventory-control">
+                  <NavLink to="/payroll" className={linkClass}>
+                    <DollarSign className="h-4 w-4" />
+                    <span>Payroll</span>
+                  </NavLink>
+                </SidebarMenuButton>
+                {payrollDueCount > 0 && (
+                  <SidebarMenuBadge className="bg-red-600 text-white">{payrollDueCount}</SidebarMenuBadge>
+                )}
+              </SidebarMenuItem>
+
+              <SidebarMenuItem>
+                <SidebarMenuButton asChild onClick={handleNavClick}>
+                  <NavLink to="/inventory-control" className={linkClass}>
                     <Package className="h-4 w-4" />
                     <span>Inventory Control</span>
-                  </Link>
+                  </NavLink>
                 </SidebarMenuButton>
+                {inventoryCount > 0 && (
+                  <SidebarMenuBadge className="bg-red-600 text-white">{inventoryCount}</SidebarMenuBadge>
+                )}
               </SidebarMenuItem>
 
               <SidebarMenuItem>
                 <SidebarMenuButton asChild onClick={handleNavClick}>
-                  <Link to="/company-employees">
+                  <NavLink to="/company-employees" className={linkClass}>
                     <Users className="h-4 w-4" />
                     <span>Company Employees</span>
-                  </Link>
+                  </NavLink>
                 </SidebarMenuButton>
               </SidebarMenuItem>
 
               <SidebarMenuItem>
                 <SidebarMenuButton asChild onClick={handleNavClick}>
-                  <Link to="/file-manager">
+                  <NavLink to="/file-manager" className={linkClass}>
                     <FileText className="h-4 w-4" />
                     <span>File Manager</span>
-                  </Link>
+                  </NavLink>
                 </SidebarMenuButton>
+                {fileCount > 0 && (
+                  <SidebarMenuBadge className="bg-red-600 text-white">{fileCount}</SidebarMenuBadge>
+                )}
               </SidebarMenuItem>
 
               <SidebarMenuItem>
                 <SidebarMenuButton asChild onClick={handleNavClick}>
-                  <Link to="/reports">
+                  <NavLink to="/reports" className={linkClass}>
                     <FileBarChart className="h-4 w-4" />
                     <span>Reports</span>
-                  </Link>
+                  </NavLink>
                 </SidebarMenuButton>
               </SidebarMenuItem>
 
               <SidebarMenuItem>
                 <SidebarMenuButton asChild onClick={handleNavClick}>
-                  <Link to="/settings">
+                  <NavLink to="/settings" className={linkClass}>
                     <Settings className="h-4 w-4" />
                     <span>Settings</span>
-                  </Link>
+                  </NavLink>
                 </SidebarMenuButton>
               </SidebarMenuItem>
             </>

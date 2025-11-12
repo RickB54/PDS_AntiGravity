@@ -9,6 +9,7 @@ import { Label } from "@/components/ui/label";
 import { useToast } from "@/hooks/use-toast";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { Download, Upload, Trash2 } from "lucide-react";
+import { postFullSync, postServicesFullSync } from "@/lib/servicesMeta";
 import localforage from "localforage";
 
 const Settings = () => {
@@ -57,6 +58,27 @@ const Settings = () => {
       setTimeout(() => window.location.reload(), 1000);
     } catch (error) {
       toast({ title: "Restore Failed", description: "Could not restore data.", variant: "destructive" });
+    }
+  };
+
+  const handlePricingRestore = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+    try {
+      const text = await file.text();
+      const data = JSON.parse(text);
+      if (data.savedPrices) await localforage.setItem('savedPrices', data.savedPrices);
+      if (data.packageMeta) localStorage.setItem('packageMeta', JSON.stringify(data.packageMeta));
+      if (data.addOnMeta) localStorage.setItem('addOnMeta', JSON.stringify(data.addOnMeta));
+      if (data.customPackages) localStorage.setItem('customServicePackages', JSON.stringify(data.customPackages));
+      if (data.customAddOns) localStorage.setItem('customAddOns', JSON.stringify(data.customAddOns));
+      if (data.customServices) localStorage.setItem('customServices', JSON.stringify(data.customServices));
+      await postFullSync();
+      await postServicesFullSync();
+  try { await fetch(`http://localhost:6061/api/packages/live?v=${Date.now()}`, { headers: { 'Cache-Control': 'no-cache' } }); } catch {}
+      toast({ title: "Pricing restored from backup — live site updated" });
+    } catch (error) {
+      toast({ title: "Restore Failed", description: "Could not restore pricing.", variant: "destructive" });
     }
   };
 
@@ -135,6 +157,15 @@ const Settings = () => {
                       </span>
                     </Button>
                     <input type="file" accept=".json" className="hidden" onChange={handleRestore} />
+                  </label>
+                  <label>
+                    <Button variant="outline" asChild>
+                      <span>
+                        <Upload className="h-4 w-4 mr-2" />
+                        Restore Pricing from JSON Backup
+                      </span>
+                    </Button>
+                    <input type="file" accept=".json" className="hidden" onChange={handlePricingRestore} />
                   </label>
                 </div>
               </div>

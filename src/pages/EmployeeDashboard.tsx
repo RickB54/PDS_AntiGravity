@@ -5,6 +5,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
 import { Plus, Pencil, Trash2, Calendar } from "lucide-react";
 import {
   Select,
@@ -13,7 +14,9 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { BookingsCalendar } from "@/components/BookingsCalendar";
 import { useToast } from "@/hooks/use-toast";
+import { getEmployeeNotifications, markAllEmployeeNotificationsRead } from "@/lib/employeeNotifications";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -34,6 +37,7 @@ interface Task {
 
 const EmployeeDashboard = () => {
   const { toast } = useToast();
+  const [certifiedDate, setCertifiedDate] = useState<string | null>(null);
   const [tasks, setTasks] = useState<Task[]>([
     { id: "1", text: "Detail John's SUV at 2 PM", completed: false, createdAt: new Date().toISOString() },
     { id: "2", text: "Clean Sarah's BMW X5", completed: true, createdAt: new Date().toISOString() },
@@ -42,6 +46,7 @@ const EmployeeDashboard = () => {
   const [notes, setNotes] = useState("");
   const [deleteTaskId, setDeleteTaskId] = useState<string | null>(null);
   const [dateFilter, setDateFilter] = useState("all");
+  const [notifications, setNotifications] = useState<any[]>([]);
 
   const toggleTask = (id: string) => {
     setTasks(tasks.map(task =>
@@ -84,6 +89,25 @@ const EmployeeDashboard = () => {
 
   const filteredTasks = filterTasks();
 
+  useEffect(() => {
+    const cert = localStorage.getItem("employee_training_certified");
+    if (cert) setCertifiedDate(cert);
+    const loadNotifs = () => {
+      // Using employee name as id when available; fallback to email.
+      const userId = (localStorage.getItem('current_user') && (() => { try { return JSON.parse(localStorage.getItem('current_user')||'{}').email || JSON.parse(localStorage.getItem('current_user')||'{}').name; } catch { return null; } })()) || null;
+      const list = getEmployeeNotifications(userId || undefined);
+      setNotifications(list);
+    };
+    loadNotifs();
+    const onUpdate = () => loadNotifs();
+    window.addEventListener('employee_notifications_updated' as any, onUpdate as any);
+    window.addEventListener('storage', onUpdate);
+    return () => {
+      window.removeEventListener('employee_notifications_updated' as any, onUpdate as any);
+      window.removeEventListener('storage', onUpdate);
+    };
+  }, []);
+
   const deleteTask = () => {
     if (!deleteTaskId) return;
     setTasks(tasks.filter(task => task.id !== deleteTaskId));
@@ -102,6 +126,14 @@ const EmployeeDashboard = () => {
         <div className="space-y-6 animate-fade-in">
           <div className="flex justify-between items-center">
             <h1 className="text-3xl font-bold text-foreground">Employee Dashboard</h1>
+            {certifiedDate && (
+              <Badge className="bg-green-600">Certified Detailer — {certifiedDate}</Badge>
+            )}
+            {notifications.filter(n=>!n.read).length > 0 && (
+              <Badge className="bg-red-600">
+                {notifications.filter(n=>!n.read).length} new notification(s)
+              </Badge>
+            )}
             <Select value={dateFilter} onValueChange={setDateFilter}>
               <SelectTrigger className="w-40">
                 <SelectValue />
@@ -114,6 +146,26 @@ const EmployeeDashboard = () => {
               </SelectContent>
             </Select>
           </div>
+
+          {/* Notifications */}
+          <Card className="p-6 bg-gradient-card border-border">
+            <div className="flex items-center justify-between mb-3">
+              <h2 className="text-2xl font-bold text-foreground">Notifications</h2>
+              <Button variant="outline" onClick={() => { markAllEmployeeNotificationsRead(); const list = getEmployeeNotifications(); setNotifications(list); }}>Mark all read</Button>
+            </div>
+            {notifications.length === 0 ? (
+              <p className="text-sm text-muted-foreground">No notifications.</p>
+            ) : (
+              <div className="space-y-2">
+                {notifications.map((n) => (
+                  <div key={n.id} className={`p-3 rounded border ${n.read ? 'border-border' : 'border-red-600'}`}>
+                    <div className="text-sm text-muted-foreground">{new Date(n.timestamp).toLocaleString()}</div>
+                    <div className="text-foreground">{n.message}</div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </Card>
 
           {/* Task List */}
           <Card className="p-6 bg-gradient-card border-border">
@@ -194,6 +246,13 @@ const EmployeeDashboard = () => {
           </div>
         </div>
       </main>
+      {/* Read-only Bookings calendar for employees */}
+      <div className="container mx-auto px-4 pb-8 max-w-4xl">
+        <Card className="p-6 bg-gradient-card border-border">
+          <h2 className="text-2xl font-bold text-foreground mb-4">Bookings Calendar</h2>
+          <BookingsCalendar readOnly={true} />
+        </Card>
+      </div>
 
       <AlertDialog open={deleteTaskId !== null} onOpenChange={() => setDeleteTaskId(null)}>
         <AlertDialogContent>
