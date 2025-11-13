@@ -114,6 +114,15 @@ const api = async (endpoint, options = {}) => {
       return [];
     }
   }
+  // Local handler: GET all customers — always return an array fallback
+  if (endpoint === '/api/customers' && (options.method || 'GET').toUpperCase() === 'GET') {
+    try {
+      const list = (await localforage.getItem('customers')) || [];
+      return Array.isArray(list) ? list : [];
+    } catch (e) {
+      return [];
+    }
+  }
   // Local handler: upsert customers when backend is unavailable
   if (endpoint === '/api/customers' && (options.method || 'GET').toUpperCase() === 'POST') {
     try {

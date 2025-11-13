@@ -59,14 +59,38 @@ const [dateFilter, setDateFilter] = useState<"all" | "daily" | "weekly" | "month
 
 useEffect(() => {
     (async () => {
-      const list = await getUnifiedCustomers();
-      setCustomers(list as Customer[]);
+      try {
+        const list = await getUnifiedCustomers();
+        setCustomers(Array.isArray(list) ? (list as Customer[]) : []);
+      } catch (err: any) {
+        console.error('Failed to load customers:', err);
+        try {
+          const fallback = await getCustomers();
+          setCustomers(Array.isArray(fallback) ? (fallback as Customer[]) : []);
+          toast({ title: 'Load failed — retry', description: 'Using local customers cache.', variant: 'default' });
+        } catch (err2: any) {
+          toast({ title: 'Load failed — retry', description: err2?.message || String(err2), variant: 'destructive' });
+          setCustomers([]);
+        }
+      }
     })();
   }, []);
 
 const refresh = async () => {
-    const list = await getUnifiedCustomers();
-    setCustomers(list as Customer[]);
+    try {
+      const list = await getUnifiedCustomers();
+      setCustomers(Array.isArray(list) ? (list as Customer[]) : []);
+    } catch (err: any) {
+      console.error('Refresh customers failed:', err);
+      try {
+        const fallback = await getCustomers();
+        setCustomers(Array.isArray(fallback) ? (fallback as Customer[]) : []);
+        toast({ title: 'Load failed — retry', description: 'Using local customers cache.', variant: 'default' });
+      } catch (err2: any) {
+        toast({ title: 'Load failed — retry', description: err2?.message || String(err2), variant: 'destructive' });
+        setCustomers([]);
+      }
+    }
   };
 
   const openAdd = () => { setEditing(null); setModalOpen(true); };
@@ -111,11 +135,11 @@ const filterByDate = (customer: Customer) => {
   };
 
   const filteredCustomers = (Array.isArray(customers) ? customers : []).filter(customer => {
-    const matchesSearch = customer.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      customer.phone.includes(searchTerm) ||
-      customer.vehicle.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      customer.model.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      customer.year.includes(searchTerm);
+    const matchesSearch = (customer.name || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
+      (customer.phone || '').includes(searchTerm) ||
+      (customer.vehicle || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
+      (customer.model || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
+      (customer.year || '').includes(searchTerm);
     return matchesSearch && filterByDate(customer);
   });
 
@@ -231,7 +255,7 @@ const filterByDate = (customer: Customer) => {
                   value={""}
                 >
                   <option value="" disabled>All Customers</option>
-                  {[...customers].sort((a,b) => a.name.localeCompare(b.name)).map(c => (
+                  {[...(Array.isArray(customers) ? customers : [])].sort((a,b) => (a.name || '').localeCompare(b.name || '')).map(c => (
                     <option key={c.id || c.name} value={c.name}>{c.name}</option>
                   ))}
                 </select>
@@ -347,7 +371,7 @@ const filterByDate = (customer: Customer) => {
                             <div className="md:col-span-2">
                               <Label className="text-muted-foreground">Services</Label>
                               <div className="flex flex-wrap gap-2 mt-1">
-                                {customer.services.map((service, idx) => (
+                                {(Array.isArray(customer.services) ? customer.services : []).map((service, idx) => (
                                   <span
                                     key={idx}
                                     className="px-2 py-1 bg-primary/20 text-primary text-xs rounded-full"
@@ -382,10 +406,15 @@ const filterByDate = (customer: Customer) => {
           {filteredCustomers.length === 0 && (
             <Card className="p-12 bg-gradient-card border-border text-center">
               <Search className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
-              <h3 className="text-xl font-semibold text-foreground mb-2">No customers found</h3>
+              <h3 className="text-xl font-semibold text-foreground mb-2">No customers yet</h3>
               <p className="text-muted-foreground">
                 Try adjusting your search or add a new customer
               </p>
+              <div className="mt-4">
+                <Button className="bg-gradient-hero" onClick={openAdd}>
+                  <Plus className="h-4 w-4 mr-2" /> Add Customer
+                </Button>
+              </div>
             </Card>
           )}
         </div>
