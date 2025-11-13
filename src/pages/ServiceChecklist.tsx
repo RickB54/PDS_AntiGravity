@@ -18,7 +18,7 @@ import { savePDFToArchive } from "@/lib/pdfArchive";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import CustomerModal, { Customer as CustomerType } from "@/components/customers/CustomerModal";
 import { servicePackages, addOns, getServicePrice, getAddOnPrice, VehicleType as VehKey } from "@/lib/services";
-import { getCustomPackages, getCustomAddOns, getPackageMeta, getAddOnMeta } from "@/lib/servicesMeta";
+import { getCustomPackages, getCustomAddOns, getPackageMeta, getAddOnMeta, buildFullSyncPayload } from "@/lib/servicesMeta";
 import { Progress } from "@/components/ui/progress";
 import MaterialsUsedModal from "@/components/checklist/MaterialsUsedModal";
 
@@ -37,22 +37,9 @@ interface Customer {
 }
 
 // Vehicle UI labels to dynamic keys
-const VEHICLE_UI_TO_KEY: Record<string, VehKey> = {
-  "Compact/Sedan": "compact",
-  "Mid-Size/SUV": "midsize",
-  "Truck/Van/Large SUV": "truck",
-  "Luxury/High-End": "luxury",
-};
-const KEY_TO_VEHICLE_UI: Record<VehKey, string> = {
-  compact: "Compact/Sedan",
-  midsize: "Mid-Size/SUV",
-  truck: "Truck/Van/Large SUV",
-  luxury: "Luxury/High-End",
-};
-
-function toVehKey(label: string): VehKey {
-  // Ensure unknown labels like 'Other' map to a sane default
-  return VEHICLE_UI_TO_KEY[label] || "midsize";
+// Helper to ensure we pass a valid built-in key to legacy getters when needed
+function toBuiltInVehKey(key: string): VehKey {
+  return (key === 'compact' || key === 'midsize' || key === 'truck' || key === 'luxury') ? (key as VehKey) : 'midsize';
 }
 
 // Build display lists from dynamic sources + admin customizations
@@ -77,7 +64,15 @@ const ServiceChecklist = () => {
   const { toast } = useToast();
   const [customers, setCustomers] = useState<CustomerType[]>([]);
   const [selectedCustomer, setSelectedCustomer] = useState("");
-  const [vehicleType, setVehicleType] = useState(KEY_TO_VEHICLE_UI.midsize);
+  // Dynamic vehicle types (store slug key directly)
+  const [vehicleType, setVehicleType] = useState<string>('midsize');
+  const [vehicleLabels, setVehicleLabels] = useState<Record<string, string>>({
+    compact: "Compact/Sedan",
+    midsize: "Mid-Size/SUV",
+    truck: "Truck/Van/Large SUV",
+    luxury: "Luxury/High-End",
+  });
+  const [vehicleOptions, setVehicleOptions] = useState<string[]>(['compact','midsize','truck','luxury']);
   const [selectedServices, setSelectedServices] = useState<string[]>([]);
   const [addOnsExpanded, setAddOnsExpanded] = useState(false);
   const [discountType, setDiscountType] = useState<"percent" | "dollar">("percent");
@@ -97,6 +92,55 @@ const ServiceChecklist = () => {
   const [customerSearch, setCustomerSearch] = useState<string>("");
   const [customerSearchResults, setCustomerSearchResults] = useState<CustomerType[]>([]);
   const [vehicleTypeOther, setVehicleTypeOther] = useState<string>("");
+  const [savedPricesLive, setSavedPricesLive] = useState<Record<string,string>>({});
+
+  const getKey = (type: 'package'|'addon', id: string, size: string) => `${type}:${id}:${size}`;
+
+  // Load live vehicle types
+  useEffect(() => {
+    const loadVehicleTypes = async () => {
+      try {
+        const res = await fetch(`http://localhost:6061/api/vehicle-types/live?v=${Date.now()}`, { headers: { 'Cache-Control': 'no-cache' } });
+        if (res.ok) {
+          const data = await res.json();
+          if (Array.isArray(data)) {
+            const map: Record<string, string> = { ...vehicleLabels };
+            const opts: string[] = [];
+            data.forEach((vt: any) => {
+              const id = String(vt.id || vt.key || '').trim();
+              const name = String(vt.name || '').trim();
+              if (id && name) { map[id] = name; opts.push(id); }
+            });
+            setVehicleLabels(map);
+            setVehicleOptions(opts.length ? opts : ['compact','midsize','truck','luxury']);
+            if (!opts.includes(vehicleType)) setVehicleType(opts[0] || 'midsize');
+          }
+        }
+      } catch {}
+    };
+    loadVehicleTypes();
+    const onChanged = (e: any) => {
+      if (e && e.detail && (e.detail.kind === 'vehicle-types' || e.detail.type === 'vehicle-types')) loadVehicleTypes();
+    };
+    window.addEventListener('content-changed', onChanged as any);
+    return () => window.removeEventListener('content-changed', onChanged as any);
+  }, []);
+
+  // Load savedPrices for dynamic pricing
+  useEffect(() => {
+    const loadSavedPrices = async () => {
+      try {
+        const snapshot = await buildFullSyncPayload();
+        setSavedPricesLive(snapshot.savedPrices || {});
+      } catch {}
+    };
+    loadSavedPrices();
+    const onChanged = (e: any) => {
+      if (e && e.detail && (e.detail.kind === 'savedPrices' || e.detail.type === 'savedPrices')) loadSavedPrices();
+    };
+    window.addEventListener('content-changed', onChanged as any);
+    return () => window.removeEventListener('content-changed', onChanged as any);
+  }, []);
   type ChecklistStep = { id: string; name: string; category: 'preparation' | 'exterior' | 'interior' | 'final'; checked: boolean };
   const [checklistSteps, setChecklistSteps] = useState<ChecklistStep[]>([]);
   const [collapsedSections, setCollapsedSections] = useState<Record<string, boolean>>({});
@@ -301,13 +345,22 @@ const [params] = useSearchParams();
   };
 
   const calculateSubtotal = () => {
-    const vkey = toVehKey(vehicleType);
+    const selectedKey = vehicleType;
+    const builtInKey = toBuiltInVehKey(selectedKey);
     const allServices = [...coreServicesDisplay, ...addOnServicesDisplay, destinationFeeDisplay];
     const total = selectedServices.reduce((sum, id) => {
       const svc = allServices.find(s => s.id === id);
       if (!svc) return sum;
-      if (svc.kind === 'package') return sum + getServicePrice(svc.id, vkey);
-      if (svc.kind === 'addon') return sum + getAddOnPrice(svc.id, vkey);
+      if (svc.kind === 'package') {
+        const sp = parseFloat(savedPricesLive[getKey('package', id, selectedKey)]) || NaN;
+        const fallback = getServicePrice(svc.id, builtInKey);
+        return sum + (isNaN(sp) ? fallback : sp);
+      }
+      if (svc.kind === 'addon') {
+        const ap = parseFloat(savedPricesLive[getKey('addon', id, selectedKey)]) || NaN;
+        const fallback = getAddOnPrice(svc.id, builtInKey);
+        return sum + (isNaN(ap) ? fallback : ap);
+      }
       return sum; // special handled separately
     }, 0);
     return total + destinationFee;
@@ -315,7 +368,7 @@ const [params] = useSearchParams();
 
   // When package or add-ons change, re-sync selectedServices and build checklist
   useEffect(() => {
-    const vkey = toVehKey(vehicleType);
+    const vkey = toBuiltInVehKey(vehicleType);
     const selected = [selectedPackage, ...selectedAddOns].filter(Boolean);
     setSelectedServices(selected);
     // Build steps from selected package
@@ -433,11 +486,22 @@ const handleSave = async () => {
 
   const handleCreateInvoice = async () => {
     const customer = customers.find(c => c.id === selectedCustomer);
-    const vkey = toVehKey(vehicleType);
+    const vkeyBuiltIn = toBuiltInVehKey(vehicleType);
     const allServices = [...coreServicesDisplay, ...addOnServicesDisplay, destinationFeeDisplay];
     const selectedItems = selectedServices.map(id => {
       const svc = allServices.find(s => s.id === id);
-      const price = svc?.kind === 'package' ? getServicePrice(svc.id, vkey) : (svc?.kind === 'addon' ? getAddOnPrice(svc.id, vkey) : destinationFee);
+      const price = (() => {
+        if (!svc) return 0;
+        if (svc.kind === 'package') {
+          const sp = parseFloat(savedPricesLive[getKey('package', svc.id, vehicleType)]) || NaN;
+          return isNaN(sp) ? getServicePrice(svc.id, vkeyBuiltIn) : sp;
+        }
+        if (svc.kind === 'addon') {
+          const ap = parseFloat(savedPricesLive[getKey('addon', svc.id, vehicleType)]) || NaN;
+          return isNaN(ap) ? getAddOnPrice(svc.id, vkeyBuiltIn) : ap;
+        }
+        return destinationFee;
+      })();
       return {
         id,
         name: svc?.name || "",
@@ -457,7 +521,7 @@ const handleSave = async () => {
       customerName: customer.name,
       vehicle: `${customer.year || ""} ${customer.vehicle || ""} ${customer.model || ""}`.trim(),
       contact: { address: customer.address, phone: customer.phone, email: customer.email },
-      vehicleInfo: { type: vehicleType, mileage: customer.mileage, year: customer.year, color: customer.color, conditionInside: customer.conditionInside, conditionOutside: customer.conditionOutside },
+      vehicleInfo: { type: vehicleLabels[vehicleType] || vehicleType, mileage: customer.mileage, year: customer.year, color: customer.color, conditionInside: customer.conditionInside, conditionOutside: customer.conditionOutside },
       services: selectedItems,
       subtotal: calculateSubtotal(),
       discount: { type: discountType, value: discountValue ? parseFloat(discountValue) : 0, amount: calculateDiscount() },
@@ -586,10 +650,9 @@ const handleSave = async () => {
                   onChange={(e) => setVehicleType(e.target.value)}
                   className="flex h-10 w-full rounded-md border border-white/20 bg-black text-white px-3 py-2 text-sm"
                 >
-                  <option value="Compact/Sedan">Compact/Sedan</option>
-                  <option value="Mid-Size/SUV">Mid-Size/SUV</option>
-                  <option value="Truck/Van/Large SUV">Truck/Van/Large SUV</option>
-                  <option value="Luxury/High-End">Luxury/High-End</option>
+                  {vehicleOptions.map((opt) => (
+                    <option key={opt} value={opt}>{vehicleLabels[opt] || opt}</option>
+                  ))}
                   <option value="Other">Other</option>
                 </select>
                 {vehicleType === 'Other' && (
@@ -678,7 +741,18 @@ const handleSave = async () => {
           {/* Destination Fee (optional) */}
           <Card className="p-6 bg-gradient-card border-border">
             <Label>Destination Fee (optional)</Label>
-            <Input type="number" placeholder="Enter fee amount" value={destinationFee || ''} onChange={(e) => setDestinationFee(parseFloat(e.target.value) || 0)} className="mt-2 max-w-xs" />
+            <Input
+              type="number"
+              placeholder="Enter fee amount"
+              value={destinationFee || ''}
+              onChange={(e) => {
+                let num = parseFloat(e.target.value);
+                if (isNaN(num)) num = 0;
+                num = Math.max(0, Math.min(9999, num));
+                setDestinationFee(Math.round(num));
+              }}
+              className="mt-2 max-w-xs"
+            />
           </Card>
 
           {/* Materials Used */}

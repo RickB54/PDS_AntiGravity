@@ -1,11 +1,26 @@
+import { useEffect, useState } from "react";
 import { Navbar } from "@/components/Navbar";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Shield, Users, Sparkles, ArrowRight, ArrowLeft } from "lucide-react";
 import { Link } from "react-router-dom";
 import logo from "@/assets/logo-3inch.png";
+import api from "@/lib/api";
 
 const About = () => {
+  const [sections, setSections] = useState<{ id: string; section: string; content: string }[]>([]);
+  useEffect(() => {
+    let mounted = true;
+    const load = async () => {
+      const list = await api('/api/about', { method: 'GET' });
+      if (mounted && Array.isArray(list)) setSections(list);
+    };
+    load();
+    const onChanged = (e: any) => { if (e?.detail?.type === 'about') load(); };
+    window.addEventListener('content-changed', onChanged as any);
+    window.addEventListener('storage', load);
+    return () => { mounted = false; window.removeEventListener('content-changed', onChanged as any); window.removeEventListener('storage', load); };
+  }, []);
   return (
     <div className="min-h-screen bg-background">
       <Navbar />
@@ -60,6 +75,21 @@ const About = () => {
               </a>
             </div>
           </Card>
+
+          {/* Dynamic About Sections */}
+          {sections.length > 0 && (
+            <Card className="p-6 bg-gradient-card border-border">
+              <h3 className="text-2xl font-bold text-foreground mb-4">About Sections</h3>
+              <div className="space-y-4">
+                {sections.map((s) => (
+                  <div key={s.id}>
+                    <h4 className="text-xl font-semibold text-foreground">{s.section}</h4>
+                    <p className="text-muted-foreground whitespace-pre-line">{s.content}</p>
+                  </div>
+                ))}
+              </div>
+            </Card>
+          )}
 
           {/* Features Grid */}
           <div className="grid md:grid-cols-3 gap-8">

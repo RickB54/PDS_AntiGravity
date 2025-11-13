@@ -1,53 +1,29 @@
+import { useEffect, useState } from "react";
 import { Navbar } from "@/components/Navbar";
 import { Card } from "@/components/ui/card";
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion";
 import { Button } from "@/components/ui/button";
 import { Link } from "react-router-dom";
 import { ArrowLeft } from "lucide-react";
+import api from "@/lib/api";
 
 const FAQ = () => {
-  const faqs = [
-    {
-      question: "How often should I detail my vehicle?",
-      answer: "We recommend 2–5 times per year, based on usage, storage, and washing habits. Regular detailing preserves paint and boosts resale value."
-    },
-    {
-      question: "What prep is needed before my appointment?",
-      answer: "Empty compartments and cargo areas. Inform us of any 'do not clean' zones. We'll bag loose items for you."
-    },
-    {
-      question: "How long does each package take?",
-      answer: "• Basic/Interior/Exterior Only: 2 hours\n• Express/Full Detail: 2.5–3 hours\n• Premium: 3–3.5 hours\n(Varies by vehicle condition)"
-    },
-    {
-      question: "What are your hours?",
-      answer: "Appointments daily 8 AM–6 PM. Same/next-day available (not guaranteed)."
-    },
-    {
-      question: "Can you detail in bad weather?",
-      answer: "No rain/snow. Garage access allows us to proceed."
-    },
-    {
-      question: "Do you need water/power?",
-      answer: "Yes — on-site pricing includes utility use."
-    },
-    {
-      question: "What payment methods do you accept?",
-      answer: "Cash, Credit/Debit, Venmo, Zelle. Invoices sent post-service."
-    },
-    {
-      question: "Is there a warranty?",
-      answer: "48-hour satisfaction guarantee. Re-service free if needed."
-    },
-    {
-      question: "Do you offer fleet/commercial pricing?",
-      answer: "Yes — contact for custom quotes."
-    },
-    {
-      question: "Are your products safe?",
-      answer: "Eco-friendly, pH-balanced. Safe for paint, leather, and pets."
-    }
-  ];
+  const [faqs, setFaqs] = useState<{ id: string; question: string; answer: string }[]>([]);
+
+  useEffect(() => {
+    let mounted = true;
+    const load = async () => {
+      const list = await api('/api/faqs', { method: 'GET' });
+      if (mounted && Array.isArray(list)) setFaqs(list);
+    };
+    load();
+    const onChanged = (e: any) => {
+      if (e?.detail?.type === 'faqs') load();
+    };
+    window.addEventListener('content-changed', onChanged as any);
+    window.addEventListener('storage', load);
+    return () => { mounted = false; window.removeEventListener('content-changed', onChanged as any); window.removeEventListener('storage', load); };
+  }, []);
 
   return (
     <div className="min-h-screen bg-background">

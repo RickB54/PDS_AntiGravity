@@ -2,8 +2,42 @@ import { useEffect, useMemo, useState } from "react";
 import { PageHeader } from "@/components/PageHeader";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { Separator } from "@/components/ui/separator";
-import { AlertTriangle, CalendarDays, UserPlus, FileText, Package, DollarSign, Calculator, Folder, Users, Grid3X3, CheckSquare, Tag, Settings as Cog } from "lucide-react";
+import { Checkbox } from "@/components/ui/checkbox";
+import { Label } from "@/components/ui/label";
+import { AlertTriangle, CalendarDays, UserPlus, FileText, Package, DollarSign, Calculator, Folder, Users, Grid3X3, CheckSquare, Tag, Settings as Cog, Shield } from "lucide-react";
 import { Link } from "react-router-dom";
 import localforage from "localforage";
 import { useAlertsStore } from "@/store/alerts";
@@ -11,10 +45,71 @@ import { useBookingsStore } from "@/store/bookings";
 import { isViewed } from "@/lib/viewTracker";
 import { getInvoices } from "@/lib/db";
 import api from "@/lib/api";
+import { postFullSync } from "@/lib/servicesMeta";
 import { useToast } from "@/hooks/use-toast";
 import { notify } from "@/store/alerts";
 
 type Job = { finishedAt: string; totalRevenue: number; status: string };
+
+// Persistent menu visibility settings
+const MENU_STORAGE_KEY = 'hiddenMenuItems';
+const MENU_REGISTRY: { key: string; label: string }[] = [
+  { key: 'bookings', label: 'Bookings' },
+  { key: 'search-customer', label: 'Customer Profiles' },
+  { key: 'invoicing', label: 'Invoicing' },
+  { key: 'accounting', label: 'Accounting' },
+  { key: 'payroll', label: 'Payroll' },
+  { key: 'inventory-control', label: 'Inventory Control' },
+  { key: 'file-manager', label: 'File Manager' },
+  { key: 'reports', label: 'Reports' },
+  { key: 'employee-dashboard', label: 'Employee Dashboard' },
+  { key: 'service-checklist', label: 'Service Checklist' },
+  { key: 'package-pricing', label: 'Package Pricing' },
+  { key: 'settings', label: 'Settings' },
+  { key: 'discount-coupons', label: 'Discount Coupons' },
+  { key: 'training-manual', label: 'Training Manual' },
+  { key: 'company-employees', label: 'Company Employees' },
+];
+
+function getHiddenMenuItems(): string[] {
+  try {
+    const raw = localStorage.getItem(MENU_STORAGE_KEY);
+    const arr = JSON.parse(raw || '[]');
+    return Array.isArray(arr) ? arr : [];
+  } catch { return []; }
+}
+function setHiddenMenuItems(items: string[]) {
+  localStorage.setItem(MENU_STORAGE_KEY, JSON.stringify(items));
+}
+export function isMenuHidden(key: string): boolean {
+  return getHiddenMenuItems().includes(key);
+}
+
+function MenuVisibilityControls() {
+  const [hidden, setHidden] = useState<string[]>(getHiddenMenuItems());
+  const { toast } = useToast();
+  const toggleKey = (key: string, show: boolean) => {
+    const next = show ? hidden.filter((k) => k !== key) : [...hidden, key];
+    setHidden(next);
+    setHiddenMenuItems(next);
+    // Nudge listeners (sidebar, dashboards) to recompute
+    window.dispatchEvent(new Event('storage'));
+    toast({ title: 'Menu visibility updated', description: `${show ? 'Showing' : 'Hiding'} ${MENU_REGISTRY.find(i => i.key === key)?.label || key}` });
+  };
+  return (
+    <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+      {MENU_REGISTRY.map((item) => {
+        const shown = !hidden.includes(item.key);
+        return (
+          <div key={item.key} className="flex items-center gap-2 p-2 rounded border border-zinc-800 bg-zinc-900">
+            <Checkbox checked={shown} onCheckedChange={(val) => toggleKey(item.key, Boolean(val))} id={`menu_${item.key}`} />
+            <Label htmlFor={`menu_${item.key}`} className="text-sm text-white">{item.label}</Label>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
 
 export default function AdminDashboard() {
   const { toast } = useToast();
@@ -27,6 +122,170 @@ export default function AdminDashboard() {
   const [newFilesToday, setNewFilesToday] = useState<number>(0);
   const [totalDue, setTotalDue] = useState<number>(0);
   const [overdueCount, setOverdueCount] = useState<number>(0);
+  // Menu visibility tick to refresh when settings change
+  const [menuTick, setMenuTick] = useState(0);
+  // User Administration modal state
+  const [userAdminOpen, setUserAdminOpen] = useState(false);
+  const [users, setUsers] = useState<any[]>([]);
+  const [search, setSearch] = useState("");
+  const [deleteId, setDeleteId] = useState<string | null>(null);
+  const [impersonateId, setImpersonateId] = useState<string | null>(null);
+  const [newName, setNewName] = useState("");
+  const [newEmail, setNewEmail] = useState("");
+  const [newPassword, setNewPassword] = useState("");
+  const [newRole, setNewRole] = useState<'employee' | 'admin'>('employee');
+  // Website Admin state
+  const [vehicleTypes, setVehicleTypes] = useState<any[]>([]);
+  const [faqs, setFaqs] = useState<any[]>([]);
+  const [contactInfo, setContactInfo] = useState<{ hours: string; phone: string; address: string; email: string }>({ hours: '', phone: '', address: '', email: '' });
+  const [aboutSections, setAboutSections] = useState<any[]>([]);
+  // Modals for edit/add
+  const [editVehicle, setEditVehicle] = useState<any | null>(null);
+  const [newVehicleOpen, setNewVehicleOpen] = useState(false);
+  const [newVehicleName, setNewVehicleName] = useState('');
+  const [newVehicleDesc, setNewVehicleDesc] = useState('');
+  const [newVehicleBase, setNewVehicleBase] = useState<string>('midsize');
+  const [newVehicleMultiplier, setNewVehicleMultiplier] = useState<string>('100');
+  const [editFaq, setEditFaq] = useState<any | null>(null);
+  const [newFaqOpen, setNewFaqOpen] = useState(false);
+  const [newFaqQ, setNewFaqQ] = useState('');
+  const [newFaqA, setNewFaqA] = useState('');
+  const [editAbout, setEditAbout] = useState<any | null>(null);
+  const [newAboutOpen, setNewAboutOpen] = useState(false);
+  const [newAboutSection, setNewAboutSection] = useState('');
+  const [newAboutContent, setNewAboutContent] = useState('');
+
+  // Removed auto-open for Website Administration to decouple from Admin Dashboard
+
+  const loadUsers = async () => {
+    try {
+      const list = await api('/api/users', { method: 'GET' });
+      setUsers(Array.isArray(list) ? list : []);
+    } catch {
+      setUsers([]);
+    }
+  };
+
+  useEffect(() => {
+    if (userAdminOpen) loadUsers();
+  }, [userAdminOpen]);
+
+  // Load Website Admin content when modal opens and refresh on content-changed
+  useEffect(() => {
+    const loadWA = async () => {
+      try {
+        const vt = await api('/api/vehicle-types', { method: 'GET' });
+        setVehicleTypes(Array.isArray(vt) ? vt : []);
+      } catch { setVehicleTypes([]); }
+      try {
+        const f = await api('/api/faqs', { method: 'GET' });
+        // Handle both array response and object with items property to ensure all FAQs load
+        const items = Array.isArray(f) ? f : (Array.isArray((f as any)?.items) ? (f as any).items : []);
+        setFaqs(items);
+      } catch { setFaqs([]); }
+      try {
+        const c = await api('/api/contact', { method: 'GET' });
+        if (c && typeof c === 'object') setContactInfo({
+          hours: c.hours || '',
+          phone: c.phone || '',
+          address: c.address || '',
+          email: c.email || '',
+        });
+      } catch {}
+      try {
+        const a = await api('/api/about', { method: 'GET' });
+        setAboutSections(Array.isArray(a) ? a : []);
+      } catch { setAboutSections([]); }
+    };
+    if (userAdminOpen) loadWA();
+    const onChanged = (e: any) => {
+      if (!userAdminOpen) return;
+      if (e && e.detail && ['vehicle-types','faqs','contact','about'].includes(e.detail.kind)) loadWA();
+    };
+    window.addEventListener('content-changed', onChanged as any);
+    return () => window.removeEventListener('content-changed', onChanged as any);
+  }, [userAdminOpen]);
+
+  const filteredUsers = users.filter((u) => {
+    const q = search.trim().toLowerCase();
+    if (!q) return true;
+    return String(u.name).toLowerCase().includes(q) || String(u.email).toLowerCase().includes(q);
+  });
+
+  const handleCreateUser = async () => {
+    try {
+      const payload = {
+        name: newName.trim(),
+        email: newEmail.trim(),
+        password: newPassword.trim() || undefined,
+        role: newRole,
+      };
+      if (!payload.name || !payload.email) {
+        toast({ title: 'Missing fields', description: 'Name and Email are required' });
+        return;
+      }
+      const res = await api('/api/users/create', { method: 'POST', body: JSON.stringify(payload) });
+      if (res?.ok) {
+        toast({ title: 'User created', description: `${payload.name} (${payload.role})` });
+        setNewName(''); setNewEmail(''); setNewPassword(''); setNewRole('employee');
+        await loadUsers();
+      } else if (res?.error === 'user_exists') {
+        toast({ title: 'Email already exists', description: 'Choose a different email' });
+      } else {
+        toast({ title: 'Failed to create user', description: 'Try again' });
+      }
+    } catch {
+      toast({ title: 'Failed to create', description: 'Unexpected error' });
+    }
+  };
+
+  const handleUpdateRole = async (id: string, role: 'employee' | 'admin') => {
+    try {
+      const res = await api(`/api/users/${id}/role`, { method: 'PUT', body: JSON.stringify({ role }) });
+      if (res?.ok) {
+        toast({ title: 'Role updated', description: `Now ${role}` });
+        await loadUsers();
+      } else {
+        toast({ title: 'Failed to update role' });
+      }
+    } catch {
+      toast({ title: 'Failed to update role' });
+    }
+  };
+
+  const handleDelete = async (id: string) => {
+    try {
+      const res = await api(`/api/users/${id}`, { method: 'DELETE' });
+      if (res?.ok) {
+        toast({ title: 'User deleted' });
+        await loadUsers();
+      } else {
+        toast({ title: 'Failed to delete' });
+      }
+    } catch {
+      toast({ title: 'Failed to delete' });
+    } finally {
+      setDeleteId(null);
+    }
+  };
+
+  const handleImpersonate = async (id: string) => {
+    try {
+      const res = await api(`/api/users/impersonate/${id}`, { method: 'POST' });
+      if (res?.ok) {
+        toast({ title: 'Impersonation active', description: `Signed on as ${res.user?.name || 'user'}` });
+        // Redirect to appropriate dashboard
+        setUserAdminOpen(false);
+        setTimeout(() => {
+          window.location.href = '/dashboard';
+        }, 200);
+      } else {
+        toast({ title: 'Failed to impersonate' });
+      }
+    } catch {
+      toast({ title: 'Failed to impersonate' });
+    }
+  };
 
   useEffect(() => {
     const todayStr = new Date().toDateString();
@@ -177,10 +436,13 @@ export default function AdminDashboard() {
     </Card>
   );
 
+  // Removed auto FAQ seeding to keep Website Administration independent
+
   return (
     <div>
       <PageHeader title="Admin Dashboard" />
       <div className="p-4 space-y-6 max-w-screen-xl mx-auto overflow-x-hidden">
+        {/* Removed top-right Website Administration button; now a dashboard box below */}
         {/* Real-time Alerts banner with deep purple background */}
         <Card className="p-4 border-purple-500/60 border bg-purple-900">
           <div className="flex items-center justify-between">
@@ -208,21 +470,593 @@ export default function AdminDashboard() {
           </div>
         </Card>
 
-        {/* Quick-action red boxes grid (3 columns at lg and above) */}
+        {/* Quick-action boxes grid (3 columns at lg and above) */}
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-          <RedBox title="New Booking" subtitle={`New today: ${newBookingsToday}`} href="/bookings" Icon={CalendarDays} badgeCount={Math.max(newBookingsToday, badgeByType('booking_created'))} />
-          <RedBox title="Add Customer" subtitle="Find or add customer" href="/search-customer" Icon={UserPlus} badgeCount={badgeByType('customer_added')} />
-          <RedBox title="Create Invoice" subtitle={`${unpaidInvoices} unpaid`} href="/invoicing" Icon={FileText} badgeCount={Math.max(unpaidInvoices, badgeByType('invoice_unpaid'))} />
-          <RedBox title="Low Inventory" subtitle={`${criticalInventory} items critical`} href="/inventory-control" Icon={Package} badgeCount={criticalInventory} />
-          <RedBox title="Payroll Due" subtitle={`${overdueCount} employees due payment this week — $${totalDue.toFixed(2)} total`} href="/payroll" Icon={DollarSign} badgeCount={Math.max(badgeByType('payroll_due'), overdueCount)} />
-          <RedBox title="Accounting" subtitle="View P&L" href="/accounting" Icon={Calculator} badgeCount={badgeByType('accounting_update')} />
-          <RedBox title="File Manager" subtitle={`${newFilesToday} new file${newFilesToday === 1 ? '' : 's'}`} href="/file-manager" Icon={Folder} badgeCount={Math.max(newFilesToday, alertsAll.filter(a => a.type === 'pdf_saved' && !a.read).length)} />
-          <RedBox title="Customer Profiles" subtitle="View Customer Info PDFs" href="/search-customer" Icon={Users} badgeCount={alertsAll.filter(a => a.payload?.recordType === 'Customer' && !a.read).length} />
-          <RedBox title="Staff Portal" subtitle="Open menu" href="/employee-dashboard" Icon={Grid3X3} />
-          <RedBox title="Todo" subtitle={`Overdue: ${0}`} href="/checklist" Icon={CheckSquare} badgeCount={badgeByType('todo_overdue')} />
-          <RedBox title="Package Pricing" subtitle="Update prices" href="/package-pricing" Icon={Tag} badgeCount={badgeByType('pricing_update')} />
-          <RedBox title="Company Settings" subtitle="Edit business" href="/settings" Icon={Cog} />
+          {/* Website Administration quick link box now navigates to a standalone page */}
+          <Card className="relative p-5 bg-[#18181b] rounded-2xl border border-zinc-800 hover:border-blue-700 transition-shadow hover:shadow-[0_0_0_2px_rgba(37,99,235,0.35)]">
+            <div className="flex items-start">
+              <div className="flex-1">
+                <div className="text-lg font-semibold text-blue-700">Website Administration</div>
+                <div className="text-sm text-zinc-400">Manage vehicle types, FAQs, contact, and about</div>
+              </div>
+              <Shield className="w-8 h-8 text-blue-600/80" />
+            </div>
+            <Link to="/website-admin" className="block mt-3">
+              <Button size="sm" variant="outline" className="w-full rounded-md border-blue-600 text-blue-600 hover:bg-blue-600/10">Open</Button>
+            </Link>
+          </Card>
+          {!isMenuHidden('bookings') && (
+            <RedBox title="New Booking" subtitle={`New today: ${newBookingsToday}`} href="/bookings" Icon={CalendarDays} badgeCount={Math.max(newBookingsToday, badgeByType('booking_created'))} />
+          )}
+          {!isMenuHidden('search-customer') && (
+            <RedBox title="Add Customer" subtitle="Find or add customer" href="/search-customer" Icon={UserPlus} badgeCount={badgeByType('customer_added')} />
+          )}
+          {!isMenuHidden('invoicing') && (
+            <RedBox title="Create Invoice" subtitle={`${unpaidInvoices} unpaid`} href="/invoicing" Icon={FileText} badgeCount={Math.max(unpaidInvoices, badgeByType('invoice_unpaid'))} />
+          )}
+          {!isMenuHidden('inventory-control') && (
+            <RedBox title="Low Inventory" subtitle={`${criticalInventory} items critical`} href="/inventory-control" Icon={Package} badgeCount={criticalInventory} />
+          )}
+          {!isMenuHidden('payroll') && (
+            <RedBox title="Payroll Due" subtitle={`${overdueCount} employees due payment this week — $${totalDue.toFixed(2)} total`} href="/payroll" Icon={DollarSign} badgeCount={Math.max(badgeByType('payroll_due'), overdueCount)} />
+          )}
+          {!isMenuHidden('accounting') && (
+            <RedBox title="Accounting" subtitle="View P&L" href="/accounting" Icon={Calculator} badgeCount={badgeByType('accounting_update')} />
+          )}
+          {!isMenuHidden('file-manager') && (
+            <RedBox title="File Manager" subtitle={`${newFilesToday} new file${newFilesToday === 1 ? '' : 's'}`} href="/file-manager" Icon={Folder} badgeCount={Math.max(newFilesToday, alertsAll.filter(a => a.type === 'pdf_saved' && !a.read).length)} />
+          )}
+          {!isMenuHidden('customer-profiles') && (
+            <RedBox title="Customer Profiles" subtitle="View Customer Info PDFs" href="/search-customer" Icon={Users} badgeCount={alertsAll.filter(a => a.payload?.recordType === 'Customer' && !a.read).length} />
+          )}
+          {!isMenuHidden('employee-dashboard') && (
+            <RedBox title="Staff Portal" subtitle="Open menu" href="/employee-dashboard" Icon={Grid3X3} />
+          )}
+          {!isMenuHidden('service-checklist') && (
+            <RedBox title="Todo" subtitle={`Overdue: ${0}`} href="/checklist" Icon={CheckSquare} badgeCount={badgeByType('todo_overdue')} />
+          )}
+          {!isMenuHidden('package-pricing') && (
+            <RedBox title="Package Pricing" subtitle="Update prices" href="/package-pricing" Icon={Tag} badgeCount={badgeByType('pricing_update')} />
+          )}
+          {!isMenuHidden('settings') && (
+            <RedBox title="Company Settings" subtitle="Edit business" href="/settings" Icon={Cog} />
+          )}
         </div>
+
+        {/* User Administration Modal */}
+        <Dialog open={userAdminOpen} onOpenChange={setUserAdminOpen}>
+          {/* Centered, full-viewport content without conflicting positioning */}
+          <DialogContent className="max-w-none w-screen h-screen sm:rounded-none p-0 bg-black text-white overflow-hidden">
+            <DialogHeader className="px-6 pt-6">
+              <DialogTitle className="text-red-500">User Administration — Full Control</DialogTitle>
+            </DialogHeader>
+            <div className="px-6 pb-6 space-y-6 h-[calc(100%-4rem)] overflow-auto">
+              {/* Search */}
+              <div className="grid grid-cols-1 gap-4">
+                <div className="relative">
+                  <Input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search users by name or email" className="bg-zinc-900 border-zinc-700 text-white" />
+                </div>
+              </div>
+
+              {/* Section 1: User List */}
+              <Card className="p-4 bg-zinc-900 border-zinc-800">
+                <h3 className="text-lg font-semibold mb-4">User List</h3>
+                <div className="w-full overflow-x-auto">
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead className="text-zinc-300">Name</TableHead>
+                        <TableHead className="text-zinc-300">Email</TableHead>
+                        <TableHead className="text-zinc-300">Role</TableHead>
+                        <TableHead className="text-zinc-300">Last Login</TableHead>
+                        <TableHead className="text-zinc-300">Actions</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {filteredUsers.map((u) => (
+                        <TableRow key={u.id}>
+                          <TableCell className="text-white">{u.name}</TableCell>
+                          <TableCell className="text-white">{u.email}</TableCell>
+                          <TableCell>
+                            <Select value={u.role} onValueChange={(val) => handleUpdateRole(u.id, val as 'employee' | 'admin')}>
+                              <SelectTrigger className="bg-zinc-800 border-zinc-700 text-white">
+                                <SelectValue placeholder="Role" />
+                              </SelectTrigger>
+                              <SelectContent className="bg-zinc-900 border-zinc-800">
+                                <SelectItem value="employee">Employee</SelectItem>
+                                <SelectItem value="admin">Admin</SelectItem>
+                              </SelectContent>
+                            </Select>
+                          </TableCell>
+                          <TableCell className="text-zinc-300">{u.lastLogin ? new Date(u.lastLogin).toLocaleString() : '—'}</TableCell>
+                          <TableCell className="space-x-2">
+                            <Button size="sm" className="bg-red-700 hover:bg-red-800" onClick={() => handleImpersonate(u.id)}>Impersonate</Button>
+                            <Button size="sm" variant="outline" className="border-red-700 text-red-700 hover:bg-red-700/10" onClick={() => setDeleteId(u.id)}>Delete</Button>
+                          </TableCell>
+                        </TableRow>
+                      ))}
+                      {filteredUsers.length === 0 && (
+                        <TableRow>
+                          <TableCell colSpan={5} className="text-center text-zinc-400 py-8">No users found.</TableCell>
+                        </TableRow>
+                      )}
+                    </TableBody>
+                  </Table>
+                </div>
+              </Card>
+
+              {/* Section 2: Add New User */}
+              <Card className="p-4 bg-zinc-900 border-zinc-800">
+                <h3 className="text-lg font-semibold mb-4">Add New User</h3>
+                <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+                  <div>
+                    <label className="text-sm text-zinc-400">Name</label>
+                    <Input value={newName} onChange={(e) => setNewName(e.target.value)} className="bg-zinc-800 border-zinc-700 text-white" />
+                  </div>
+                  <div>
+                    <label className="text-sm text-zinc-400">Email</label>
+                    <Input value={newEmail} onChange={(e) => setNewEmail(e.target.value)} className="bg-zinc-800 border-zinc-700 text-white" />
+                  </div>
+                  <div>
+                    <label className="text-sm text-zinc-400">Password</label>
+                    <Input value={newPassword} onChange={(e) => setNewPassword(e.target.value)} placeholder="Blank to auto-generate" className="bg-zinc-800 border-zinc-700 text-white" />
+                  </div>
+                  <div>
+                    <label className="text-sm text-zinc-400">Role</label>
+                    <Select value={newRole} onValueChange={(val) => setNewRole(val as 'employee' | 'admin')}>
+                      <SelectTrigger className="bg-zinc-800 border-zinc-700 text-white">
+                        <SelectValue placeholder="Select role" />
+                      </SelectTrigger>
+                      <SelectContent className="bg-zinc-900 border-zinc-800">
+                        <SelectItem value="employee">Employee</SelectItem>
+                        <SelectItem value="admin">Admin</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                </div>
+                <div className="mt-4">
+                  <Button className="bg-red-700 hover:bg-red-800" onClick={handleCreateUser}>Create User</Button>
+                </div>
+              </Card>
+
+              {/* Section 3: Impersonate */}
+              <Card className="p-4 bg-zinc-900 border-zinc-800">
+                <h3 className="text-lg font-semibold mb-4">Impersonate</h3>
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4 items-end">
+                  <div>
+                    <label className="text-sm text-zinc-400">Select User</label>
+                    <Select value={impersonateId || ''} onValueChange={(val) => setImpersonateId(val)}>
+                      <SelectTrigger className="bg-zinc-800 border-zinc-700 text-white">
+                        <SelectValue placeholder="Choose user" />
+                      </SelectTrigger>
+                      <SelectContent className="bg-zinc-900 border-zinc-800 max-h-64 overflow-y-auto">
+                        {users.map((u) => (
+                          <SelectItem key={u.id} value={u.id}>{u.name} — {u.email}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div>
+                    <Button className="bg-red-700 hover:bg-red-800" disabled={!impersonateId} onClick={() => impersonateId && handleImpersonate(impersonateId)}>Sign On As Selected</Button>
+                  </div>
+                </div>
+              </Card>
+
+              {/* Section 4: Menu Visibility */}
+              <Card className="p-4 bg-zinc-900 border-zinc-800">
+                <h3 className="text-lg font-semibold mb-4">Menu Visibility</h3>
+                <p className="text-sm text-zinc-400 mb-2">Hide or show items in the slide-out menu. Hidden items will also be removed from Admin Dashboard quick actions.</p>
+                <MenuVisibilityControls />
+              </Card>
+
+              {/* Section 5: Website Admin */}
+              <Card className="p-4 bg-zinc-900 border-zinc-800">
+                <div className="flex items-center justify-between mb-4">
+                  <h3 className="text-lg font-semibold flex items-center gap-2">Website Admin</h3>
+                  <span className="text-xs text-zinc-400">Port 6061 • Red/Black</span>
+                </div>
+                {/* Vehicle Types */}
+                <div className="mb-6">
+                  <div className="flex items-center justify-between mb-2">
+                    <h4 className="font-semibold">Vehicle Types</h4>
+                    <Button className="bg-red-700 hover:bg-red-800" onClick={() => setNewVehicleOpen(true)}>Add New</Button>
+                  </div>
+                  <div className="w-full overflow-x-auto">
+                    <Table>
+                      <TableHeader>
+                        <TableRow>
+                          <TableHead className="text-zinc-300">Name</TableHead>
+                          <TableHead className="text-zinc-300">Description</TableHead>
+                          <TableHead className="text-zinc-300">Edit</TableHead>
+                          <TableHead className="text-zinc-300">Delete</TableHead>
+                        </TableRow>
+                      </TableHeader>
+                      <TableBody>
+                        {vehicleTypes.map((vt: any) => (
+                          <TableRow key={vt.id}>
+                            <TableCell className="text-white">{vt.name}</TableCell>
+                            <TableCell className="text-zinc-300">{vt.description || '—'}</TableCell>
+                            <TableCell>
+                              <Button size="sm" variant="outline" className="border-red-700 text-red-700 hover:bg-red-700/10" onClick={() => setEditVehicle(vt)}>Edit</Button>
+                            </TableCell>
+                            <TableCell>
+                              <Button size="sm" variant="outline" className="border-red-700 text-red-700 hover:bg-red-700/10" disabled={vt.protected} onClick={async () => {
+                                if (!confirm('Delete this vehicle type?')) return;
+                                await api(`/api/vehicle-types/${vt.id}`, { method: 'DELETE' });
+                                const updated = await api('/api/vehicle-types', { method: 'GET' });
+                                setVehicleTypes(Array.isArray(updated) ? updated : []);
+                                try { await postFullSync(); } catch {}
+                                try { window.dispatchEvent(new CustomEvent('content-changed', { detail: { kind: 'vehicle-types' } })); } catch {}
+                                toast({ title: 'Vehicle type deleted', description: vt.name });
+                              }}>Delete</Button>
+                            </TableCell>
+                          </TableRow>
+                        ))}
+                        {vehicleTypes.length === 0 && (
+                          <TableRow>
+                            <TableCell colSpan={4} className="text-center text-zinc-400 py-6">No vehicle types</TableCell>
+                          </TableRow>
+                        )}
+                      </TableBody>
+                    </Table>
+                  </div>
+                </div>
+
+                {/* FAQs */}
+                <div className="mb-6">
+                  <div className="flex items-center justify-between mb-2">
+                    <h4 className="font-semibold">FAQs</h4>
+                    <Button className="bg-red-700 hover:bg-red-800" onClick={() => setNewFaqOpen(true)}>Add New</Button>
+                  </div>
+                  <div className="w-full overflow-x-auto">
+                    <Table>
+                      <TableHeader>
+                        <TableRow>
+                          <TableHead className="text-zinc-300">Question</TableHead>
+                          <TableHead className="text-zinc-300">Answer</TableHead>
+                          <TableHead className="text-zinc-300">Edit</TableHead>
+                          <TableHead className="text-zinc-300">Delete</TableHead>
+                        </TableRow>
+                      </TableHeader>
+                      <TableBody>
+                        {faqs.map((fq: any) => (
+                          <TableRow key={fq.id}>
+                            <TableCell className="text-white">{fq.question}</TableCell>
+                            <TableCell className="text-zinc-300">{fq.answer}</TableCell>
+                            <TableCell>
+                              <Button size="sm" variant="outline" className="border-red-700 text-red-700 hover:bg-red-700/10" onClick={() => setEditFaq(fq)}>Edit</Button>
+                            </TableCell>
+                            <TableCell>
+                              <Button size="sm" variant="outline" className="border-red-700 text-red-700 hover:bg-red-700/10" onClick={async () => {
+                                if (!confirm('Delete this FAQ?')) return;
+                                await api(`/api/faqs/${fq.id}`, { method: 'DELETE' });
+                                const updated = await api('/api/faqs', { method: 'GET' });
+                                setFaqs(Array.isArray(updated) ? updated : (Array.isArray((updated as any)?.items) ? (updated as any).items : []));
+                                try { window.dispatchEvent(new CustomEvent('content-changed', { detail: { kind: 'faqs' } })); } catch {}
+                                toast({ title: 'FAQ deleted' });
+                              }}>Delete</Button>
+                            </TableCell>
+                          </TableRow>
+                        ))}
+                        {faqs.length === 0 && (
+                          <TableRow>
+                            <TableCell colSpan={4} className="text-center text-zinc-400 py-6">No FAQs</TableCell>
+                          </TableRow>
+                        )}
+                      </TableBody>
+                    </Table>
+                  </div>
+                </div>
+
+                {/* Contact */}
+                <div className="mb-6">
+                  <h4 className="font-semibold mb-2">Contact</h4>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div>
+                      <Label className="text-zinc-300">Hours</Label>
+                      <textarea className="w-full rounded-md bg-zinc-800 border-zinc-700 text-white p-2 h-28" value={contactInfo.hours} onChange={(e) => setContactInfo({ ...contactInfo, hours: e.target.value })} />
+                    </div>
+                    <div>
+                      <Label className="text-zinc-300">Phone</Label>
+                      <Input className="bg-zinc-800 border-zinc-700 text-white" value={contactInfo.phone} onChange={(e) => setContactInfo({ ...contactInfo, phone: e.target.value })} />
+                    </div>
+                    <div>
+                      <Label className="text-zinc-300">Address</Label>
+                      <Input className="bg-zinc-800 border-zinc-700 text-white" value={contactInfo.address} onChange={(e) => setContactInfo({ ...contactInfo, address: e.target.value })} />
+                    </div>
+                    <div>
+                      <Label className="text-zinc-300">Email</Label>
+                      <Input className="bg-zinc-800 border-zinc-700 text-white" value={contactInfo.email} onChange={(e) => setContactInfo({ ...contactInfo, email: e.target.value })} />
+                    </div>
+                  </div>
+                  <div className="mt-3">
+                    <Button className="bg-red-700 hover:bg-red-800" onClick={async () => {
+              await api('/api/contact/update', { method: 'POST', body: JSON.stringify(contactInfo) });
+                      toast({ title: 'Contact updated', description: 'Synced to Contact page' });
+                    }}>Save Contact</Button>
+                  </div>
+                </div>
+
+                {/* About */}
+                <div>
+                  <div className="flex items-center justify-between mb-2">
+                    <h4 className="font-semibold">About Sections</h4>
+                    <Button className="bg-red-700 hover:bg-red-800" onClick={() => setNewAboutOpen(true)}>Add New</Button>
+                  </div>
+                  <div className="w-full overflow-x-auto">
+                    <Table>
+                      <TableHeader>
+                        <TableRow>
+                          <TableHead className="text-zinc-300">Section</TableHead>
+                          <TableHead className="text-zinc-300">Content</TableHead>
+                          <TableHead className="text-zinc-300">Edit</TableHead>
+                          <TableHead className="text-zinc-300">Delete</TableHead>
+                        </TableRow>
+                      </TableHeader>
+                      <TableBody>
+                        {aboutSections.map((s: any) => (
+                          <TableRow key={s.id}>
+                            <TableCell className="text-white">{s.section}</TableCell>
+                            <TableCell className="text-zinc-300">{s.content}</TableCell>
+                            <TableCell>
+                              <Button size="sm" variant="outline" className="border-red-700 text-red-700 hover:bg-red-700/10" onClick={() => setEditAbout(s)}>Edit</Button>
+                            </TableCell>
+                            <TableCell>
+                              <Button size="sm" variant="outline" className="border-red-700 text-red-700 hover:bg-red-700/10" onClick={async () => {
+                                if (!confirm('Delete this section?')) return;
+                                await api(`/api/about/${s.id}`, { method: 'DELETE' });
+                                const updated = await api('/api/about', { method: 'GET' });
+                                setAboutSections(Array.isArray(updated) ? updated : []);
+                                toast({ title: 'Section deleted' });
+                              }}>Delete</Button>
+                            </TableCell>
+                          </TableRow>
+                        ))}
+                        {aboutSections.length === 0 && (
+                          <TableRow>
+                            <TableCell colSpan={4} className="text-center text-zinc-400 py-6">No sections</TableCell>
+                          </TableRow>
+                        )}
+                      </TableBody>
+                    </Table>
+                  </div>
+                </div>
+              </Card>
+
+              <div className="flex justify-end">
+                <Button variant="outline" className="border-red-700 text-red-700 hover:bg-red-700/10" onClick={() => setUserAdminOpen(false)}>Close</Button>
+              </div>
+
+              {/* Vehicle Type Edit Modal */}
+              <Dialog open={!!editVehicle} onOpenChange={(o) => !o && setEditVehicle(null)}>
+                <DialogContent className="bg-black text-white">
+                  <DialogHeader>
+                    <DialogTitle>Edit Vehicle Type</DialogTitle>
+                  </DialogHeader>
+                  {editVehicle && (
+                    <div className="space-y-3">
+                      <Input className="bg-zinc-800 border-zinc-700 text-white" value={editVehicle.name} onChange={(e) => setEditVehicle({ ...editVehicle, name: e.target.value })} placeholder="Name" />
+                      <Input className="bg-zinc-800 border-zinc-700 text-white" value={editVehicle.description || ''} onChange={(e) => setEditVehicle({ ...editVehicle, description: e.target.value })} placeholder="Description" />
+                      <div className="flex justify-end gap-2">
+                        <Button variant="outline" className="border-red-700 text-red-700 hover:bg-red-700/10" onClick={() => setEditVehicle(null)}>Cancel</Button>
+                        <Button className="bg-red-700 hover:bg-red-800" onClick={async () => {
+                          await api(`/api/vehicle-types/${editVehicle.id}`, { method: 'PUT', body: JSON.stringify({ name: editVehicle.name, description: editVehicle.description }) });
+                          const updated = await api('/api/vehicle-types', { method: 'GET' });
+                          setVehicleTypes(Array.isArray(updated) ? updated : []);
+                          // Notify other pages and trigger live refresh
+                          try { await postFullSync(); } catch {}
+                          try { window.dispatchEvent(new CustomEvent('content-changed', { detail: { kind: 'vehicle-types' } })); } catch {}
+                          setEditVehicle(null);
+                          toast({ title: 'Vehicle type updated' });
+                        }}>Save</Button>
+                      </div>
+                    </div>
+                  )}
+                </DialogContent>
+              </Dialog>
+
+              {/* Vehicle Type Add Modal */}
+              <Dialog open={newVehicleOpen} onOpenChange={setNewVehicleOpen}>
+                <DialogContent className="bg-black text-white">
+                  <DialogHeader>
+                    <DialogTitle>Add Vehicle Type</DialogTitle>
+                  </DialogHeader>
+                  <div className="space-y-3">
+                    <Input className="bg-zinc-800 border-zinc-700 text-white" value={newVehicleName} onChange={(e) => setNewVehicleName(e.target.value)} placeholder="Name" />
+                    <Input className="bg-zinc-800 border-zinc-700 text-white" value={newVehicleDesc} onChange={(e) => setNewVehicleDesc(e.target.value)} placeholder="Description" />
+                    <div>
+                      <label className="text-sm text-zinc-400">$ Amount — Multiplier for packages/add-ons (e.g. 100 for Compact, 150 for Luxury)</label>
+                      <Input
+                        type="number"
+                        step={1}
+                        min={0}
+                        max={10000}
+                        className="bg-zinc-800 border-red-700 text-white placeholder:text-white"
+                        value={newVehicleMultiplier}
+                        onChange={(e) => setNewVehicleMultiplier(e.target.value)}
+                        onBlur={() => {
+                          const raw = Number(newVehicleMultiplier);
+                          if (Number.isFinite(raw)) {
+                            const rounded = Math.round(raw);
+                            if (rounded !== raw) {
+                              setNewVehicleMultiplier(String(rounded));
+                              toast({ title: `Rounded to $${rounded}` });
+                            }
+                          }
+                        }}
+                        placeholder="$150"
+                      />
+                    </div>
+                    <div className="flex justify-end gap-2">
+                      <Button variant="outline" className="border-red-700 text-red-700 hover:bg-red-700/10" onClick={() => setNewVehicleOpen(false)}>Cancel</Button>
+                      <Button className="bg-red-700 hover:bg-red-800" onClick={async () => {
+                        const safeName = (newVehicleName || '').trim();
+                        if (!safeName) {
+                          toast({ title: 'Name required', description: 'Please enter a vehicle type name.' });
+                          return;
+                        }
+                        const slug = safeName.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '') || `vt_${Date.now()}`;
+                        // 1) Create the vehicle type record
+                        await api('/api/vehicle-types', { method: 'POST', body: JSON.stringify({ id: slug, name: safeName, description: newVehicleDesc, hasPricing: true }) });
+                        // 2) Validate and apply $ Amount multiplier to seed pricing for new type
+                        let amt = Math.round(Number(newVehicleMultiplier || '100'));
+                        if (!Number.isFinite(amt) || amt < 0 || amt > 10000) {
+                          toast({ title: 'Invalid $ Amount', description: 'Enter a whole number between 0 and 10000.' , variant: 'destructive'});
+                          return;
+                        }
+                        if (String(amt) !== String(newVehicleMultiplier)) {
+                          toast({ title: `Rounded to $${amt}` });
+                        }
+                        if (!confirm('Update all packages? (affects live site)')) {
+                          return;
+                        }
+                        await api('/api/packages/apply-vehicle-multiplier', { method: 'POST', body: JSON.stringify({ vehicleTypeId: slug, multiplier: amt }) });
+                        // 3) Refresh vehicle types list
+                        const updated = await api('/api/vehicle-types', { method: 'GET' });
+                        setVehicleTypes(Array.isArray(updated) ? updated : []);
+                        // Push live vehicle types to server for immediate dropdown sync
+                        try {
+                          await fetch('http://localhost:6061/api/vehicle-types/live', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify(Array.isArray(updated) ? updated : []),
+                          });
+                        } catch {}
+                        // 4) Post full sync so live site sees pricing updates
+                        try { await postFullSync(); } catch {}
+                        // 5) Dispatch content-changed events so dropdowns refresh immediately
+                        try { window.dispatchEvent(new CustomEvent('content-changed', { detail: { kind: 'vehicle-types' } })); } catch {}
+                        try { window.dispatchEvent(new CustomEvent('content-changed', { detail: { kind: 'packages' } })); } catch {}
+                        // Reset form
+                        setNewVehicleName('');
+                        setNewVehicleDesc('');
+                        setNewVehicleMultiplier('100');
+                        setNewVehicleOpen(false);
+                        toast({ title: 'Vehicle type added', description: `Seeded pricing: $ Amount × base compact` });
+                      }}>Save</Button>
+                    </div>
+                  </div>
+                </DialogContent>
+              </Dialog>
+
+              {/* FAQ Edit Modal */}
+              <Dialog open={!!editFaq} onOpenChange={(o) => !o && setEditFaq(null)}>
+                <DialogContent className="bg-black text-white">
+                  <DialogHeader>
+                    <DialogTitle>Edit FAQ</DialogTitle>
+                  </DialogHeader>
+                  {editFaq && (
+                    <div className="space-y-3">
+                      <textarea className="w-full rounded-md bg-zinc-800 border-zinc-700 text-white p-2 h-24" value={editFaq.question} onChange={(e) => setEditFaq({ ...editFaq, question: e.target.value })} placeholder="Question" />
+                      <textarea className="w-full rounded-md bg-zinc-800 border-zinc-700 text-white p-2 h-28" value={editFaq.answer} onChange={(e) => setEditFaq({ ...editFaq, answer: e.target.value })} placeholder="Answer" />
+                      <div className="flex justify-end gap-2">
+                        <Button variant="outline" className="border-red-700 text-red-700 hover:bg-red-700/10" onClick={() => setEditFaq(null)}>Cancel</Button>
+                        <Button className="bg-red-700 hover:bg-red-800" onClick={async () => {
+                          await api(`/api/faqs/${editFaq.id}`, { method: 'PUT', body: JSON.stringify({ question: editFaq.question, answer: editFaq.answer }) });
+                          const updated = await api('/api/faqs', { method: 'GET' });
+                          setFaqs(Array.isArray(updated) ? updated : (Array.isArray((updated as any)?.items) ? (updated as any).items : []));
+                          try { window.dispatchEvent(new CustomEvent('content-changed', { detail: { kind: 'faqs' } })); } catch {}
+                          setEditFaq(null);
+                          toast({ title: 'FAQ updated' });
+                        }}>Save</Button>
+                      </div>
+                    </div>
+                  )}
+                </DialogContent>
+              </Dialog>
+
+              {/* FAQ Add Modal */}
+              <Dialog open={newFaqOpen} onOpenChange={setNewFaqOpen}>
+                <DialogContent className="bg-black text-white">
+                  <DialogHeader>
+                    <DialogTitle>Add FAQ</DialogTitle>
+                  </DialogHeader>
+                  <div className="space-y-3">
+                    <textarea className="w-full rounded-md bg-zinc-800 border-zinc-700 text-white p-2 h-24" value={newFaqQ} onChange={(e) => setNewFaqQ(e.target.value)} placeholder="Question" />
+                    <textarea className="w-full rounded-md bg-zinc-800 border-zinc-700 text-white p-2 h-28" value={newFaqA} onChange={(e) => setNewFaqA(e.target.value)} placeholder="Answer" />
+                    <div className="flex justify-end gap-2">
+                      <Button variant="outline" className="border-red-700 text-red-700 hover:bg-red-700/10" onClick={() => setNewFaqOpen(false)}>Cancel</Button>
+                      <Button className="bg-red-700 hover:bg-red-800" onClick={async () => {
+                        await api('/api/faqs', { method: 'POST', body: JSON.stringify({ question: newFaqQ, answer: newFaqA }) });
+                        const updated = await api('/api/faqs', { method: 'GET' });
+                        setFaqs(Array.isArray(updated) ? updated : (Array.isArray((updated as any)?.items) ? (updated as any).items : []));
+                        try { window.dispatchEvent(new CustomEvent('content-changed', { detail: { kind: 'faqs' } })); } catch {}
+                        setNewFaqQ('');
+                        setNewFaqA('');
+                        setNewFaqOpen(false);
+                        toast({ title: 'FAQ added' });
+                      }}>Save</Button>
+                    </div>
+                  </div>
+                </DialogContent>
+              </Dialog>
+
+              {/* About Edit Modal */}
+              <Dialog open={!!editAbout} onOpenChange={(o) => !o && setEditAbout(null)}>
+                <DialogContent className="bg-black text-white">
+                  <DialogHeader>
+                    <DialogTitle>Edit Section</DialogTitle>
+                  </DialogHeader>
+                  {editAbout && (
+                    <div className="space-y-3">
+                      <Input className="bg-zinc-800 border-zinc-700 text-white" value={editAbout.section} onChange={(e) => setEditAbout({ ...editAbout, section: e.target.value })} placeholder="Section name" />
+                      <textarea className="w-full rounded-md bg-zinc-800 border-zinc-700 text-white p-2 h-28" value={editAbout.content} onChange={(e) => setEditAbout({ ...editAbout, content: e.target.value })} placeholder="Content" />
+                      <div className="flex justify-end gap-2">
+                        <Button variant="outline" className="border-red-700 text-red-700 hover:bg-red-700/10" onClick={() => setEditAbout(null)}>Cancel</Button>
+                        <Button className="bg-red-700 hover:bg-red-800" onClick={async () => {
+                          await api(`/api/about/${editAbout.id}`, { method: 'PUT', body: JSON.stringify({ section: editAbout.section, content: editAbout.content }) });
+                          const updated = await api('/api/about', { method: 'GET' });
+                          setAboutSections(Array.isArray(updated) ? updated : []);
+                          setEditAbout(null);
+                          toast({ title: 'Section updated' });
+                        }}>Save</Button>
+                      </div>
+                    </div>
+                  )}
+                </DialogContent>
+              </Dialog>
+
+              {/* About Add Modal */}
+              <Dialog open={newAboutOpen} onOpenChange={setNewAboutOpen}>
+                <DialogContent className="bg-black text-white">
+                  <DialogHeader>
+                    <DialogTitle>Add Section</DialogTitle>
+                  </DialogHeader>
+                  <div className="space-y-3">
+                    <Input className="bg-zinc-800 border-zinc-700 text-white" value={newAboutSection} onChange={(e) => setNewAboutSection(e.target.value)} placeholder="Section" />
+                    <textarea className="w-full rounded-md bg-zinc-800 border-zinc-700 text-white p-2 h-28" value={newAboutContent} onChange={(e) => setNewAboutContent(e.target.value)} placeholder="Content" />
+                    <div className="flex justify-end gap-2">
+                      <Button variant="outline" className="border-red-700 text-red-700 hover:bg-red-700/10" onClick={() => setNewAboutOpen(false)}>Cancel</Button>
+                      <Button className="bg-red-700 hover:bg-red-800" onClick={async () => {
+                        await api('/api/about', { method: 'POST', body: JSON.stringify({ section: newAboutSection, content: newAboutContent }) });
+                        const updated = await api('/api/about', { method: 'GET' });
+                        setAboutSections(Array.isArray(updated) ? updated : []);
+                        setNewAboutSection('');
+                        setNewAboutContent('');
+                        setNewAboutOpen(false);
+                        toast({ title: 'Section added' });
+                      }}>Save</Button>
+                    </div>
+                  </div>
+                </DialogContent>
+              </Dialog>
+            </div>
+
+            {/* Delete Confirm */}
+            <AlertDialog open={!!deleteId} onOpenChange={(open) => !open && setDeleteId(null)}>
+              <AlertDialogContent>
+                <AlertDialogHeader>
+                  <AlertDialogTitle>Delete user?</AlertDialogTitle>
+                  <AlertDialogDescription>This will remove the user permanently.</AlertDialogDescription>
+                </AlertDialogHeader>
+                <AlertDialogFooter>
+                  <AlertDialogCancel>Cancel</AlertDialogCancel>
+                  <AlertDialogAction className="bg-destructive" onClick={() => deleteId && handleDelete(deleteId)}>Yes, Delete</AlertDialogAction>
+                </AlertDialogFooter>
+              </AlertDialogContent>
+            </AlertDialog>
+          </DialogContent>
+        </Dialog>
       </div>
     </div>
   );

@@ -35,6 +35,7 @@ import CustomerAccount from "./pages/CustomerAccount";
 import Portal from "./pages/Portal";
 import QuickLogin from "./pages/QuickLogin";
 import AdminDashboard from "./pages/AdminDashboard";
+import WebsiteAdministration from "./pages/WebsiteAdministration";
 import BookingsPage from "./pages/BookingsPage";
 import DiscountCoupons from "./pages/DiscountCoupons";
 import PackagePricing from "./pages/PackagePricing";
@@ -177,6 +178,11 @@ const App = () => {
                     <Route path="/admin-dashboard" element={
                       <ProtectedRoute allowedRoles={['admin']}>
                         <AdminDashboard />
+                      </ProtectedRoute>
+                    } />
+                    <Route path="/website-admin" element={
+                      <ProtectedRoute allowedRoles={['admin']}>
+                        <WebsiteAdministration />
                       </ProtectedRoute>
                     } />
                     <Route path="/bookings" element={

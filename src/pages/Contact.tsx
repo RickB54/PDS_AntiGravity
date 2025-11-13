@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Navbar } from "@/components/Navbar";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
@@ -10,9 +10,11 @@ import { Link } from "react-router-dom";
 import { Mail, Phone, MapPin, Clock, ArrowLeft } from "lucide-react";
 import { savePDFToArchive } from "@/lib/pdfArchive";
 import jsPDF from "jspdf";
+import api from "@/lib/api";
 
 const Contact = () => {
   const { toast } = useToast();
+  const [contactInfo, setContactInfo] = useState<{ hours: string; phone: string; address: string; email: string } | null>(null);
   const [formData, setFormData] = useState({
     name: "",
     email: "",
@@ -107,6 +109,33 @@ const Contact = () => {
 
     setSubmitting(false);
   };
+
+  // Load contact info and keep in sync with admin edits
+  useEffect(() => {
+    const load = async () => {
+      try {
+        const c = await api('/api/contact/live', { method: 'GET' });
+        if (c && typeof c === 'object') {
+          setContactInfo({
+            hours: c.hours || 'Appointments daily 8 AM–6 PM',
+            phone: c.phone || '(555) 123-4567',
+            address: c.address || 'Methuen, MA',
+            email: c.email || 'primedetailsolutions.ma.nh@gmail.com',
+          });
+        } else {
+          setContactInfo({ hours: 'Appointments daily 8 AM–6 PM', phone: '(555) 123-4567', address: 'Methuen, MA', email: 'primedetailsolutions.ma.nh@gmail.com' });
+        }
+      } catch {
+        setContactInfo({ hours: 'Appointments daily 8 AM–6 PM', phone: '(555) 123-4567', address: 'Methuen, MA', email: 'primedetailsolutions.ma.nh@gmail.com' });
+      }
+    };
+    load();
+    const onChanged = (e: any) => {
+      if (e && e.detail && e.detail.type === 'contact') load();
+    };
+    window.addEventListener('content-changed', onChanged as any);
+    return () => window.removeEventListener('content-changed', onChanged as any);
+  }, []);
 
   return (
     <div className="min-h-screen bg-background">
@@ -214,12 +243,12 @@ const Contact = () => {
                 <div>
                   <h3 className="font-semibold text-foreground mb-1">Email</h3>
                   <a 
-                    href="https://mail.google.com/mail/?view=cm&fs=1&tf=1&to=primedetailsolutions.ma.nh@gmail.com&su=Website%20Inquiry"
+                    href={`https://mail.google.com/mail/?view=cm&fs=1&tf=1&to=${encodeURIComponent(contactInfo?.email || 'primedetailsolutions.ma.nh@gmail.com')}&su=Website%20Inquiry`}
                     target="_blank"
                     rel="noopener noreferrer"
                     className="text-muted-foreground hover:text-primary transition-colors"
                   >
-                    primedetailsolutions.ma.nh@gmail.com
+                    {contactInfo ? (contactInfo.email || 'primedetailsolutions.ma.nh@gmail.com') : 'Loading contact info...'}
                   </a>
                 </div>
               </div>
@@ -233,10 +262,10 @@ const Contact = () => {
                 <div>
                   <h3 className="font-semibold text-foreground mb-1">Phone</h3>
                   <a 
-                    href="tel:+15551234567"
+                    href={`tel:${(contactInfo?.phone || '(555) 123-4567').replace(/[^+\d]/g,'')}`}
                     className="text-muted-foreground hover:text-primary transition-colors"
                   >
-                    (555) 123-4567
+                    {contactInfo ? (contactInfo.phone || '(555) 123-4567') : 'Loading contact info...'}
                   </a>
                 </div>
               </div>
@@ -250,7 +279,7 @@ const Contact = () => {
                 <div>
                   <h3 className="font-semibold text-foreground mb-1">Location</h3>
                   <p className="text-muted-foreground">
-                    Methuen, MA<br />
+                    {contactInfo ? (contactInfo.address || 'Methuen, MA') : 'Loading contact info...'}<br />
                     Mobile service available
                   </p>
                 </div>
@@ -264,10 +293,8 @@ const Contact = () => {
                 </div>
                 <div>
                   <h3 className="font-semibold text-foreground mb-1">Hours</h3>
-                  <div className="text-muted-foreground space-y-1">
-                    <p>Monday - Friday: 8:00 AM - 6:00 PM</p>
-                    <p>Saturday: 9:00 AM - 5:00 PM</p>
-                    <p>Sunday: By Appointment</p>
+                  <div className="text-muted-foreground space-y-1 whitespace-pre-line">
+                    <p>{contactInfo ? (contactInfo.hours || 'Appointments daily 8 AM–6 PM') : 'Loading contact info...'}</p>
                   </div>
                 </div>
               </div>

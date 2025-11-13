@@ -28,7 +28,14 @@ const packageImages: Record<string, string> = {
 
 const CustomerPortal = () => {
   const navigate = useNavigate();
-  const [vehicleType, setVehicleType] = useState<VehicleType>('compact');
+  const [vehicleType, setVehicleType] = useState<string>('compact');
+  const [vehicleLabels, setVehicleLabels] = useState<Record<string, string>>({
+    compact: "Compact/Sedan",
+    midsize: "Mid-Size/SUV",
+    truck: "Truck/Van/Large SUV",
+    luxury: "Luxury/High-End",
+  });
+  const [vehicleOptions, setVehicleOptions] = useState<string[]>(['compact','midsize','truck','luxury']);
   const [selectedService, setSelectedService] = useState<string | null>(null);
   const [selectedAddOns, setSelectedAddOns] = useState<string[]>([]);
   const [distance, setDistance] = useState(0);
@@ -43,7 +50,7 @@ const CustomerPortal = () => {
   const [customAddOnsLive, setCustomAddOnsLive] = useState<any[]>([]);
   const [lastSyncTs, setLastSyncTs] = useState<number | null>(null);
 
-  const getKey = (type: 'package'|'addon', id: string, size: VehicleType) => `${type}:${id}:${size}`;
+  const getKey = (type: 'package'|'addon', id: string, size: string) => `${type}:${id}:${size}`;
 
   const fetchLive = async () => {
     try {
@@ -78,6 +85,35 @@ const CustomerPortal = () => {
   };
 
   useEffect(() => {
+    const loadVehicleTypes = async () => {
+      try {
+        const res = await fetch(`http://localhost:6061/api/vehicle-types/live?v=${Date.now()}`, { headers: { 'Cache-Control': 'no-cache' } });
+        if (res.ok) {
+          const data = await res.json();
+          if (Array.isArray(data)) {
+            const map: Record<string, string> = { ...vehicleLabels };
+            const opts: string[] = [];
+            data.forEach((vt: any) => {
+              const id = String(vt.id || vt.key || '').trim();
+              const name = String(vt.name || '').trim();
+              if (id && name) { map[id] = name; opts.push(id); }
+            });
+            setVehicleLabels(map);
+            setVehicleOptions(opts.length ? opts : ['compact','midsize','truck','luxury']);
+            if (!opts.includes(vehicleType)) setVehicleType(opts[0] || 'compact');
+          }
+        }
+      } catch {}
+    };
+    loadVehicleTypes();
+    const onChanged = (e: any) => {
+      if (e && e.detail && (e.detail.kind === 'vehicle-types' || e.detail.type === 'vehicle-types')) loadVehicleTypes();
+    };
+    window.addEventListener('content-changed', onChanged as any);
+    return () => window.removeEventListener('content-changed', onChanged as any);
+  }, []);
+
+  useEffect(() => {
     fetchLive();
     const intervalId = setInterval(fetchLive, 2000);
     return () => {
@@ -95,12 +131,20 @@ const CustomerPortal = () => {
   const visibleBuiltIns = builtInPackages.filter(p => (packageMetaLive[p.id]?.visible) !== false);
   const visibleCustomPkgs = customPackagesLive.filter((p: any) => (packageMetaLive[p.id]?.visible) !== false);
   const livePackages = [...visibleBuiltIns, ...visibleCustomPkgs].map((p: any) => {
-    const pricing = {
+    const pricing: Record<string, number> = {
       compact: parseFloat(savedPricesLive[getKey('package', p.id, 'compact')]) || p.pricing.compact,
       midsize: parseFloat(savedPricesLive[getKey('package', p.id, 'midsize')]) || p.pricing.midsize,
       truck: parseFloat(savedPricesLive[getKey('package', p.id, 'truck')]) || p.pricing.truck,
       luxury: parseFloat(savedPricesLive[getKey('package', p.id, 'luxury')]) || p.pricing.luxury,
-    } as Record<VehicleType, number>;
+    };
+    Object.keys(savedPricesLive).forEach((k) => {
+      const prefix = `package:${p.id}:`;
+      if (k.startsWith(prefix)) {
+        const veh = k.slice(prefix.length);
+        const val = parseFloat(savedPricesLive[k]);
+        if (!Number.isNaN(val)) pricing[veh] = val;
+      }
+    });
     const metaSteps: string[] | undefined = packageMetaLive[p.id]?.stepIds;
     const steps = metaSteps && metaSteps.length > 0
       ? metaSteps.map(id => ({ id, name: allBuiltInSteps[id]?.name || customServicesMap[id] || id }))
@@ -111,12 +155,20 @@ const CustomerPortal = () => {
   const visibleBuiltAddOns = builtInAddOns.filter(a => (addOnMetaLive[a.id]?.visible) !== false);
   const visibleCustomAddOns = customAddOnsLive.filter((a: any) => (addOnMetaLive[a.id]?.visible) !== false);
   const liveAddOns = [...visibleBuiltAddOns, ...visibleCustomAddOns].map((a: any) => {
-    const pricing = {
+    const pricing: Record<string, number> = {
       compact: parseFloat(savedPricesLive[getKey('addon', a.id, 'compact')]) || a.pricing.compact,
       midsize: parseFloat(savedPricesLive[getKey('addon', a.id, 'midsize')]) || a.pricing.midsize,
       truck: parseFloat(savedPricesLive[getKey('addon', a.id, 'truck')]) || a.pricing.truck,
       luxury: parseFloat(savedPricesLive[getKey('addon', a.id, 'luxury')]) || a.pricing.luxury,
-    } as Record<VehicleType, number>;
+    };
+    Object.keys(savedPricesLive).forEach((k) => {
+      const prefix = `addon:${a.id}:`;
+      if (k.startsWith(prefix)) {
+        const veh = k.slice(prefix.length);
+        const val = parseFloat(savedPricesLive[k]);
+        if (!Number.isNaN(val)) pricing[veh] = val;
+      }
+    });
     const metaSteps: string[] | undefined = addOnMetaLive[a.id]?.stepIds;
     const steps = metaSteps && metaSteps.length > 0
       ? metaSteps.map(id => ({ id, name: allBuiltInSteps[id]?.name || customServicesMap[id] || id }))
@@ -149,15 +201,14 @@ const CustomerPortal = () => {
             <Label className="text-center block mb-3 text-lg font-semibold text-foreground">
               Select Your Vehicle Type
             </Label>
-            <Select value={vehicleType} onValueChange={(v) => setVehicleType(v as VehicleType)}>
+            <Select value={vehicleType} onValueChange={(v) => setVehicleType(v)}>
               <SelectTrigger className="w-full h-12 text-base bg-card border-border">
                 <SelectValue />
               </SelectTrigger>
               <SelectContent className="bg-popover border-border z-50">
-                <SelectItem value="compact">Compact/Sedan</SelectItem>
-                <SelectItem value="midsize">Mid-Size/SUV</SelectItem>
-                <SelectItem value="truck">Truck/Van/Large SUV</SelectItem>
-                <SelectItem value="luxury">Luxury/High-End</SelectItem>
+                {vehicleOptions.map((opt) => (
+                  <SelectItem key={opt} value={opt}>{vehicleLabels[opt] || opt}</SelectItem>
+                ))}
               </SelectContent>
             </Select>
           </div>
@@ -225,7 +276,7 @@ const CustomerPortal = () => {
                       ${pkg.pricing[vehicleType]}
                     </div>
                     <div className="text-xs text-muted-foreground mt-1">
-                      For {vehicleType === 'compact' ? 'Compact/Sedan' : vehicleType === 'midsize' ? 'Mid-Size/SUV' : vehicleType === 'truck' ? 'Truck/Van/Large SUV' : 'Luxury/High-End'}
+                      For {vehicleLabels[vehicleType] || vehicleType}
                     </div>
                   </div>
 

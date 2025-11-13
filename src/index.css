@@ -8,6 +8,13 @@ All colors MUST be HSL.
 
 @layer base {
   /* Light mode theme for public pages */
+  /* Active menu item styling: make current item blue */
+  a[aria-current="page"],
+  nav a[aria-current="page"],
+  button[aria-current="page"],
+  .sidebar a[aria-current="page"] {
+    color: #2563eb !important; /* Tailwind blue-600 */
+  }
   :root {
     --background: 0 0% 100%;
     --foreground: 0 0% 20%;

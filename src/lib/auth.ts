@@ -81,5 +81,14 @@ export function createAccount(email: string, password: string, name: string): Us
 }
 
 export function logout(): void {
+  try {
+    const prev = localStorage.getItem('impersonator');
+    if (prev) {
+      const admin = JSON.parse(prev);
+      localStorage.removeItem('impersonator');
+      setCurrentUser(admin);
+      return;
+    }
+  } catch {}
   setCurrentUser(null);
 }

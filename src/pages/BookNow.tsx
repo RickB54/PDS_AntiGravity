@@ -14,7 +14,7 @@ import { useBookingsStore } from "@/store/bookings";
 import { notify } from "@/store/alerts";
 import { savePDFToArchive } from "@/lib/pdfArchive";
 import jsPDF from "jspdf";
-import { servicePackages as builtInPackages, addOns as builtInAddOns, VehicleType } from "@/lib/services";
+import { servicePackages as builtInPackages, addOns as builtInAddOns } from "@/lib/services";
 import { getCustomServices, buildFullSyncPayload } from "@/lib/servicesMeta";
 import { generateBookingPDF, uploadToFileManager } from "@/lib/bookingsSync";
 import { useCouponsStore } from "@/store/coupons";
@@ -41,9 +41,7 @@ const BookNow = () => {
     package: urlPackage || preselectedServices[0] || "",
     message: ""
   });
-  const validVehicles = ['compact','midsize','truck','luxury'] as const;
-  const initialVehicle: VehicleType = (validVehicles as readonly string[]).includes(urlVehicle) ? (urlVehicle as VehicleType) : 'compact';
-  const [vehicleType, setVehicleType] = useState<VehicleType>(initialVehicle);
+  const [vehicleType, setVehicleType] = useState<string>(urlVehicle || 'compact');
   const [addOns, setAddOns] = useState<string[]>(preselectedAddons);
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -60,8 +58,16 @@ const BookNow = () => {
   const [customPackagesLive, setCustomPackagesLive] = useState<any[]>([]);
   const [customAddOnsLive, setCustomAddOnsLive] = useState<any[]>([]);
   const [lastSyncTs, setLastSyncTs] = useState<number | null>(null);
+  // Dynamic vehicle type display labels
+  const [vehicleLabels, setVehicleLabels] = useState<Record<string, string>>({
+    compact: "Compact/Sedan",
+    midsize: "Mid-Size/SUV",
+    truck: "Truck/Van/Large SUV",
+    luxury: "Luxury/High-End",
+  });
+  const [vehicleOptions, setVehicleOptions] = useState<string[]>(['compact','midsize','truck','luxury']);
 
-  const getKey = (type: 'package'|'addon', id: string, size: VehicleType) => `${type}:${id}:${size}`;
+  const getKey = (type: 'package'|'addon', id: string, size: string) => `${type}:${id}:${size}`;
 
   const fetchLive = async () => {
     try {
@@ -97,6 +103,37 @@ const BookNow = () => {
     return () => clearInterval(intervalId);
   }, []);
 
+  // Load dynamic vehicle types from live endpoint and keep in sync on admin edits
+  useEffect(() => {
+    const loadVehicleTypes = async () => {
+      try {
+        const res = await fetch(`http://localhost:6061/api/vehicle-types/live?v=${Date.now()}`, { headers: { 'Cache-Control': 'no-cache' } });
+        if (res.ok) {
+          const data = await res.json();
+          if (Array.isArray(data)) {
+            const map: Record<string, string> = { ...vehicleLabels };
+            const opts: string[] = [];
+            data.forEach((vt: any) => {
+              const id = String(vt.id || vt.key || '').trim();
+              const name = String(vt.name || '').trim();
+              if (id && name) { map[id] = name; opts.push(id); }
+            });
+            setVehicleLabels(map);
+            setVehicleOptions(opts.length ? opts : ['compact','midsize','truck','luxury']);
+            // ensure current selection is valid
+            if (!opts.includes(vehicleType)) setVehicleType(opts[0] || 'compact');
+          }
+        }
+      } catch {}
+    };
+    loadVehicleTypes();
+    const onChanged = (e: any) => {
+      if (e && e.detail && (e.detail.kind === 'vehicle-types' || e.detail.type === 'vehicle-types')) loadVehicleTypes();
+    };
+    window.addEventListener('content-changed', onChanged as any);
+    return () => window.removeEventListener('content-changed', onChanged as any);
+  }, []);
+
   const allBuiltInSteps: Record<string, { id: string; name: string }> = Object.fromEntries(
     builtInPackages.flatMap(p => p.steps.map(s => [typeof s === 'string' ? s : s.id, typeof s === 'string' ? s : s.name]))
       .map(([id, name]) => [id as string, { id: id as string, name: name as string }])
@@ -106,12 +143,21 @@ const BookNow = () => {
   const visibleBuiltIns = builtInPackages.filter(p => (packageMetaLive[p.id]?.visible) !== false && !packageMetaLive[p.id]?.deleted);
   const visibleCustomPkgs = customPackagesLive.filter((p: any) => (packageMetaLive[p.id]?.visible) !== false && !packageMetaLive[p.id]?.deleted);
   const livePackages = [...visibleBuiltIns, ...visibleCustomPkgs].map((p: any) => {
-    const pricing = {
+    const pricing: Record<string, number> = {
       compact: parseFloat(savedPricesLive[getKey('package', p.id, 'compact')]) || p.pricing.compact,
       midsize: parseFloat(savedPricesLive[getKey('package', p.id, 'midsize')]) || p.pricing.midsize,
       truck: parseFloat(savedPricesLive[getKey('package', p.id, 'truck')]) || p.pricing.truck,
       luxury: parseFloat(savedPricesLive[getKey('package', p.id, 'luxury')]) || p.pricing.luxury,
-    } as Record<VehicleType, number>;
+    };
+    // bring in any dynamically seeded vehicle-type pricing
+    Object.keys(savedPricesLive).forEach((k) => {
+      const prefix = `package:${p.id}:`;
+      if (k.startsWith(prefix)) {
+        const veh = k.slice(prefix.length);
+        const val = parseFloat(savedPricesLive[k]);
+        if (!Number.isNaN(val)) pricing[veh] = val;
+      }
+    });
     const metaSteps: string[] | undefined = packageMetaLive[p.id]?.stepIds;
     const steps = metaSteps && metaSteps.length > 0
       ? metaSteps.map(id => ({ id, name: allBuiltInSteps[id]?.name || customServicesMap[id] || id }))
@@ -122,12 +168,20 @@ const BookNow = () => {
   const visibleBuiltAddOns = builtInAddOns.filter(a => (addOnMetaLive[a.id]?.visible) !== false && !addOnMetaLive[a.id]?.deleted);
   const visibleCustomAddOns = customAddOnsLive.filter((a: any) => (addOnMetaLive[a.id]?.visible) !== false && !addOnMetaLive[a.id]?.deleted);
   const liveAddOns = [...visibleBuiltAddOns, ...visibleCustomAddOns].map((a: any) => {
-    const pricing = {
+    const pricing: Record<string, number> = {
       compact: parseFloat(savedPricesLive[getKey('addon', a.id, 'compact')]) || a.pricing.compact,
       midsize: parseFloat(savedPricesLive[getKey('addon', a.id, 'midsize')]) || a.pricing.midsize,
       truck: parseFloat(savedPricesLive[getKey('addon', a.id, 'truck')]) || a.pricing.truck,
       luxury: parseFloat(savedPricesLive[getKey('addon', a.id, 'luxury')]) || a.pricing.luxury,
-    } as Record<VehicleType, number>;
+    };
+    Object.keys(savedPricesLive).forEach((k) => {
+      const prefix = `addon:${a.id}:`;
+      if (k.startsWith(prefix)) {
+        const veh = k.slice(prefix.length);
+        const val = parseFloat(savedPricesLive[k]);
+        if (!Number.isNaN(val)) pricing[veh] = val;
+      }
+    });
     const metaSteps: string[] | undefined = addOnMetaLive[a.id]?.stepIds;
     const steps = metaSteps && metaSteps.length > 0
       ? metaSteps.map(id => ({ id, name: allBuiltInSteps[id]?.name || customServicesMap[id] || id }))
@@ -137,11 +191,12 @@ const BookNow = () => {
 
   // Compute total (service + add-ons)
   const selectedService = livePackages.find(s => s.id === formData.package);
-  const selectedServicePrice = selectedService ? selectedService.pricing[vehicleType] : 0;
+  const selectedServicePrice = selectedService ? (selectedService.pricing[vehicleType] ?? selectedService.pricing['compact'] ?? 0) : 0;
   const packagePrice = urlPrice > 0 ? urlPrice : selectedServicePrice;
   const addOnsTotal = addOns.reduce((sum, id) => {
     const found = liveAddOns.find(a => a.id === id);
-    return sum + (found ? found.pricing[vehicleType] : 0);
+    const price = found ? (found.pricing[vehicleType] ?? found.pricing['compact'] ?? 0) : 0;
+    return sum + price;
   }, 0);
   const total = packagePrice + addOnsTotal;
   const discountedTotal = Math.max(0, total - appliedDiscount);
@@ -410,15 +465,14 @@ const BookNow = () => {
 
               <div className="space-y-2">
                 <Label>Vehicle Type</Label>
-                <Select value={vehicleType} onValueChange={(v) => setVehicleType(v as VehicleType)}>
+                <Select value={vehicleType} onValueChange={(v) => setVehicleType(v)}>
                   <SelectTrigger>
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="compact">Compact/Sedan</SelectItem>
-                    <SelectItem value="midsize">Mid-Size/SUV</SelectItem>
-                    <SelectItem value="truck">Truck/Van/Large SUV</SelectItem>
-                    <SelectItem value="luxury">Luxury/High-End</SelectItem>
+                    {vehicleOptions.map((opt) => (
+                      <SelectItem key={opt} value={opt}>{vehicleLabels[opt] || opt}</SelectItem>
+                    ))}
                   </SelectContent>
                 </Select>
               </div>

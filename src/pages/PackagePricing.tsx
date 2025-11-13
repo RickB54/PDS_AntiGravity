@@ -399,7 +399,12 @@ export default function PackagePricing() {
   }, []);
 
   const handleChange = (key: string, value: string) => {
-    setCurrentPrices(prev => ({ ...prev, [key]: value }));
+    let num = parseFloat(value);
+    if (isNaN(num)) num = 0;
+    // enforce non-negative whole numbers within a reasonable upper bound
+    num = Math.max(0, Math.min(9999, num));
+    const rounded = String(Math.round(num));
+    setCurrentPrices(prev => ({ ...prev, [key]: rounded }));
   };
 
   const applyIncrease = (id: string, percent: number) => {
