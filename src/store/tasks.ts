@@ -58,22 +58,42 @@ const STORAGE_KEY = "tasks";
 async function load(): Promise<Task[]> {
   try {
     const list = (await localforage.getItem(STORAGE_KEY)) || [];
-    const arr = Array.isArray(list) ? list as Task[] : [];
-    return arr.map((t) => ({
-      ...t,
-      checklist: Array.isArray(t.checklist) ? t.checklist : [],
-      attachments: Array.isArray(t.attachments) ? t.attachments : [],
-      priority: (t.priority as TaskPriority) || "medium",
-      status: (t.status as TaskStatus) || "not_started",
-      order: typeof t.order === 'number' ? t.order : 0,
-    }));
-  } catch {
-    return [];
-  }
+    const arr = Array.isArray(list) ? (list as Task[]) : [];
+    if (arr.length > 0) {
+      return arr.map((t) => ({
+        ...t,
+        checklist: Array.isArray(t.checklist) ? t.checklist : [],
+        attachments: Array.isArray(t.attachments) ? t.attachments : [],
+        priority: (t.priority as TaskPriority) || "medium",
+        status: (t.status as TaskStatus) || "not_started",
+        order: typeof t.order === 'number' ? t.order : 0,
+      }));
+    }
+  } catch {}
+  // Fallback to localStorage if localforage is unavailable or empty
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY);
+    const arr = raw ? JSON.parse(raw) : [];
+    if (Array.isArray(arr)) {
+      return (arr as Task[]).map((t) => ({
+        ...t,
+        checklist: Array.isArray(t.checklist) ? t.checklist : [],
+        attachments: Array.isArray(t.attachments) ? t.attachments : [],
+        priority: (t.priority as TaskPriority) || "medium",
+        status: (t.status as TaskStatus) || "not_started",
+        order: typeof t.order === 'number' ? t.order : 0,
+      }));
+    }
+  } catch {}
+  return [];
 }
 
 async function save(items: Task[]): Promise<void> {
-  await localforage.setItem(STORAGE_KEY, items);
+  try {
+    await localforage.setItem(STORAGE_KEY, items);
+  } catch {
+    try { localStorage.setItem(STORAGE_KEY, JSON.stringify(items)); } catch {}
+  }
 }
 
 export const useTasksStore = create<TasksState>((set, get) => ({
@@ -243,4 +263,3 @@ export function initTaskWorkflowListeners() {
     });
   } catch {}
 }
-

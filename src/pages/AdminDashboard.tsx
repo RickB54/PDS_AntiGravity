@@ -657,6 +657,22 @@ export default function AdminDashboard() {
                 )}
               </div>
             </Card>
+
+            {/* Tasks & Portal (moved under Customer Hub, same format) */}
+            <div className="flex items-center gap-2 mt-6 mb-3">
+              <CheckSquare className="w-6 h-6 text-zinc-400" />
+              <div className="text-lg font-bold">Tasks & Portal</div>
+            </div>
+            <Card className="p-4 bg-[#0f0f13] rounded-xl border border-zinc-800">
+              <div className="flex flex-row flex-wrap gap-2">
+                {!isMenuHidden('employee-dashboard') && (
+                  <RedBox accent="zinc" title="Staff Portal" subtitle="Open menu" href="/employee-dashboard" Icon={Grid3X3} />
+                )}
+                {!isMenuHidden('service-checklist') && (
+                  <RedBox accent="zinc" title="Todo" subtitle={`Overdue: ${0}`} href="/tasks" Icon={CheckSquare} badgeCount={badgeByType('todo_overdue')} />
+                )}
+              </div>
+            </Card>
           </Card>
 
           {/* Finance Center */}
@@ -707,6 +723,20 @@ export default function AdminDashboard() {
                 )}
               </div>
             </Card>
+
+            {/* Pricing moved under Inventory & Files, preserving colors and structure */}
+            <div className="flex items-center gap-2 mt-6 mb-3">
+              <Tag className="w-6 h-6 text-pink-500" />
+              <div className="text-lg font-bold">Pricing</div>
+            </div>
+            {/* Inner dark box to match Training Hub */}
+            <Card className="p-4 bg-[#0f0f13] rounded-xl border border-zinc-800">
+              <div className="flex flex-row flex-wrap gap-2">
+                {!isMenuHidden('package-pricing') && (
+                  <RedBox accent="pink" title="Package Pricing" subtitle="Update prices" href="/package-pricing" Icon={Tag} badgeCount={badgeByType('pricing_update')} />
+                )}
+              </div>
+            </Card>
           </Card>
 
           {/* Add Customer Popup */}
@@ -726,40 +756,9 @@ export default function AdminDashboard() {
             }}
           />
 
-          {/* Tasks & Portal */}
-          <Card className="relative p-5 bg-[#18181b] rounded-2xl border border-zinc-800">
-            <div className="flex items-center gap-2 mb-3">
-              <CheckSquare className="w-6 h-6 text-zinc-400" />
-              <div className="text-lg font-bold">Tasks & Portal</div>
-            </div>
-            {/* Inner dark box to match Training Hub */}
-            <Card className="p-4 bg-[#0f0f13] rounded-xl border border-zinc-800">
-              <div className="flex flex-row flex-wrap gap-2">
-                {!isMenuHidden('employee-dashboard') && (
-                  <RedBox accent="zinc" title="Staff Portal" subtitle="Open menu" href="/employee-dashboard" Icon={Grid3X3} />
-                )}
-              {!isMenuHidden('service-checklist') && (
-                  <RedBox accent="zinc" title="Todo" subtitle={`Overdue: ${0}`} href="/tasks" Icon={CheckSquare} badgeCount={badgeByType('todo_overdue')} />
-                )}
-              </div>
-            </Card>
-          </Card>
+          {/* Tasks & Portal — moved under Customer Hub above */}
 
-          {/* Pricing */}
-          <Card className="relative p-5 bg-[#18181b] rounded-2xl border border-zinc-800">
-            <div className="flex items-center gap-2 mb-3">
-              <Tag className="w-6 h-6 text-pink-500" />
-              <div className="text-lg font-bold">Pricing</div>
-            </div>
-            {/* Inner dark box to match Training Hub */}
-            <Card className="p-4 bg-[#0f0f13] rounded-xl border border-zinc-800">
-              <div className="flex flex-row flex-wrap gap-2">
-                {!isMenuHidden('package-pricing') && (
-                  <RedBox accent="pink" title="Package Pricing" subtitle="Update prices" href="/package-pricing" Icon={Tag} badgeCount={badgeByType('pricing_update')} />
-                )}
-              </div>
-            </Card>
-          </Card>
+          {/* Pricing — moved under Inventory & Files above */}
         </div>
 
         {/* Cheat Sheet Modal — panel rendered inside dialog content */}

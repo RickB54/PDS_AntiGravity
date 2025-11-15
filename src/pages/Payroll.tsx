@@ -10,7 +10,7 @@ import { ToastAction } from "@/components/ui/toast";
 import jsPDF from "jspdf";
 import { savePDFToArchive } from "@/lib/pdfArchive";
 import { upsertExpense } from "@/lib/db";
-import { pushAdminAlert, dismissAlertsForRecord } from "@/lib/adminAlerts";
+import { pushAdminAlert, dismissAlertsForRecord, getAdminAlerts } from "@/lib/adminAlerts";
 import { getCurrentUser } from "@/lib/auth";
 import localforage from "localforage";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -122,7 +122,16 @@ const Payroll = () => {
       const anyPaid = history.some(h => h.status === 'Paid' && new Date(h.date) >= new Date(periodStart) && new Date(h.date) <= new Date(periodEnd));
       if (!anyPaid) {
         try {
-          pushAdminAlert('payroll_due', `Weekly payroll due — no payments logged`, 'system', { periodStart, periodEnd });
+          // Avoid duplicate alerts for the same period when revisiting Payroll.
+          const existing = getAdminAlerts().some(a =>
+            a.type === 'payroll_due' &&
+            String(a?.payload?.periodStart || '') === String(periodStart) &&
+            String(a?.payload?.periodEnd || '') === String(periodEnd) &&
+            String(a?.message || '').includes('Weekly payroll due')
+          );
+          if (!existing) {
+            pushAdminAlert('payroll_due', `Weekly payroll due — no payments logged`, 'system', { periodStart, periodEnd });
+          }
         } catch {}
       }
     }

@@ -177,11 +177,14 @@ export function AppSidebar() {
               {isAdmin && (
                 <SidebarMenuItem>
                   <SidebarMenuButton asChild onClick={handleNavClick}>
-                    <NavLink to="/exam-admin" className={linkClass}>
-                      <GraduationCap className="h-4 w-4" />
-                      <span>Exam Admin</span>
+                    <NavLink to="/tasks" className={linkClass}>
+                      <CheckSquare className="h-4 w-4" />
+                      <span>Todo</span>
                     </NavLink>
                   </SidebarMenuButton>
+                  {todoCount > 0 && (
+                    <SidebarMenuBadge className="bg-red-600 text-white">{todoCount}</SidebarMenuBadge>
+                  )}
                 </SidebarMenuItem>
               )}
               {/* Always-visible Website Administration entry (cannot be hidden) */}
@@ -220,12 +223,12 @@ export function AppSidebar() {
                 </SidebarMenuItem>
               )}
 
-              {/* Tasks module */}
+              {/* Todo module */}
               <SidebarMenuItem>
                 <SidebarMenuButton asChild onClick={handleNavClick}>
                   <NavLink to="/tasks" className={linkClass}>
                     <CheckSquare className="h-4 w-4" />
-                    <span>Tasks</span>
+                    <span>Todo</span>
                   </NavLink>
                 </SidebarMenuButton>
                 {todoCount > 0 && (

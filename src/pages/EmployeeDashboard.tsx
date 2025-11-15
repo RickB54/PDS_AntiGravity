@@ -183,9 +183,9 @@ const EmployeeDashboard = () => {
 
           {/* Quick actions */}
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-            <Link to="/bookings" className="block">
+            <Link to="/tasks" className="block">
               <Card className="p-4 text-center bg-muted/30 hover:bg-muted/50 transition rounded-xl">
-                <div className="font-semibold text-white">TO DO</div>
+                <div className="font-semibold text-white">Todo</div>
                 <div className="text-xs text-muted-foreground">(Calendar)</div>
               </Card>
             </Link>
