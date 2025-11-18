@@ -286,6 +286,37 @@ export default function ExamAdmin() {
           <div className="flex items-center gap-2">
             <Button className="bg-purple-700 text-white hover:bg-purple-800" onClick={generateCheatSheetPDF}>Generate Cheat Sheet</Button>
             <Button className="bg-blue-700 text-white hover:bg-blue-800" onClick={randomize}>Randomize Questions</Button>
+            <Button className="bg-teal-700 text-white hover:bg-teal-800" onClick={() => {
+              try {
+                const doc = new jsPDF();
+                doc.setFontSize(14);
+                doc.text('Full Exam — Auto Detailing', 105, 15, { align: 'center' });
+                doc.setFontSize(11);
+                const qs = (questions && questions.length ? questions : []);
+                let y = 25;
+                const margin = 12;
+                const lineHeight = 6;
+                qs.slice(0, 50).forEach((q, qi) => {
+                  const num = qi + 1;
+                  const questionText = `${num}. ${q.q}`;
+                  const split = doc.splitTextToSize(questionText, 180);
+                  split.forEach((line:string) => { doc.text(line, margin, y); y += lineHeight; });
+                  q.options.forEach((opt, oi) => {
+                    const optText = `${String.fromCharCode(65 + oi)}) ${opt}`;
+                    const splitOpt = doc.splitTextToSize(optText, 170);
+                    splitOpt.forEach((line:string) => { doc.text(line, margin + 6, y); y += lineHeight; });
+                  });
+                  y += 4; // extra spacing between questions
+                  if (y > 274) { doc.addPage(); y = 15; }
+                });
+                const pdfData = doc.output('dataurlstring');
+                const fileName = `Full_Exam_${new Date().toLocaleString().replace(/[\/:]/g, '-')}.pdf`;
+                savePDFToArchive('Employee Training' as any, 'admin', `exam_full_${Date.now()}`, pdfData, { fileName, path: 'Employee Training/' });
+                toast({ title: 'Exam Saved', description: 'Full 50-question exam saved to File Manager.' });
+              } catch (err:any) {
+                toast({ title: 'Error', description: err?.message || 'Failed to generate exam PDF.', variant: 'destructive' });
+              }
+            }}>Save New Exam (PDF)</Button>
           </div>
         </div>
         <p className="text-sm text-zinc-400 mb-4">Edit questions, options, and correct answers. Saved changes take effect immediately. Randomize keeps each question with its options and correct answer as a unit.</p>

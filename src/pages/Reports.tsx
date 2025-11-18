@@ -21,6 +21,9 @@ const Reports = () => {
   const [jobs, setJobs] = useState<any[]>([]);
   const [estimates, setEstimates] = useState<any[]>([]);
   const [selectedCustomer, setSelectedCustomer] = useState<string>("");
+  // Accounting
+  const [income, setIncome] = useState<any[]>([]);
+  const [expenses, setExpenses] = useState<any[]>([]);
   
   const currentUser = getCurrentUser();
   const isAdmin = currentUser?.email.includes('admin');
@@ -36,12 +39,16 @@ const Reports = () => {
     const mats = (await localforage.getItem<any[]>("materials")) || [];
     const jobsData = (await localforage.getItem<any[]>("completed-jobs")) || [];
     const estimatesData = (await localforage.getItem<any[]>("estimates")) || [];
+    const incomeData = (await localforage.getItem<any[]>("receivables")) || [];
+    const expenseData = (await localforage.getItem<any[]>("expenses")) || [];
     setCustomers(cust);
     setInvoices(inv);
     setChemicals(chems);
     setMaterials(mats);
     setJobs(jobsData);
     setEstimates(estimatesData);
+    setIncome(incomeData);
+    setExpenses(expenseData);
   };
 
   const filterByDate = (items: any[], dateField = "createdAt") => {
@@ -234,12 +241,13 @@ const Reports = () => {
           </Card>
 
           <Tabs defaultValue="customers" className="space-y-4">
-<TabsList className="grid w-full grid-cols-1 sm:grid-cols-2 md:grid-cols-5 bg-muted">
+<TabsList className="grid w-full grid-cols-1 sm:grid-cols-2 md:grid-cols-6 bg-muted">
               <TabsTrigger value="customers">Customers</TabsTrigger>
               <TabsTrigger value="invoices">Invoices</TabsTrigger>
               <TabsTrigger value="inventory">Inventory</TabsTrigger>
               <TabsTrigger value="employee">Employee</TabsTrigger>
               <TabsTrigger value="estimates">Estimates</TabsTrigger>
+              <TabsTrigger value="accounting">Accounting</TabsTrigger>
             </TabsList>
 
             {/* Customer Report */}
@@ -521,6 +529,134 @@ const Reports = () => {
                     )}
                   </TableBody>
                 </Table>
+              </Card>
+            </TabsContent>
+
+            {/* Accounting Report */}
+            <TabsContent value="accounting" className="space-y-4">
+              <Card className="p-6 bg-gradient-card border-border">
+                <div className="flex justify-between items-center mb-4">
+                  <h2 className="text-xl font-bold text-foreground">Accounting Report</h2>
+                  <div className="flex gap-2">
+                    <Button variant="outline" size="sm" onClick={() => {
+                      // Export CSV
+                      const within = (d: string) => {
+                        const dt = new Date(d);
+                        let okQuick = true;
+                        const now = new Date();
+                        if (dateFilter === 'daily') okQuick = dt.toDateString() === now.toDateString();
+                        else if (dateFilter === 'weekly') okQuick = dt >= new Date(now.getTime() - 7*24*60*60*1000);
+                        else if (dateFilter === 'monthly') okQuick = dt.getMonth() === now.getMonth() && dt.getFullYear() === now.getFullYear();
+                        let okRange = true;
+                        if (dateRange.from) okRange = dt >= new Date(dateRange.from.setHours(0,0,0,0));
+                        if (okRange && dateRange.to) okRange = dt <= new Date(dateRange.to.setHours(23,59,59,999));
+                        return okQuick && okRange;
+                      };
+                      const lines: string[] = ['Type,Date,Amount,Category,Description,Customer,Method'];
+                      income.filter(i => within(i.date || i.createdAt)).forEach(i => {
+                        lines.push(`Income,${(i.date || i.createdAt || '').slice(0,10)},${i.amount||0},${i.category||''},${String(i.description||'').replace(/,/g,';')},${i.customerName||''},${i.paymentMethod||''}`);
+                      });
+                      expenses.filter(e => within(e.createdAt)).forEach(e => {
+                        lines.push(`Expense,${(e.createdAt||'').slice(0,10)},${e.amount||0},${e.category||''},${String(e.description||'').replace(/,/g,';')},,`);
+                      });
+                      const blob = new Blob([lines.join('\n')], { type: 'text/csv' });
+                      const url = URL.createObjectURL(blob);
+                      const a = document.createElement('a');
+                      a.href = url; a.download = `accounting_${new Date().toISOString().slice(0,10)}.csv`;
+                      a.click(); setTimeout(()=>URL.revokeObjectURL(url), 1000);
+                    }}>
+                      Export CSV
+                    </Button>
+                  </div>
+                </div>
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
+                  <div>
+                    <p className="text-xs text-muted-foreground">Income</p>
+                    <p className="text-2xl font-bold text-success">
+                      ${income.filter(i => filterByDate([i], i.date ? 'date' : 'createdAt').length).reduce((s,i)=> s + (i.amount||0), 0).toFixed(2)}
+                    </p>
+                  </div>
+                  <div>
+                    <p className="text-xs text-muted-foreground">Expenses</p>
+                    <p className="text-2xl font-bold text-destructive">
+                      ${expenses.filter(e => filterByDate([e]).length).reduce((s,e)=> s + (e.amount||0), 0).toFixed(2)}
+                    </p>
+                  </div>
+                  <div>
+                    <p className="text-xs text-muted-foreground">Profit / Loss</p>
+                    <p className="text-2xl font-bold text-foreground">
+                      {(() => {
+                        const inc = income.filter(i => filterByDate([i], i.date ? 'date' : 'createdAt').length).reduce((s,i)=> s + (i.amount||0), 0);
+                        const exp = expenses.filter(e => filterByDate([e]).length).reduce((s,e)=> s + (e.amount||0), 0);
+                        const p = inc - exp; return `${p < 0 ? '-' : ''}$${Math.abs(p).toFixed(2)}`;
+                      })()}
+                    </p>
+                  </div>
+                </div>
+
+                {/* Income Table */}
+                <div className="mb-6">
+                  <h3 className="font-semibold mb-2">Income</h3>
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead>Date</TableHead>
+                        <TableHead>Amount</TableHead>
+                        <TableHead>Category</TableHead>
+                        <TableHead>Description</TableHead>
+                        <TableHead>Customer</TableHead>
+                        <TableHead>Method</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {income.filter(i => filterByDate([i], i.date ? 'date' : 'createdAt').length).map((i, idx) => (
+                        <TableRow key={idx}>
+                          <TableCell>{(i.date || i.createdAt || '').slice(0,10)}</TableCell>
+                          <TableCell>${(i.amount||0).toFixed(2)}</TableCell>
+                          <TableCell>{i.category || 'General'}</TableCell>
+                          <TableCell>{i.description || ''}</TableCell>
+                          <TableCell>{i.customerName || ''}</TableCell>
+                          <TableCell>{i.paymentMethod || ''}</TableCell>
+                        </TableRow>
+                      ))}
+                      {income.filter(i => filterByDate([i], i.date ? 'date' : 'createdAt').length).length === 0 && (
+                        <TableRow>
+                          <TableCell colSpan={6} className="text-center text-muted-foreground py-8">No income records.</TableCell>
+                        </TableRow>
+                      )}
+                    </TableBody>
+                  </Table>
+                </div>
+
+                {/* Expense Table */}
+                <div>
+                  <h3 className="font-semibold mb-2">Expenses</h3>
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead>Date</TableHead>
+                        <TableHead>Amount</TableHead>
+                        <TableHead>Category</TableHead>
+                        <TableHead>Description</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {expenses.filter(e => filterByDate([e]).length).map((e, idx) => (
+                        <TableRow key={idx}>
+                          <TableCell>{(e.createdAt || '').slice(0,10)}</TableCell>
+                          <TableCell>${(e.amount||0).toFixed(2)}</TableCell>
+                          <TableCell>{e.category || 'General'}</TableCell>
+                          <TableCell>{e.description || ''}</TableCell>
+                        </TableRow>
+                      ))}
+                      {expenses.filter(e => filterByDate([e]).length).length === 0 && (
+                        <TableRow>
+                          <TableCell colSpan={4} className="text-center text-muted-foreground py-8">No expense records.</TableCell>
+                        </TableRow>
+                      )}
+                    </TableBody>
+                  </Table>
+                </div>
               </Card>
             </TabsContent>
           </Tabs>

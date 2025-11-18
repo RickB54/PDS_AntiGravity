@@ -22,6 +22,7 @@ import {
 import { Pencil, Trash2 } from "lucide-react";
 import { Checkbox } from "@/components/ui/checkbox";
 import OrientationModal from "@/components/training/OrientationModal";
+import { useLocation } from "react-router-dom";
 import jsPDF from "jspdf";
 import { savePDFToArchive } from "@/lib/pdfArchive";
 import { pushAdminAlert } from "@/lib/adminAlerts";
@@ -34,6 +35,7 @@ const EmployeeDashboard = () => {
   const [certifiedDate, setCertifiedDate] = useState<string | null>(null);
   const [helpOpen, setHelpOpen] = useState(false);
   const [orientationOpen, setOrientationOpen] = useState(false);
+  const [startExamOnOpen, setStartExamOnOpen] = useState(false);
   const [tipsOpen, setTipsOpen] = useState(false);
   const [tips, setTips] = useState<string[]>([
     "Always pre-rinse heavily soiled areas to prevent marring.",
@@ -55,6 +57,7 @@ const EmployeeDashboard = () => {
   const [message, setMessage] = useState("");
   const [sending, setSending] = useState(false);
 
+  const location = useLocation();
   useEffect(() => {
     const cert = localStorage.getItem("employee_training_certified");
     if (cert) setCertifiedDate(cert);
@@ -73,7 +76,16 @@ const EmployeeDashboard = () => {
     } catch {
       setTipsChecked(Array(tips.length).fill(false));
     }
-  }, []);
+    // If navigated with ?startExam=1, auto-open orientation and exam
+    try {
+      const params = new URLSearchParams(location.search);
+      const startExam = params.get('startExam');
+      if (startExam === '1' || startExam === 'true') {
+        setOrientationOpen(true);
+        setStartExamOnOpen(true);
+      }
+    } catch {}
+  }, [location.search]);
 
   useEffect(() => {
     try { localStorage.setItem("pro_tips", JSON.stringify(tips)); } catch {}
@@ -231,7 +243,7 @@ const EmployeeDashboard = () => {
         </div>
       </main>
       {/* Orientation Modal */}
-      <OrientationModal open={orientationOpen} onOpenChange={setOrientationOpen} />
+      <OrientationModal open={orientationOpen} onOpenChange={setOrientationOpen} startExamOnOpen={startExamOnOpen} />
 
       {/* Rick's Pro Tips Modal */}
       <Dialog open={tipsOpen} onOpenChange={setTipsOpen}>

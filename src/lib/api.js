@@ -827,7 +827,7 @@ const api = async (endpoint, options = {}) => {
     try {
       const { addOns } = await import('@/lib/services');
       const { getCustomAddOns, getAddOnMeta } = await import('@/lib/servicesMeta');
-      const built = addOns.map(a => ({ id: a.id, name: a.name, pricing: a.pricing }));
+      const built = addOns.map(a => ({ id: a.id, name: a.name, pricing: a.pricing, description: a.description || '' }));
       const customs = getCustomAddOns().map((a) => ({ id: a.id, name: a.name, pricing: a.pricing || { compact: 0, midsize: 0, truck: 0, luxury: 0 } }));
       const merged = [...built, ...customs].filter(a => (getAddOnMeta(a.id)?.deleted !== true) && (getAddOnMeta(a.id)?.visible !== false));
       return merged;

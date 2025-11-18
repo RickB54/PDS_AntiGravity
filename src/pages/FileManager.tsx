@@ -47,7 +47,7 @@ import { savePDFToArchive } from "@/lib/pdfArchive";
 interface PDFRecord {
   id: string;
   fileName: string;
-  recordType: "Invoice" | "Estimate" | "Job" | "Checklist" | "Customer" | "Employee Training" | "Bookings" | "Admin Updates" | "Payroll" | "Employee Contact";
+  recordType: "Invoice" | "Estimate" | "Job" | "Checklist" | "Customer" | "Employee Training" | "Bookings" | "Admin Updates" | "Payroll" | "Employee Contact" | "add-Ons";
   customerName: string;
   date: string;
   timestamp: string;
@@ -93,7 +93,7 @@ interface PDFRecord {
   }, [adminModalOpen, refreshAlerts]);
 
   // Normalize category values coming from URL (handle plurals/synonyms)
-  const normalizeCategory = (val: string | null): "all" | "Invoice" | "Estimate" | "Job" | "Checklist" | "Customer" | "Employee Training" | "Bookings" | "Admin Updates" | "Payroll" | "Employee Contact" => {
+  const normalizeCategory = (val: string | null): "all" | "Invoice" | "Estimate" | "Job" | "Checklist" | "Customer" | "Employee Training" | "Bookings" | "Admin Updates" | "Payroll" | "Employee Contact" | "add-Ons" => {
     const s = String(val || '').trim().toLowerCase();
     if (!s) return "all";
     if (s === "all") return "all";
@@ -107,6 +107,7 @@ interface PDFRecord {
     if (s.includes("admin") && s.includes("update")) return "Admin Updates";
     if (s.includes("payroll")) return "Payroll";
     if (s.includes("employee") && s.includes("contact")) return "Employee Contact";
+    if (s.includes("add-ons") || s.includes("addons") || s.includes("add-on")) return "add-Ons";
     return "all";
   };
 
@@ -279,6 +280,7 @@ interface PDFRecord {
                 <SelectItem value="Admin Updates">Admin Updates</SelectItem>
                 <SelectItem value="Payroll">Payroll</SelectItem>
                 <SelectItem value="Employee Contact">Employee Contact</SelectItem>
+                <SelectItem value="add-Ons">Add-Ons</SelectItem>
               </SelectContent>
             </Select>
 

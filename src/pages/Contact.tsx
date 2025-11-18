@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { Navbar } from "@/components/Navbar";
+import AboutDialog from "@/components/AboutDialog";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -7,13 +8,18 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { useToast } from "@/hooks/use-toast";
 import { Link } from "react-router-dom";
+import SuccessMessage from "@/components/SuccessMessage";
 import { Mail, Phone, MapPin, Clock, ArrowLeft } from "lucide-react";
 import { savePDFToArchive } from "@/lib/pdfArchive";
 import jsPDF from "jspdf";
 import api from "@/lib/api";
+import { isSupabaseEnabled } from "@/lib/auth";
+import * as contactSvc from "@/services/supabase/contact";
+import logo from "@/assets/logo-3inch.png";
 
 const Contact = () => {
   const { toast } = useToast();
+  const [showAbout, setShowAbout] = useState(false);
   const [contactInfo, setContactInfo] = useState<{ hours: string; phone: string; address: string; email: string } | null>(null);
   const [formData, setFormData] = useState({
     name: "",
@@ -23,6 +29,7 @@ const Contact = () => {
     message: ""
   });
   const [submitting, setSubmitting] = useState(false);
+  const [submitted, setSubmitted] = useState(false);
   const [errors, setErrors] = useState<Record<string, string>>({});
 
   const validateForm = () => {
@@ -96,6 +103,19 @@ const Contact = () => {
       title: "Message Sent!",
       description: "We'll reply within 24 hours. Check your email client to complete sending.",
     });
+    setSubmitted(true);
+
+    // Store to Supabase if enabled
+    try {
+      if (isSupabaseEnabled()) {
+        await contactSvc.create({
+          name: formData.name,
+          email: formData.email,
+          phone: formData.phone,
+          message: formData.message,
+        });
+      }
+    } catch {}
 
     // Reset form
     setFormData({
@@ -107,7 +127,16 @@ const Contact = () => {
     });
     setErrors({});
 
+    // Allow normal browser POST so Netlify can capture the submission
+    try {
+      const formEl = e.target as HTMLFormElement;
+      formEl.submit();
+    } catch {}
+
     setSubmitting(false);
+
+    // Redirect consistent with Book Now flow
+    try { window.location.href = "/thank-you?contact=1"; } catch {}
   };
 
   // Load contact info and keep in sync with admin edits
@@ -155,6 +184,12 @@ const Contact = () => {
         </Button>
         
         <div className="text-center mb-12">
+          <img
+            src={logo}
+            alt="Prime Detail Solutions"
+            className="mx-auto mb-4 cursor-pointer w-[3in]"
+            onClick={() => setShowAbout(true)}
+          />
           <h1 className="text-4xl md:text-5xl font-bold text-foreground mb-4">Contact Us</h1>
           <p className="text-xl text-muted-foreground">
             Have questions? We'd love to hear from you.
@@ -165,7 +200,9 @@ const Contact = () => {
           {/* Contact Form */}
           <Card className="p-6 md:p-8 bg-gradient-card border-border">
             <h2 className="text-2xl font-bold text-foreground mb-6">Send us a message</h2>
-            <form onSubmit={handleSubmit} className="space-y-4">
+            <form onSubmit={handleSubmit} className="space-y-4" name="contact" method="POST" data-netlify="true" netlify-honeypot="bot-field">
+              <input type="hidden" name="form-name" value="contact" />
+              <input type="hidden" name="bot-field" />
               <div>
                 <Label htmlFor="name">Name *</Label>
                 <Input
@@ -228,6 +265,9 @@ const Contact = () => {
                 {errors.message && <p className="text-xs text-destructive mt-1">{errors.message}</p>}
               </div>
 
+              {/* Netlify reCAPTCHA v2 */}
+              <div data-netlify-recaptcha="true"></div>
+
               <Button 
                 type="submit" 
                 className="w-full bg-gradient-hero min-h-[56px]"
@@ -235,6 +275,9 @@ const Contact = () => {
               >
                 {submitting ? "Sending..." : "Send Message"}
               </Button>
+              {submitted && (
+                <SuccessMessage title="Message received" description="Thank you for reaching out. We’ll respond shortly." />
+              )}
             </form>
           </Card>
 
@@ -320,6 +363,7 @@ const Contact = () => {
           </div>
         </div>
       </main>
+      <AboutDialog open={showAbout} onOpenChange={setShowAbout} />
     </div>
   );
 };

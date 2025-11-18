@@ -18,6 +18,8 @@ import { servicePackages as builtInPackages, addOns as builtInAddOns } from "@/l
 import { getCustomServices, buildFullSyncPayload } from "@/lib/servicesMeta";
 import { generateBookingPDF, uploadToFileManager } from "@/lib/bookingsSync";
 import { useCouponsStore } from "@/store/coupons";
+import { isSupabaseEnabled } from "@/lib/auth";
+import * as bookingsSvc from "@/services/supabase/bookings";
 
 const BookNow = () => {
   const { toast } = useToast();
@@ -275,6 +277,7 @@ const BookNow = () => {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    const formEl = e.currentTarget as HTMLFormElement;
 
     if (!validateForm()) {
       toast({
@@ -310,6 +313,22 @@ const BookNow = () => {
     };
     try {
       await fetch("http://localhost:6061/api/bookings", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(bookingPayload) });
+    } catch {}
+    try {
+      if (isSupabaseEnabled()) {
+        await bookingsSvc.create({
+          customer_name: formData.name,
+          phone: formData.phone,
+          email: formData.email,
+          vehicle_type: vehicleType,
+          package: bookingPayload.service || formData.package,
+          add_ons: addOns,
+          date: dateIso,
+          notes: formData.message,
+          price_total: discountedTotal,
+          status: 'pending'
+        });
+      }
     } catch {}
     const localBookingId = `booking_${Date.now()}`;
     addBooking({ id: localBookingId, title: bookingPayload.service || "Booking", customer: formData.name, date: dateIso, status: "pending" });
@@ -353,6 +372,9 @@ const BookNow = () => {
         }
       }
     } catch {}
+
+    // Allow normal browser POST so Netlify can capture the submission
+    try { formEl.submit(); } catch {}
 
     // 6) Redirect to thank you
     window.location.href = `/thank-you?total=${encodeURIComponent(discountedTotal)}&name=${encodeURIComponent(formData.name)}&time=${encodeURIComponent(new Date(dateIso).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }))}&date=${encodeURIComponent(new Date(dateIso).toLocaleDateString())}`;
@@ -400,7 +422,18 @@ const BookNow = () => {
           </div>
 
           <Card className="p-8 bg-gradient-card border-border">
-            <form onSubmit={handleSubmit} className="space-y-6">
+            <form
+              onSubmit={handleSubmit}
+              className="space-y-6"
+              name="booking"
+              method="POST"
+              data-netlify="true"
+              netlify-honeypot="bot-field"
+            >
+              <input type="hidden" name="form-name" value="booking" />
+              <input type="hidden" name="bot-field" />
+              {/* Netlify reCAPTCHA v2 */}
+              <div data-netlify-recaptcha="true"></div>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                 <div className="space-y-2">
                   <Label htmlFor="name">Name *</Label>

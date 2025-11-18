@@ -10,7 +10,7 @@ import { pushAdminAlert } from "@/lib/adminAlerts";
 import jsPDF from "jspdf";
 import api from "@/lib/api";
 
-type OrientationModalProps = { open: boolean; onOpenChange: (v: boolean) => void };
+type OrientationModalProps = { open: boolean; onOpenChange: (v: boolean) => void; startExamOnOpen?: boolean };
 
 type HandbookItem = { title: string; desc: string };
 type HandbookSection = { id: string; name: string; items: HandbookItem[] };
@@ -146,7 +146,7 @@ const EXAM_QUESTIONS: ExamQ[] = (() => {
   return qs;
 })();
 
-export default function OrientationModal({ open, onOpenChange }: OrientationModalProps) {
+export default function OrientationModal({ open, onOpenChange, startExamOnOpen = false }: OrientationModalProps) {
   const user = getCurrentUser();
   const employeeName = user?.name || "Employee";
   const employeeId = user?.email || employeeName;
@@ -185,8 +185,12 @@ export default function OrientationModal({ open, onOpenChange }: OrientationModa
         const sched = localStorage.getItem(EXAM_SCHEDULE_KEY);
         if (sched) setScheduledAt(sched);
       } catch {}
+      // If requested, auto-open the exam when the orientation modal opens
+      if (startExamOnOpen) {
+        setExamOpen(true);
+      }
     }
-  }, [open]);
+  }, [open, startExamOnOpen]);
 
   const startHandbook = () => {
     try {

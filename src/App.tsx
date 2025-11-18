@@ -6,7 +6,7 @@ import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 import { useEffect, useState } from "react";
 import { SidebarProvider } from "@/components/ui/sidebar";
 import { AppSidebar } from "@/components/AppSidebar";
-import { getCurrentUser } from "@/lib/auth";
+import { getCurrentUser, isIdentityEnabled, initSupabaseAuth } from "@/lib/auth";
 import Index from "./pages/Index";
 import Login from "./pages/Login";
 import CustomerPortal from "./pages/CustomerPortal";
@@ -33,6 +33,7 @@ import FAQ from "./pages/FAQ";
 import BookNow from "./pages/BookNow";
 import ThankYou from "./pages/ThankYou";
 import CustomerAccount from "./pages/CustomerAccount";
+import CustomerProfile from "./pages/CustomerProfile";
 import Portal from "./pages/Portal";
 import QuickLogin from "./pages/QuickLogin";
 import AdminDashboard from "./pages/AdminDashboard";
@@ -60,7 +61,7 @@ const ProtectedRoute = ({ children, allowedRoles }: { children: React.ReactNode;
   }
   
   if (user && allowedRoles.length > 0 && !allowedRoles.includes(user.role)) {
-    return <Navigate to="/" replace />;
+    return <Navigate to={isIdentityEnabled() ? "/login" : "/"} replace />;
   }
   
   return <>{children}</>;
@@ -70,6 +71,8 @@ const App = () => {
   const [user, setUser] = useState(getCurrentUser());
 
   useEffect(() => {
+    // Initialize Supabase auth listener so roles map correctly in Supabase mode
+    try { initSupabaseAuth(); } catch {}
     const updateUser = () => setUser(getCurrentUser());
     window.addEventListener('auth-changed', updateUser as EventListener);
     window.addEventListener('storage', updateUser);
@@ -122,6 +125,11 @@ const App = () => {
                     <Route path="/customer-dashboard" element={
                       <ProtectedRoute allowedRoles={['customer']}>
                         <CustomerDashboard />
+                      </ProtectedRoute>
+                    } />
+                    <Route path="/customer-profile" element={
+                      <ProtectedRoute allowedRoles={['customer']}>
+                        <CustomerProfile />
                       </ProtectedRoute>
                     } />
                     <Route path="/customer-account" element={

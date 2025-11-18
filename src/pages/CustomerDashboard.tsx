@@ -3,7 +3,8 @@ import { PageHeader } from "@/components/PageHeader";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { getInvoices } from "@/lib/db";
-import { getCurrentUser } from "@/lib/auth";
+import { getCurrentUser, logout } from "@/lib/auth";
+import { useNavigate, Link } from "react-router-dom";
 import { FileText, Download, Eye, Clock, CheckCircle2 } from "lucide-react";
 import jsPDF from "jspdf";
 import {
@@ -39,6 +40,7 @@ const CustomerDashboard = () => {
   const [jobs, setJobs] = useState<Job[]>([]);
   const [selectedInvoice, setSelectedInvoice] = useState<Invoice | null>(null);
   const user = getCurrentUser();
+  const navigate = useNavigate();
 
   useEffect(() => {
     loadData();
@@ -92,7 +94,13 @@ const CustomerDashboard = () => {
       <PageHeader title="My Account" />
       <main className="container mx-auto px-4 py-8 max-w-6xl">
         <div className="space-y-6">
-          <h1 className="text-3xl font-bold text-foreground">Welcome, {user?.name}!</h1>
+          <div className="flex items-center justify-between">
+            <h1 className="text-3xl font-bold text-foreground">Welcome, {user?.name}!</h1>
+            <div className="flex gap-2">
+              <Link to="/customer-profile" className="inline-flex items-center rounded-md border px-3 py-2 text-sm">Profile</Link>
+              <Button variant="outline" onClick={() => { try { logout(); } finally { navigate('/login', { replace: true }); } }}>Logout</Button>
+            </div>
+          </div>
 
           {/* Active Jobs */}
           <Card className="p-6 bg-gradient-card border-border">

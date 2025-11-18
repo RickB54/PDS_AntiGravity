@@ -23,6 +23,7 @@ export interface ServicePackage {
 export interface AddOn {
   id: string;
   name: string;
+  description?: string;
   basePrice: number;
   pricing: {
     compact: number;
@@ -163,17 +164,17 @@ export const servicePackages: ServicePackage[] = [
 ];
 
 export const addOns: AddOn[] = [
-  { id: 'wheel-cleaning', name: 'Wheel Cleaning', basePrice: 20, pricing: { compact: 20, midsize: 25, truck: 30, luxury: 40 } },
-  { id: 'leather-conditioning', name: 'Leather Conditioning', basePrice: 25, pricing: { compact: 25, midsize: 30, truck: 35, luxury: 45 } },
-  { id: 'odor-eliminator', name: 'Odor Eliminator', basePrice: 15, pricing: { compact: 15, midsize: 20, truck: 25, luxury: 35 } },
-  { id: 'headlight-restoration', name: 'Headlight Restoration', basePrice: 35, pricing: { compact: 35, midsize: 40, truck: 50, luxury: 65 } },
-  { id: 'ceramic-trim-coat', name: 'Ceramic Trim Coat Restoration', basePrice: 60, pricing: { compact: 60, midsize: 75, truck: 95, luxury: 125 } },
-  { id: 'engine-bay', name: 'Engine Bay Cleaning', basePrice: 70, pricing: { compact: 70, midsize: 85, truck: 100, luxury: 120 } },
-  { id: 'wheel-rim-detailing', name: 'Wheel & Rim Detailing', basePrice: 50, pricing: { compact: 50, midsize: 60, truck: 75, luxury: 90 } },
-  { id: 'clay-bar-decon', name: 'Clay Bar Decontamination', basePrice: 65, pricing: { compact: 65, midsize: 80, truck: 95, luxury: 120 } },
-  { id: 'paint-sealant', name: 'Paint Sealant Application', basePrice: 90, pricing: { compact: 90, midsize: 110, truck: 130, luxury: 160 } },
-  { id: 'pet-hair-removal', name: 'Pet Hair Removal', basePrice: 55, pricing: { compact: 55, midsize: 70, truck: 85, luxury: 100 } },
-  { id: 'paint-touch-up', name: 'Minor Paint Touch-Up', basePrice: 75, pricing: { compact: 75, midsize: 90, truck: 110, luxury: 140 } }
+  { id: 'wheel-cleaning', name: 'Wheel Cleaning', description: 'Thorough cleaning of wheels and brake dust using safe, non-acidic products; includes lug areas and wheel faces.', basePrice: 20, pricing: { compact: 20, midsize: 25, truck: 30, luxury: 40 } },
+  { id: 'leather-conditioning', name: 'Leather Conditioning', description: 'Nourishing treatment for leather surfaces to restore suppleness and protect against UV and wear.', basePrice: 25, pricing: { compact: 25, midsize: 30, truck: 35, luxury: 45 } },
+  { id: 'odor-eliminator', name: 'Odor Eliminator', description: 'Targeted odor neutralization (food, smoke, pet) using professional-grade products; does not mask—neutralizes.', basePrice: 15, pricing: { compact: 15, midsize: 20, truck: 25, luxury: 35 } },
+  { id: 'headlight-restoration', name: 'Headlight Restoration', description: 'Multi-step refinement of plastic lenses to remove oxidation and haze, restoring clarity and brightness.', basePrice: 35, pricing: { compact: 35, midsize: 40, truck: 50, luxury: 65 } },
+  { id: 'ceramic-trim-coat', name: 'Ceramic Trim Coat Restoration', description: 'Restores faded exterior plastics and applies a ceramic coating for long-lasting color and UV protection.', basePrice: 60, pricing: { compact: 60, midsize: 75, truck: 95, luxury: 125 } },
+  { id: 'engine-bay', name: 'Engine Bay Cleaning', description: 'Careful degreasing and dressing of the engine bay; safe processes to improve appearance without high-pressure intrusion.', basePrice: 70, pricing: { compact: 70, midsize: 85, truck: 100, luxury: 120 } },
+  { id: 'wheel-rim-detailing', name: 'Wheel & Rim Detailing', description: 'Detailed cleaning and polishing of wheel faces and rims, including intricate spokes and inner barrels where accessible.', basePrice: 50, pricing: { compact: 50, midsize: 60, truck: 75, luxury: 90 } },
+  { id: 'clay-bar-decon', name: 'Clay Bar Decontamination', description: 'Full-body clay treatment to remove bonded contaminants (rail dust, overspray, fallout) for a smooth paint surface.', basePrice: 65, pricing: { compact: 65, midsize: 80, truck: 95, luxury: 120 } },
+  { id: 'paint-sealant', name: 'Paint Sealant Application', description: 'Application of a durable synthetic sealant to enhance gloss and protect paint against environmental elements.', basePrice: 90, pricing: { compact: 90, midsize: 110, truck: 130, luxury: 160 } },
+  { id: 'pet-hair-removal', name: 'Pet Hair Removal', description: 'Specialized removal of embedded pet hair from fabrics and carpets using dedicated tools and methods.', basePrice: 55, pricing: { compact: 55, midsize: 70, truck: 85, luxury: 100 } },
+  { id: 'paint-touch-up', name: 'Minor Paint Touch-Up', description: 'Spot touch-ups for small chips and scratches using compatible paint; not a full panel respray.', basePrice: 75, pricing: { compact: 75, midsize: 90, truck: 110, luxury: 140 } }
 ];
 
 export type VehicleType = 'compact' | 'midsize' | 'truck' | 'luxury';

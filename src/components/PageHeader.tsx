@@ -3,9 +3,9 @@ import { Button } from "@/components/ui/button";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { getCurrentUser, logout } from "@/lib/auth";
 import { useNavigate } from "react-router-dom";
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import AboutDialog from "@/components/AboutDialog";
 import { useState } from "react";
-import { LogOut, Info, Globe, User } from "lucide-react";
+import { LogOut, Globe, User } from "lucide-react";
 import logo from "@/assets/logo-3inch.png";
 import NotificationBell from "@/components/NotificationBell";
 import { Link } from "react-router-dom";
@@ -26,12 +26,12 @@ export function PageHeader({ title }: PageHeaderProps) {
 
   return (
     <>
-      <header className="sticky top-0 z-10 border-b border-border bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
-        <div className="flex h-20 items-center justify-between gap-4 px-4 flex-wrap">
+      <header className="sticky top-0 z-50 border-b border-border bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60 shadow-sm">
+        <div className="flex items-center justify-between gap-3 px-3 py-3">
           <div className="flex items-center gap-4 flex-wrap min-w-0">
             <SidebarTrigger className="text-foreground" />
             <button onClick={() => setShowAbout(true)} className="flex items-center gap-3">
-              <img src={logo} alt="Prime Detail Solutions" className="h-12 w-auto" />
+              <img src={logo} alt="Prime Detail Solutions" className="h-10 w-auto" />
             </button>
             {title && (
               <>
@@ -41,16 +41,11 @@ export function PageHeader({ title }: PageHeaderProps) {
             )}
           </div>
 
-          <div className="flex items-center gap-4 flex-wrap min-w-0">
-            <Button variant="ghost" size="sm" onClick={() => setShowAbout(true)} className="gap-2">
-              <Info className="h-4 w-4" />
-              About
-            </Button>
-            
-            <Button asChild variant="outline" size="sm" className="gap-2">
+          <div className="flex items-center gap-3 min-w-0">
+            <Button asChild variant="outline" size="icon" className="sm:gap-2">
               <Link to="/">
                 <Globe className="h-4 w-4" />
-                Website
+                <span className="hidden sm:inline">Website</span>
               </Link>
             </Button>
 
@@ -78,40 +73,10 @@ export function PageHeader({ title }: PageHeaderProps) {
           </div>
         </div>
       </header>
+      {/* Spacer to prevent overlap with sticky header on very small screens */}
+      <div className="h-16 sm:h-0" aria-hidden="true" />
 
-      <Dialog open={showAbout} onOpenChange={setShowAbout}>
-        <DialogContent className="max-w-md">
-          <DialogHeader>
-            <div className="flex justify-center mb-4">
-              <img src={logo} alt="Prime Detail Solutions" className="w-48" />
-            </div>
-            <DialogTitle className="text-center text-2xl">About Prime Detail Solutions</DialogTitle>
-          </DialogHeader>
-          <div className="space-y-4 text-center">
-            <p className="text-muted-foreground">
-              Welcome to Prime Detail Solutions — your trusted partner in premium auto care.
-            </p>
-            <p className="text-muted-foreground">
-              We specialize in high-quality interior and exterior detailing, paint correction, 
-              ceramic coatings, and mobile-ready services. With transparent pricing and expert 
-              craftsmanship, we deliver showroom results at our optimized detailing facility.
-            </p>
-            <div className="pt-4 border-t">
-              <p className="text-sm text-muted-foreground">
-                Website: <a href="https://prime-detail-solutions.netlify.app/" className="text-primary hover:underline">
-                  prime-detail-solutions.netlify.app
-                </a>
-              </p>
-              <p className="text-xs text-muted-foreground mt-2">
-                © Prime Detail Solutions. All rights reserved.
-              </p>
-            </div>
-          </div>
-          <Button onClick={() => setShowAbout(false)} className="w-full">
-            Close
-          </Button>
-        </DialogContent>
-      </Dialog>
+      <AboutDialog open={showAbout} onOpenChange={setShowAbout} />
     </>
   );
 }

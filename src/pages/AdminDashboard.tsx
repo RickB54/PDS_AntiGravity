@@ -38,7 +38,7 @@ import {
 import { Separator } from "@/components/ui/separator";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Label } from "@/components/ui/label";
- import { AlertTriangle, CalendarDays, UserPlus, FileText, Package, DollarSign, Calculator, Folder, Users, Grid3X3, CheckSquare, Tag, Settings as Cog, Shield, ClipboardCheck } from "lucide-react";
+ import { AlertTriangle, CalendarDays, UserPlus, FileText, Package, DollarSign, Calculator, Folder, Users, Grid3X3, CheckSquare, Tag, Settings as Cog, Shield, ClipboardCheck, RotateCcw } from "lucide-react";
 import { Link } from "react-router-dom";
 import { CheatSheetPanel } from "@/pages/CheatSheet";
 import localforage from "localforage";
@@ -53,6 +53,7 @@ import { postFullSync } from "@/lib/servicesMeta";
 import { useToast } from "@/hooks/use-toast";
 import { notify } from "@/store/alerts";
 import CustomerModal from "@/components/customers/CustomerModal";
+import { restoreDefaults } from "../lib/restoreDefaults";
 
 type Job = { finishedAt: string; totalRevenue: number; status: string };
 
@@ -593,6 +594,12 @@ export default function AdminDashboard() {
                   <ClipboardCheck className="w-3.5 h-3.5 text-pink-600" />
                   <span>Open Entire Exam</span>
                 </Link>
+                {/* Place Take Exam directly under Open Entire Exam without disturbing layout */}
+                <div className="w-full"></div>
+                <Link to="/employee-dashboard?startExam=1" className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md border border-green-600 text-green-600 hover:bg-green-600/10">
+                  <ClipboardCheck className="w-3.5 h-3.5 text-green-600" />
+                  <span>Take Exam</span>
+                </Link>
               </div>
             </Card>
           </Card>
@@ -621,6 +628,29 @@ export default function AdminDashboard() {
                     <span>Company Settings</span>
                   </Link>
                 )}
+                <button
+                  type="button"
+                  onClick={async () => {
+                    if (!confirm('Restore default website content and pricing? This will overwrite current content.')) return;
+                    try {
+                      toast({ title: 'Restoring Defaults', description: 'Seeding website content and pricing...' });
+                      await restoreDefaults();
+                      // Notify listeners
+                      window.dispatchEvent(new CustomEvent('content-changed', { detail: { kind: 'vehicle-types' } }));
+                      window.dispatchEvent(new CustomEvent('content-changed', { detail: { kind: 'packages' } }));
+                      window.dispatchEvent(new CustomEvent('content-changed', { detail: { kind: 'faqs' } }));
+                      window.dispatchEvent(new CustomEvent('content-changed', { detail: { kind: 'contact' } }));
+                      window.dispatchEvent(new CustomEvent('content-changed', { detail: { kind: 'about' } }));
+                      toast({ title: 'Defaults Restored', description: 'Website content and pricing reset. Live site updated.' });
+                    } catch (err: any) {
+                      toast({ title: 'Restore Failed', description: err?.message || String(err), variant: 'destructive' });
+                    }
+                  }}
+                  className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md border border-amber-500 text-amber-400 hover:bg-amber-500/10"
+                >
+                  <RotateCcw className="w-3.5 h-3.5 text-amber-400" />
+                  <span>Restore Defaults</span>
+                </button>
               </div>
             </Card>
           </Card>

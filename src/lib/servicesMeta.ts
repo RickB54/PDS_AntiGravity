@@ -6,6 +6,7 @@ export interface PackageMeta {
   imageDataUrl?: string; // data URL or remote path
   visible?: boolean; // default true
   stepIds?: string[]; // overrides for steps shown on public pages
+  descriptionOverride?: string; // overrides package description used in Learn More modal/cards
   deleted?: boolean;
 }
 

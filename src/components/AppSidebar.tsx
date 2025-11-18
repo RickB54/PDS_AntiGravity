@@ -174,19 +174,7 @@ export function AppSidebar() {
                 </SidebarMenuItem>
               )}
               {/* Cheat Sheet moved to Admin Dashboard; removing from slide-out menu */}
-              {isAdmin && (
-                <SidebarMenuItem>
-                  <SidebarMenuButton asChild onClick={handleNavClick}>
-                    <NavLink to="/tasks" className={linkClass}>
-                      <CheckSquare className="h-4 w-4" />
-                      <span>Todo</span>
-                    </NavLink>
-                  </SidebarMenuButton>
-                  {todoCount > 0 && (
-                    <SidebarMenuBadge className="bg-red-600 text-white">{todoCount}</SidebarMenuBadge>
-                  )}
-                </SidebarMenuItem>
-              )}
+              {/* Removed redundant admin-only Todo under Admin Dashboard */}
               {/* Always-visible Website Administration entry (cannot be hidden) */}
               {isAdmin && (
                 <SidebarMenuItem>

@@ -25,6 +25,7 @@ import {
 } from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
 import { getInvoices, getExpenses, upsertExpense } from "@/lib/db";
+import { getReceivables, upsertReceivable, Receivable } from "@/lib/receivables";
 import jsPDF from "jspdf";
 import DateRangeFilter, { DateRangeValue } from "@/components/filters/DateRangeFilter";
 
@@ -56,6 +57,14 @@ const Accounting = () => {
   const [dateRange, setDateRange] = useState<DateRangeValue>({});
   const [expenseList, setExpenseList] = useState<Expense[]>([]);
   const [invoiceList, setInvoiceList] = useState<Invoice[]>([]);
+  const [incomeList, setIncomeList] = useState<Receivable[]>([]);
+  // Add Income form state
+  const [incomeAmount, setIncomeAmount] = useState<string>("");
+  const [incomeCategory, setIncomeCategory] = useState<string>("");
+  const [incomeDescription, setIncomeDescription] = useState<string>("");
+  const [incomeDate, setIncomeDate] = useState<string>(new Date().toISOString().slice(0,10));
+  const [incomeCustomer, setIncomeCustomer] = useState<string>("");
+  const [incomeMethod, setIncomeMethod] = useState<string>("");
 
   useEffect(() => {
     loadData();
@@ -64,8 +73,10 @@ const Accounting = () => {
   const loadData = async () => {
     const invoices = await getInvoices();
     const expensesData = await getExpenses();
+    const incomes = await getReceivables();
     setExpenseList(expensesData as Expense[]);
     setInvoiceList(invoices as Invoice[]);
+    setIncomeList(incomes as Receivable[]);
 
     const now = new Date();
     const today = now.toDateString();
@@ -79,6 +90,17 @@ const Accounting = () => {
       if (invDate >= weekAgo) weekly += inv.total;
       if (invDate.getMonth() === now.getMonth() && invDate.getFullYear() === now.getFullYear()) {
         monthly += inv.total;
+      }
+    });
+
+    // Include manual income (receivables)
+    (incomes as Receivable[]).forEach(rcv => {
+      const d = new Date(rcv.date || rcv.createdAt || new Date().toISOString());
+      const amt = Number(rcv.amount || 0);
+      if (d.toDateString() === today) daily += amt;
+      if (d >= weekAgo) weekly += amt;
+      if (d.getMonth() === now.getMonth() && d.getFullYear() === now.getFullYear()) {
+        monthly += amt;
       }
     });
 
@@ -108,7 +130,9 @@ const Accounting = () => {
       return true;
     };
 
-    const revenue = invoiceList.filter(inv => within(inv.createdAt)).reduce((sum, i) => sum + (i.total || 0), 0);
+    const revenueInvoices = invoiceList.filter(inv => within(inv.createdAt)).reduce((sum, i) => sum + (i.total || 0), 0);
+    const revenueIncome = incomeList.filter(rcv => within(rcv.date || rcv.createdAt)).reduce((sum, r) => sum + (r.amount || 0), 0);
+    const revenue = revenueInvoices + revenueIncome;
     const exp = expenseList.filter(ex => within(ex.createdAt)).reduce((sum, e) => sum + (e.amount || 0), 0);
     return revenue - exp;
   };
@@ -130,6 +154,25 @@ const Accounting = () => {
       description: `$${expense.toFixed(2)} added to total expenses.`,
     });
     loadData();
+  };
+
+  const handleAddIncome = async () => {
+    const amt = parseFloat(incomeAmount) || 0;
+    if (amt === 0) return;
+    const saved = await upsertReceivable({
+      amount: amt,
+      category: incomeCategory || "General",
+      description: incomeDescription || "Income",
+      date: incomeDate,
+      customerName: incomeCustomer || undefined,
+      paymentMethod: incomeMethod || undefined,
+    });
+    setIncomeAmount("");
+    setIncomeCategory("");
+    setIncomeDescription("");
+    setIncomeMethod("");
+    loadData();
+    toast({ title: "Income Added", description: `$${amt.toFixed(2)} recorded as income.` });
   };
 
   const generatePDF = (download = false) => {
@@ -198,7 +241,7 @@ const Accounting = () => {
           <Card className="p-6 bg-gradient-card border-border">
             <h2 className="text-2xl font-bold text-foreground mb-4 flex items-center gap-2">
               <TrendingUp className="h-6 w-6 text-primary" />
-              Revenue Tracking (Auto-Calculated)
+              Revenue Tracking (Invoices + Income)
             </h2>
   <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
               <div className="p-4 bg-background/50 rounded-lg border border-border">
@@ -218,6 +261,51 @@ const Accounting = () => {
                 <p className="text-3xl font-bold text-foreground mt-2">
                   ${monthlyRevenue.toFixed(2)}
                 </p>
+              </div>
+            </div>
+          </Card>
+
+          <Card className="p-6 bg-gradient-card border-border">
+            <h2 className="text-2xl font-bold text-foreground mb-4 flex items-center gap-2">
+              <TrendingUp className="h-6 w-6 text-primary" />
+              Add Income (Receivables)
+            </h2>
+            <div className="space-y-4">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div>
+                  <Label>Amount</Label>
+                  <Input type="number" value={incomeAmount} onChange={(e)=>setIncomeAmount(e.target.value)} placeholder="0.00" />
+                </div>
+                <div>
+                  <Label>Category</Label>
+                  <Input value={incomeCategory} onChange={(e)=>setIncomeCategory(e.target.value)} placeholder="e.g., Service Income" />
+                </div>
+                <div>
+                  <Label>Description</Label>
+                  <Input value={incomeDescription} onChange={(e)=>setIncomeDescription(e.target.value)} placeholder="Optional description" />
+                </div>
+                <div>
+                  <Label>Date</Label>
+                  <Input type="date" value={incomeDate} onChange={(e)=>setIncomeDate(e.target.value)} />
+                </div>
+                <div>
+                  <Label>Customer (optional)</Label>
+                  <Input value={incomeCustomer} onChange={(e)=>setIncomeCustomer(e.target.value)} placeholder="Customer name" />
+                </div>
+                <div>
+                  <Label>Payment Method (optional)</Label>
+                  <Select value={incomeMethod} onValueChange={setIncomeMethod}>
+                    <SelectTrigger><SelectValue placeholder="Select" /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="cash">Cash</SelectItem>
+                      <SelectItem value="card">Card</SelectItem>
+                      <SelectItem value="transfer">Bank Transfer</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+              </div>
+              <div>
+                <Button onClick={handleAddIncome} className="bg-gradient-hero">Add Income</Button>
               </div>
             </div>
           </Card>

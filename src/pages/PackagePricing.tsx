@@ -63,6 +63,12 @@ import { Trash2 } from "lucide-react";
 import localforage from "localforage";
 import { pushAdminAlert } from "@/lib/adminAlerts";
 import primeLogo from "@/assets/prime-logo.png";
+import jsPDF from "jspdf";
+import api from "@/lib/api";
+import { savePDFToArchive } from "@/lib/pdfArchive";
+import { isSupabaseEnabled } from "@/lib/auth";
+import * as supaPkgs from "@/services/supabase/packages";
+import * as supaAddOns from "@/services/supabase/addOns";
 
 type Pricing = { compact: number; midsize: number; truck: number; luxury: number };
 type PriceMap = Record<string, string>;
@@ -183,6 +189,51 @@ export default function PackagePricing() {
         body: JSON.stringify(updated),
       });
     } catch {}
+
+    // Supabase write-through: upsert per-vehicle prices for packages/add-ons
+    try {
+      if (isSupabaseEnabled()) {
+        const getVal = (kind: 'package'|'addon', id: string, vt: keyof Pricing): number => {
+          const k = `${kind}:${id}:${vt}`;
+          const raw = updated[k];
+          const n = raw != null ? parseFloat(raw) : NaN;
+          return Number.isFinite(n) ? n : 0;
+        };
+
+        const allPackages = [...builtInPackages, ...getCustomPackages()];
+        const pkgRows = allPackages.map(p => ({
+          id: p.id,
+          name: p.name,
+          description: (p as any).description || '',
+          compact_price: getVal('package', p.id, 'compact') || (p.pricing?.compact ?? p.basePrice ?? 0),
+          midsize_price: getVal('package', p.id, 'midsize') || (p.pricing?.midsize ?? p.basePrice ?? 0),
+          truck_price: getVal('package', p.id, 'truck') || (p.pricing?.truck ?? p.basePrice ?? 0),
+          luxury_price: getVal('package', p.id, 'luxury') || (p.pricing?.luxury ?? p.basePrice ?? 0),
+          discount_percent: null,
+          discount_start: null,
+          discount_end: null,
+          is_active: true,
+        }));
+
+        const allAddOns = [...builtInAddOns, ...getCustomAddOns()];
+        const addRows = allAddOns.map(a => ({
+          id: a.id,
+          name: a.name,
+          description: (a as any).description || '',
+          compact_price: getVal('addon', a.id, 'compact') || (a.pricing?.compact ?? a.basePrice ?? 0),
+          midsize_price: getVal('addon', a.id, 'midsize') || (a.pricing?.midsize ?? a.basePrice ?? 0),
+          truck_price: getVal('addon', a.id, 'truck') || (a.pricing?.truck ?? a.basePrice ?? 0),
+          luxury_price: getVal('addon', a.id, 'luxury') || (a.pricing?.luxury ?? a.basePrice ?? 0),
+          discount_percent: null,
+          discount_start: null,
+          discount_end: null,
+          is_active: true,
+        }));
+
+        try { await supaPkgs.upsert(pkgRows); } catch {}
+        try { await supaAddOns.upsert(addRows); } catch {}
+      }
+    } catch {}
   }
 
   async function saveToLocalforage(updated: PriceMap) {
@@ -224,6 +275,60 @@ export default function PackagePricing() {
       }
     } catch {}
     setViewAllOpen(true);
+  };
+
+  const generateAddOnsListPDF = async () => {
+    try {
+      const liveAddons: Array<{ id: string; name: string; pricing: { compact: number; midsize: number; truck: number; luxury: number } }> = await api('/api/addons/live', { method: 'GET' }) || [];
+      const doc = new jsPDF();
+      doc.setTextColor(200, 0, 0);
+      doc.setFontSize(18);
+      doc.text('Add-Ons List', 20, 20);
+      doc.setTextColor(0, 0, 0);
+      doc.setFontSize(11);
+      const dateStr = new Date().toLocaleString();
+      doc.text(`Date: ${dateStr}`, 20, 28);
+
+      // Table headers
+      let y = 40;
+      doc.setFontSize(12);
+      doc.text('Name', 20, y);
+      doc.text('Description', 70, y);
+      doc.text('Compact', 120, y);
+      doc.text('Midsize', 140, y);
+      doc.text('Truck', 160, y);
+      doc.text('Luxury', 180, y);
+      y += 6;
+      doc.setFontSize(11);
+
+      liveAddons.forEach((a) => {
+        const desc = String((a as any).description || '—');
+        const compact = `$${Number(a.pricing.compact || 0)}`;
+        const midsize = `$${Number(a.pricing.midsize || 0)}`;
+        const truck = `$${Number(a.pricing.truck || 0)}`;
+        const luxury = `$${Number(a.pricing.luxury || 0)}`;
+        const nameLines = doc.splitTextToSize(a.name || '', 45);
+        const descLines = doc.splitTextToSize(desc, 40);
+        const rowHeight = Math.max(nameLines.length, descLines.length) * 5 + 2;
+        doc.text(nameLines, 20, y);
+        doc.text(descLines, 70, y);
+        doc.text(compact, 120, y);
+        doc.text(midsize, 140, y);
+        doc.text(truck, 160, y);
+        doc.text(luxury, 180, y);
+        y += rowHeight;
+        if (y > 270) { doc.addPage(); y = 20; }
+      });
+
+      const pdfDataUrl = doc.output('dataurlstring');
+      const today = new Date().toISOString().split('T')[0];
+      const fileName = `addons_export_${today}.pdf`;
+      savePDFToArchive('add-Ons' as any, 'Admin', 'addons_export', pdfDataUrl, { fileName, path: 'add-Ons/' });
+      toast.success('Add-Ons List PDF saved to File Manager');
+      try { window.dispatchEvent(new CustomEvent('pdf_archive_updated')); } catch {}
+    } catch (err: any) {
+      toast.error(err?.message || 'Failed to generate Add-Ons PDF');
+    }
   };
 
   // Refresh the in-memory live snapshot after a sync so View All reflects latest
@@ -882,6 +987,14 @@ export default function PackagePricing() {
               onClick={openViewAllPrices}
             >
               View All Prices
+            </Button>
+
+            <Button
+              size="lg"
+              className="bg-zinc-800 hover:bg-zinc-700 text-white font-medium px-6"
+              onClick={generateAddOnsListPDF}
+            >
+              Add-Ons List (PDF)
             </Button>
 
             {/* View selection toggle */}

@@ -149,7 +149,8 @@ const CustomerPortal = () => {
     const steps = metaSteps && metaSteps.length > 0
       ? metaSteps.map(id => ({ id, name: allBuiltInSteps[id]?.name || customServicesMap[id] || id }))
       : p.steps.map((s: any) => (typeof s === 'string' ? { id: s, name: s } : s));
-    return { ...p, pricing, steps };
+    const description = packageMetaLive[p.id]?.descriptionOverride || p.description;
+    return { ...p, pricing, steps, description };
   });
 
   const visibleBuiltAddOns = builtInAddOns.filter(a => (addOnMetaLive[a.id]?.visible) !== false);

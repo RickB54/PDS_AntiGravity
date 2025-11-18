@@ -8,7 +8,8 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion";
 import { Label } from "@/components/ui/label";
 import api from "@/lib/api";
-import { postFullSync } from "@/lib/servicesMeta";
+import { postFullSync, getAllPackageMeta, setPackageMeta, getCustomPackages, getCustomServices } from "@/lib/servicesMeta";
+import { servicePackages as builtInPackages } from "@/lib/services";
 import { useToast } from "@/hooks/use-toast";
 
 export default function WebsiteAdministration() {
@@ -20,6 +21,8 @@ export default function WebsiteAdministration() {
   const [aboutFeatures, setAboutFeatures] = useState<{ expertTeam: string; ecoFriendly: string; satisfactionGuarantee: string }>({ expertTeam: '', ecoFriendly: '', satisfactionGuarantee: '' });
   const [testimonials, setTestimonials] = useState<any[]>([]);
   const [servicesDisclaimer, setServicesDisclaimer] = useState<string>('');
+  const [learnMoreEdit, setLearnMoreEdit] = useState<Record<string, { description: string; stepIds: string[] }>>({});
+  const [allStepOptions, setAllStepOptions] = useState<{ id: string; name: string }[]>([]);
   const [editTestimonial, setEditTestimonial] = useState<any | null>(null);
   const [newTestimonialOpen, setNewTestimonialOpen] = useState(false);
   const [newTestimonialName, setNewTestimonialName] = useState('');
@@ -79,6 +82,30 @@ export default function WebsiteAdministration() {
     try {
       const s = await api('/api/services', { method: 'GET' });
       if (s && typeof s === 'object') setServicesDisclaimer(String((s as any).disclaimer || ''));
+    } catch {}
+
+    // Build Learn More editor state from built-in + custom packages and meta overrides
+    try {
+      const customPkgs = getCustomPackages();
+      const allPkgs: any[] = [...builtInPackages, ...customPkgs];
+      const metaMap = getAllPackageMeta();
+      const initial: Record<string, { description: string; stepIds: string[] }> = {};
+      allPkgs.forEach((p: any) => {
+        const meta = metaMap[p.id] || {} as any;
+        const defaultStepIds = (p.steps || []).map((s: any) => (typeof s === 'string' ? s : s.id));
+        initial[p.id] = {
+          description: (meta.descriptionOverride ?? p.description) || '',
+          stepIds: Array.isArray(meta.stepIds) && meta.stepIds.length > 0 ? meta.stepIds : defaultStepIds,
+        };
+      });
+      setLearnMoreEdit(initial);
+      // Build global step options (union of built-in steps + custom services)
+      const builtSteps = builtInPackages.flatMap(p => p.steps).map((s: any) => ({ id: s.id, name: s.name }));
+      const customServices = getCustomServices().map(s => ({ id: s.id, name: s.name }));
+      // Deduplicate by id, preserve first name
+      const unionMap: Record<string, string> = {};
+      [...builtSteps, ...customServices].forEach(s => { if (!unionMap[s.id]) unionMap[s.id] = s.name; });
+      setAllStepOptions(Object.entries(unionMap).map(([id, name]) => ({ id, name })));
     } catch {}
   };
 
@@ -392,6 +419,83 @@ export default function WebsiteAdministration() {
                       } catch {}
                       toast({ title: 'Services updated', description: 'Disclaimer saved (port 6061)' });
                     }}>Save Services</Button>
+                  </div>
+
+                  {/* Learn More Modal Content Editor */}
+                  <div className="mt-8 space-y-6">
+                    <h4 className="font-semibold">Learn More Content</h4>
+                    <p className="text-sm text-zinc-400">Edit the description and what's included list for each pricing package. This controls the Learn More modal on the Services page.</p>
+                    <div className="space-y-5">
+                      {[...builtInPackages, ...getCustomPackages()].map((pkg: any) => (
+                        <Card key={pkg.id} className="p-4 bg-zinc-900 border-zinc-800">
+                          <div className="flex items-center justify-between mb-3">
+                            <h5 className="font-semibold text-white">{pkg.name.replace(' (BEST VALUE)', '')}</h5>
+                            <span className="text-xs text-zinc-500">ID: {pkg.id}</span>
+                          </div>
+                          <div className="space-y-3">
+                            <div>
+                              <Label className="text-zinc-300">Description (Why Choose This Package?)</Label>
+                              <textarea
+                                className="w-full rounded-md bg-zinc-800 border-zinc-700 text-white p-2 h-20"
+                                value={learnMoreEdit[pkg.id]?.description || ''}
+                                onChange={(e) => setLearnMoreEdit(prev => ({ ...prev, [pkg.id]: { ...(prev[pkg.id] || { description: '', stepIds: [] }), description: e.target.value } }))}
+                              />
+                            </div>
+                            <div>
+                              <Label className="text-zinc-300">What's Included (select steps)</Label>
+                              <div className="grid grid-cols-1 md:grid-cols-2 gap-2 max-h-48 overflow-y-auto p-2 bg-zinc-800 border border-zinc-700 rounded-md">
+                                {allStepOptions.map(opt => {
+                                  const checked = (learnMoreEdit[pkg.id]?.stepIds || []).includes(opt.id);
+                                  return (
+                                    <label key={`${pkg.id}-${opt.id}`} className="flex items-center gap-2 text-sm text-white">
+                                      <input
+                                        type="checkbox"
+                                        checked={checked}
+                                        onChange={(e) => {
+                                          setLearnMoreEdit(prev => {
+                                            const current = prev[pkg.id] || { description: '', stepIds: [] };
+                                            const nextIds = new Set(current.stepIds);
+                                            if (e.target.checked) nextIds.add(opt.id); else nextIds.delete(opt.id);
+                                            return { ...prev, [pkg.id]: { ...current, stepIds: Array.from(nextIds) } };
+                                          });
+                                        }}
+                                      />
+                                      <span>{opt.name}</span>
+                                      <span className="text-xs text-zinc-400">({opt.id})</span>
+                                    </label>
+                                  );
+                                })}
+                              </div>
+                            </div>
+                            <div className="flex justify-end gap-2 button-group-responsive">
+                              <Button
+                                variant="outline"
+                                className="border-red-700 text-red-700 hover:bg-red-700/10"
+                                onClick={() => {
+                                  const defaultStepIds = (pkg.steps || []).map((s: any) => (typeof s === 'string' ? s : s.id));
+                                  setLearnMoreEdit(prev => ({ ...prev, [pkg.id]: { description: pkg.description || '', stepIds: defaultStepIds } }));
+                                }}
+                              >
+                                Reset to defaults
+                              </Button>
+                              <Button
+                                className="bg-red-700 hover:bg-red-800"
+                                onClick={async () => {
+                                  const current = learnMoreEdit[pkg.id] || { description: '', stepIds: [] };
+                                  setPackageMeta(pkg.id, { descriptionOverride: current.description, stepIds: current.stepIds });
+                                  try { await postFullSync(); } catch {}
+                                  try { window.dispatchEvent(new CustomEvent('content-changed', { detail: { kind: 'packages' } })); } catch {}
+                                  try { localStorage.setItem('force-refresh', String(Date.now())); } catch {}
+                                  toast({ title: 'Learn More updated', description: pkg.name.replace(' (BEST VALUE)', '') });
+                                }}
+                              >
+                                Save Learn More
+                              </Button>
+                            </div>
+                          </div>
+                        </Card>
+                      ))}
+                    </div>
                   </div>
                 </div>
               </AccordionContent>

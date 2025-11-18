@@ -71,3 +71,28 @@ Yes, you can!
 To connect a domain, navigate to Project > Settings > Domains and click Connect Domain.
 
 Read more here: [Setting up a custom domain](https://docs.lovable.dev/features/custom-domain#custom-domain)
+
+## Supabase Integration
+
+- Auth toggle: set `VITE_AUTH_MODE` to `supabase` or `local` in `.env` or via `localStorage` using the app’s settings. The app uses `getAuthMode` and `isSupabaseEnabled` to conditionally sync data.
+- Seed/local migration: run `npm run migrate:local` to upsert packages, add-ons, per-vehicle prices, and coupons from local storage into Supabase.
+- Pricing write-through: the Package Pricing admin screen saves per-vehicle prices to Supabase when `supabase` auth mode is enabled; otherwise it persists to local storage.
+- Coupons: the Coupons admin screen reads/writes through to Supabase when enabled; local storage is used as fallback.
+
+### Development Setup
+
+- Create a Supabase project and set environment variables in `.env`:
+  - `VITE_SUPABASE_URL`
+  - `VITE_SUPABASE_ANON_KEY`
+  - `VITE_AUTH_MODE=supabase` (optional; can also be toggled in-app)
+- Apply the schema in `supabase/schema.sql` to your Supabase project.
+- Start the app with `npm run dev`.
+
+### Testing Changes
+
+- Verify pricing write-through:
+  - Switch to `supabase` mode.
+  - Open Package Pricing, change vehicle prices, save, and confirm records in Supabase `packages` and `add_ons` tables.
+- Verify coupons:
+  - Create/update/toggle a coupon in the Coupons admin screen and check the `coupons` table.
+- Run local migration: `npm run migrate:local` and confirm Supabase tables reflect local data.

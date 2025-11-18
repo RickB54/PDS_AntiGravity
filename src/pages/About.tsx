@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { Navbar } from "@/components/Navbar";
+import AboutDialog from "@/components/AboutDialog";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Shield, Users, Sparkles, ArrowRight, ArrowLeft } from "lucide-react";
@@ -11,6 +12,7 @@ const About = () => {
   const [sections, setSections] = useState<{ id: string; section: string; content: string }[]>([]);
   const [testimonials, setTestimonials] = useState<{ id: string; name: string; quote: string }[]>([]);
   const [features, setFeatures] = useState<{ expertTeam: string; ecoFriendly: string; satisfactionGuarantee: string }>({ expertTeam: '', ecoFriendly: '', satisfactionGuarantee: '' });
+  const [showAbout, setShowAbout] = useState(false);
   useEffect(() => {
     let mounted = true;
     const load = async () => {
@@ -48,8 +50,12 @@ const About = () => {
     <div className="min-h-screen bg-background">
       <Navbar />
       
-      {/* Hero Section with Video Background (deferred to avoid network aborts) */}
-      <section className="relative h-[60vh] flex items-center justify-center overflow-hidden">
+      {/* Hero Section with Video Background (click to open About dialog) */}
+      <section
+        className="relative h-[60vh] flex items-center justify-center overflow-hidden cursor-pointer"
+        onClick={() => setShowAbout(true)}
+        aria-label="Open About dialog"
+      >
         <div className="absolute inset-0 bg-black/60 z-10" />
         <video 
           preload="none"
@@ -60,13 +66,13 @@ const About = () => {
         >
           <source src="https://cdn.pixabay.com/video/2019/10/08/27833-365006009_large.mp4" type="video/mp4" />
         </video>
-        <div className="relative z-20 text-center text-white px-4">
-          <img src={logo} alt="Prime Detail Solutions" className="w-24 h-24 mx-auto mb-6" />
-          <h1 className="text-5xl md:text-6xl font-bold mb-4">About Prime Detail Solutions</h1>
-          <p className="text-xl md:text-2xl max-w-3xl mx-auto">
-            Your trusted partner in premium auto care
-          </p>
-        </div>
+        {/* No overlay text or logo to avoid hero overlap */}
+      </section>
+
+      {/* Title moved below hero to prevent overlap */}
+      <section className="container mx-auto px-4 py-8 text-center">
+        <h1 className="text-4xl md:text-5xl font-bold text-foreground mb-2">About Prime Detail Solutions</h1>
+        <p className="text-xl text-muted-foreground">Your trusted partner in premium auto care</p>
       </section>
 
       {/* Main Content */}
@@ -187,6 +193,7 @@ const About = () => {
           </div>
         </div>
       </main>
+      <AboutDialog open={showAbout} onOpenChange={setShowAbout} />
     </div>
   );
 };

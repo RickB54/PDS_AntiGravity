@@ -4,6 +4,7 @@ import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Label } from "@/components/ui/label";
@@ -85,7 +86,11 @@ export default function Tasks() {
 
   const handleQuickAdd = async () => {
     const parsed = parseTaskInput(quickAdd);
-    const rec = await add(parsed);
+    // Employees can add tasks, but they'll be auto-assigned to themselves.
+    const rec = await add(isAdmin ? parsed : {
+      ...parsed,
+      assignees: [{ email: user?.email, name: user?.name }]
+    });
     setQuickAdd("");
     toast({ title: "Task Added", description: rec.title });
   };
@@ -125,34 +130,14 @@ export default function Tasks() {
   );
 
   return (
-    <div className="p-4">
+    <div className="p-4 overflow-x-hidden">
       <PageHeader title="Tasks" />
-      <div className="grid grid-cols-1 lg:grid-cols-[280px_1fr_340px] gap-4">
-        {/* Left Sidebar */}
-        <Card className="p-4 bg-[#0f0f13] border border-zinc-800 rounded-xl">
-          <div className="flex items-center gap-2 mb-3">
-            <CheckSquare className="w-5 h-5 text-green-500" />
-            <div className="font-semibold">Categories</div>
-          </div>
-          <div className="space-y-2">
-            {(isAdmin ? (['all','mine','overdue','today','upcoming'] as const) : (['mine','overdue','today','upcoming'] as const)).map((f) => (
-              <Button key={f} variant={filter===f? 'secondary':'ghost'} className="w-full justify-start" onClick={() => setFilter(f)}>
-                <Filter className="w-4 h-4 mr-2" />
-                {f === 'all' ? 'All' : f === 'mine' ? 'My Tasks' : f[0].toUpperCase()+f.slice(1)}
-              </Button>
-            ))}
-          </div>
-          <div className="mt-4">
-            <div className="text-xs text-muted-foreground mb-2">Task Templates</div>
-            <TemplateButtons />
-          </div>
-        </Card>
-
+      <div className="grid grid-cols-1 lg:grid-cols-[1fr_360px] gap-4">
         {/* Main Content */}
         <div className="space-y-3">
           <Card className="p-3 bg-[#0f0f13] border border-zinc-800 rounded-xl">
             <div className="flex items-center gap-2">
-              {isAdmin && (
+              {(isAdmin || isEmployee) && (
                 <>
                   <Input placeholder="e.g., Follow up with John tomorrow at 3 PM" value={quickAdd} onChange={(e) => setQuickAdd(e.target.value)} className="flex-1" />
                   <Button onClick={handleQuickAdd}>Add</Button>
@@ -167,6 +152,28 @@ export default function Tasks() {
                 </SelectContent>
               </Select>
               <Input placeholder="Search" value={search} onChange={(e) => setSearch(e.target.value)} className="w-[200px]" />
+            </div>
+            {/* Categories moved under Add area in a dropdown accordion */}
+            <div className="mt-3">
+              <Accordion type="single" collapsible>
+                <AccordionItem value="categories">
+                  <AccordionTrigger className="text-left">Categories</AccordionTrigger>
+                  <AccordionContent>
+                    <div className="space-y-2">
+                      {(isAdmin ? (['all','mine','overdue','today','upcoming'] as const) : (['mine','overdue','today','upcoming'] as const)).map((f) => (
+                        <Button key={f} variant={filter===f? 'secondary':'ghost'} className="w-full justify-start" onClick={() => setFilter(f)}>
+                          <Filter className="w-4 h-4 mr-2" />
+                          {f === 'all' ? 'All' : f === 'mine' ? 'My Tasks' : f[0].toUpperCase()+f.slice(1)}
+                        </Button>
+                      ))}
+                    </div>
+                    <div className="mt-4">
+                      <div className="text-xs text-muted-foreground mb-2">Task Templates</div>
+                      <TemplateButtons />
+                    </div>
+                  </AccordionContent>
+                </AccordionItem>
+              </Accordion>
             </div>
           </Card>
 
@@ -254,7 +261,7 @@ export default function Tasks() {
         </div>
 
         {/* Detail Panel */}
-        <Card className="p-4 bg-[#0f0f13] border border-zinc-800 rounded-xl">
+        <Card className="p-4 bg-[#0f0f13] border border-zinc-800 rounded-xl lg:sticky lg:top-4 max-w-full">
           <div className="font-semibold mb-2">Task Details</div>
           {editing ? (
             <div className="space-y-2">
