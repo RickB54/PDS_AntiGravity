@@ -10,16 +10,34 @@ type AuthMode = 'test' | 'identity' | 'supabase';
 
 function getEnvAuthMode(): AuthMode {
   try {
-    const envMode = (import.meta as any)?.env?.VITE_AUTH_MODE as AuthMode | undefined;
-    if (envMode === 'identity' || envMode === 'test' || envMode === 'supabase') return envMode;
+    const env = (import.meta as any)?.env || {};
+    const normalize = (v: unknown) => String(v ?? '')
+      .trim()
+      .replace(/^['"`]\s*/, '')
+      .replace(/\s*['"`]$/, '');
+
+    const envModeRaw = env?.VITE_AUTH_MODE as string | undefined;
+    const envMode = normalize(envModeRaw).toLowerCase();
+    // If explicitly set, respect it (after normalization)
+    if (envMode === 'identity' || envMode === 'test' || envMode === 'supabase') return envMode as AuthMode;
+
+    // Fallback: if Supabase keys are present and not placeholders, treat as supabase
+    const url = normalize(env?.VITE_SUPABASE_URL as string);
+    const anon = normalize(env?.VITE_SUPABASE_ANON_KEY as string);
+    const looksConfigured = url.startsWith('http') && anon.length > 20 && !url.includes('YOUR-PROJECT') && !anon.includes('YOUR-ANON-KEY');
+    if (looksConfigured) return 'supabase';
   } catch {}
   return 'test';
 }
 
 export function getAuthMode(): AuthMode {
-  const stored = localStorage.getItem('auth_mode');
-  if (stored === 'identity' || stored === 'test') return stored as AuthMode;
-  return getEnvAuthMode();
+  // Prefer environment over localStorage to avoid stale overrides
+  const envMode = getEnvAuthMode();
+  try {
+    const prev = localStorage.getItem('auth_mode');
+    if (prev !== envMode) localStorage.setItem('auth_mode', envMode);
+  } catch {}
+  return envMode;
 }
 
 export function isIdentityEnabled(): boolean {
@@ -27,13 +45,15 @@ export function isIdentityEnabled(): boolean {
 }
 
 export function isSupabaseEnabled(): boolean {
-  return getAuthMode() === 'supabase';
+  return getAuthMode() === 'supabase' || isSupabaseConfigured();
 }
 
 export function setAuthMode(mode: AuthMode) {
   localStorage.setItem('auth_mode', mode);
   if (mode === 'identity') {
     initIdentity();
+  } else if (mode === 'supabase') {
+    initSupabaseAuth();
   }
 }
 
@@ -63,8 +83,13 @@ export function getCurrentUser(): User | null {
     } catch {}
   }
   if (isSupabaseEnabled()) {
+    try {
+      const sid = localStorage.getItem('session_user_id');
+      if (!sid) return null;
+    } catch {}
     const cached = localStorage.getItem('currentUser');
     if (cached) return JSON.parse(cached);
+    return null;
   }
   const stored = localStorage.getItem('currentUser');
   if (!stored) return null;
@@ -146,7 +171,56 @@ export function initIdentity(): void {
 }
 
 // Supabase integration
-import supabase from './supabase';
+import supabase, { isSupabaseConfigured } from './supabase';
+
+// Role inference via environment email lists to restore admin/employee menus
+function normalizeEnvList(v: unknown): string[] {
+  return String(v ?? '')
+    .split(',')
+    .map(s => s.trim().toLowerCase())
+    .filter(Boolean);
+}
+
+function getEmailRoleOverride(email: string): 'admin' | 'employee' | null {
+  try {
+    const env = (import.meta as any)?.env || {};
+    const e = String(email || '').trim().toLowerCase();
+    const admins = normalizeEnvList((env?.VITE_ADMIN_EMAILS as any) || (env?.VITE_ADMIN_EMAIL as any));
+    const employees = normalizeEnvList((env?.VITE_EMPLOYEE_EMAILS as any) || (env?.VITE_EMPLOYEE_EMAIL as any));
+    // Hardcoded safety fallback for immediate restoration if env not set
+    const defaultAdmins = ['primedetailsolutions.ma.nh@gmail.com'];
+    const adminList = admins.length ? admins : defaultAdmins;
+    if (adminList.includes(e)) return 'admin';
+    if (employees.includes(e)) return 'employee';
+  } catch {}
+  return null;
+}
+
+// Exported helper: map current Supabase session to our User and persist
+export async function finalizeSupabaseSession(): Promise<User | null> {
+  try {
+    const { data } = await supabase.auth.getUser();
+    const u = data.user;
+    if (!u) return null;
+    const profile = await getSupabaseUserProfile(u.id);
+    const email = u.email || '';
+    const overrideRole = getEmailRoleOverride(email);
+    const role = (profile?.role as any) || overrideRole || 'customer';
+    const mapped: User = { email, name: profile?.name || (email || '').split('@')[0], role };
+    setCurrentUser(mapped);
+    // Persist role into auth.user_metadata for immediate claim availability
+    try { await supabase.auth.updateUser({ data: { role } }); } catch {}
+    // Ensure app_users has a row and role persisted on every session finalize
+    try {
+      await supabase.from('app_users').upsert({ id: u.id, email, role, updated_at: new Date().toISOString() }, { onConflict: 'id' });
+    } catch {}
+    try { localStorage.setItem('session_user_id', u.id); } catch {}
+    try { await getSupabaseCustomerProfile(u.id); } catch {}
+    return mapped;
+  } catch {
+    return null;
+  }
+}
 
 export function initSupabaseAuth(): void {
   if (!isSupabaseEnabled()) return;
@@ -154,13 +228,44 @@ export function initSupabaseAuth(): void {
     supabase.auth.onAuthStateChange(async (_event, session) => {
       if (session?.user) {
         const profile = await getSupabaseUserProfile(session.user.id);
-        const mapped: User = { email: session.user.email || '', name: profile?.name || (session.user.email || '').split('@')[0], role: (profile?.role as any) || 'customer' };
+        const email = session.user.email || '';
+        const overrideRole = getEmailRoleOverride(email);
+        const role = (profile?.role as any) || overrideRole || 'customer';
+        const mapped: User = { email, name: profile?.name || (email || '').split('@')[0], role };
         setCurrentUser(mapped);
+        try { localStorage.setItem('session_user_id', session.user.id); } catch {}
+        // Ensure app_users has at least a customer row when missing
+        if (!profile) {
+          try {
+            await supabase.from('app_users').upsert({ id: session.user.id, email, role, updated_at: new Date().toISOString() }, { onConflict: 'id' });
+          } catch {}
+        }
         try { await getSupabaseCustomerProfile(session.user.id); } catch {}
       } else {
+        try { localStorage.removeItem('session_user_id'); } catch {}
         setCurrentUser(null);
       }
     });
+    // Ensure initial session mapping on load
+    (async () => {
+      const { data } = await supabase.auth.getUser();
+      const u = data.user;
+      if (u) {
+        const profile = await getSupabaseUserProfile(u.id);
+        const email = u.email || '';
+        const overrideRole = getEmailRoleOverride(email);
+        const role = (profile?.role as any) || overrideRole || 'customer';
+        const mapped: User = { email, name: profile?.name || (email || '').split('@')[0], role };
+        setCurrentUser(mapped);
+        // Ensure role claim available in session metadata
+        try { await supabase.auth.updateUser({ data: { role } }); } catch {}
+        try { localStorage.setItem('session_user_id', u.id); } catch {}
+        try { await getSupabaseCustomerProfile(u.id); } catch {}
+      } else {
+        try { localStorage.removeItem('session_user_id'); } catch {}
+        setCurrentUser(null);
+      }
+    })();
   } catch {}
 }
 
@@ -185,14 +290,26 @@ async function getSupabaseCustomerProfile(userId: string): Promise<any | null> {
 }
 
 export async function loginSupabase(email: string, password: string): Promise<User | null> {
-  if (!isSupabaseEnabled()) return login(email, password);
+  if (!isSupabaseEnabled()) return null;
   try {
     const { data, error } = await supabase.auth.signInWithPassword({ email, password });
     if (error) return null;
     const userId = data.user?.id;
     const profile = userId ? await getSupabaseUserProfile(userId) : null;
-    const mapped: User = { email: data.user?.email || email, name: profile?.name || (email.split('@')[0]), role: (profile?.role as any) || 'customer' };
+    const emailResolved = data.user?.email || email;
+    const overrideRole = getEmailRoleOverride(emailResolved);
+    const role = (profile?.role as any) || overrideRole || 'customer';
+    const mapped: User = { email: emailResolved, name: profile?.name || (emailResolved.split('@')[0]), role };
     setCurrentUser(mapped);
+    // Ensure role claim is written to auth.user_metadata for consistent routing
+    try { await supabase.auth.updateUser({ data: { role } }); } catch {}
+    // Upsert app_users role if missing; helps admin/employee assignment
+    if (userId) {
+      try {
+        await supabase.from('app_users').upsert({ id: userId, email: emailResolved, role, updated_at: new Date().toISOString() }, { onConflict: 'id' });
+      } catch {}
+    }
+    if (userId) { try { localStorage.setItem('session_user_id', userId); } catch {} }
     if (userId) { try { await getSupabaseCustomerProfile(userId); } catch {} }
     return mapped;
   } catch {
@@ -211,9 +328,12 @@ export async function signupSupabase(email: string, password: string, name?: str
         await supabase.from('app_users').upsert({ id: userId, email, role: 'customer', created_at: new Date().toISOString(), updated_at: new Date().toISOString() }, { onConflict: 'id' });
         await supabase.from('customers').upsert({ id: userId, email, name: name || '' , created_at: new Date().toISOString(), updated_at: new Date().toISOString() }, { onConflict: 'id' });
       } catch {}
+      // Persist a default customer role claim into auth.user_metadata
+      try { await supabase.auth.updateUser({ data: { role: 'customer' } }); } catch {}
     }
     const mapped: User = { email, name: name || (email.split('@')[0]), role: 'customer' };
     setCurrentUser(mapped);
+    if (userId) { try { localStorage.setItem('session_user_id', userId); } catch {} }
     if (userId) { try { await getSupabaseCustomerProfile(userId); } catch {} }
     return mapped;
   } catch {
@@ -268,18 +388,10 @@ export function login(email: string, password: string): User {
     // Return a neutral customer until widget completes
     return { email, role: 'customer', name: email.split('@')[0] };
   }
-  // Determine role based on email
-  let role: 'customer' | 'employee' | 'admin' = 'customer';
-  
-  if (email.toLowerCase().includes('admin')) {
-    role = 'admin';
-  } else if (email.toLowerCase().includes('employee')) {
-    role = 'employee';
-  }
-
+  // Test mode: never grant admin/employee by email heuristics
   const user: User = {
     email,
-    role,
+    role: 'customer',
     name: email.split('@')[0]
   };
 
@@ -322,6 +434,7 @@ export function logout(): void {
     (async () => { try { await supabase.auth.signOut(); } catch {} })();
     try { localStorage.removeItem('customerProfile'); } catch {}
     try { window.dispatchEvent(new CustomEvent('customer-profile-changed', { detail: null })); } catch {}
+    try { localStorage.removeItem('session_user_id'); } catch {}
     setCurrentUser(null);
     return;
   }

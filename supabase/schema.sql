@@ -30,9 +30,67 @@ alter table public.app_users enable row level security;
 -- Allow users to view their own record; admins see all
 create policy if not exists app_users_self_select on public.app_users
   for select using (auth.uid() = id or public.is_admin());
--- Admin can insert/update/delete
-create policy if not exists app_users_admin_modify on public.app_users
-  for all using (public.is_admin()) with check (public.is_admin());
+ -- Admin can insert/update; delete disabled by policy omission
+ do $$ begin
+   if exists (
+     select 1 from pg_policies where schemaname='public' and tablename='app_users' and policyname='app_users_admin_modify'
+   ) then
+     drop policy app_users_admin_modify on public.app_users;
+   end if;
+ end $$;
+ create policy if not exists app_users_admin_select on public.app_users
+   for select using (public.is_admin());
+ create policy if not exists app_users_admin_insert on public.app_users
+   for insert with check (public.is_admin());
+ create policy if not exists app_users_admin_update on public.app_users
+   for update using (public.is_admin()) with check (public.is_admin());
+ -- Users can update their own profile row
+ create policy if not exists app_users_self_update on public.app_users
+   for update using (auth.uid() = id) with check (auth.uid() = id);
+
+ -- Bootstrap role on new auth.users signup (trigger + function)
+ create or replace function public.bootstrap_role()
+ returns trigger
+ security definer
+ set search_path = public, pg_temp
+ language plpgsql as $$
+ declare
+   user_role text := 'customer';
+ begin
+   -- Assign admin for the primary company email; others default to customer
+   if lower(new.email) = 'primedetailsolutions.ma.nh@gmail.com' then
+     user_role := 'admin';
+   else
+     user_role := 'customer';
+   end if;
+
+   -- Upsert into app_users; allow function to bypass RLS via security definer
+   insert into public.app_users (id, email, role, name, is_active, created_at, updated_at)
+   values (new.id, new.email, user_role, null, true, now(), now())
+   on conflict (id) do update
+     set email = excluded.email,
+         role = excluded.role,
+         updated_at = now();
+
+   return new;
+ end;
+ $$;
+
+ -- Create trigger on auth.users after insert to call bootstrap_role
+ do $$ begin
+   if exists (
+     select 1 from pg_trigger t
+     join pg_class c on c.oid = t.tgrelid
+     join pg_namespace n on n.oid = c.relnamespace
+     where t.tgname = 'on_auth_user_created' and n.nspname = 'auth' and c.relname = 'users'
+   ) then
+     drop trigger on_auth_user_created on auth.users;
+   end if;
+ end $$;
+ create trigger on_auth_user_created
+   after insert on auth.users
+   for each row
+   execute procedure public.bootstrap_role();
 
 -- Services catalog (optional, minimal)
 create table if not exists public.services (
@@ -164,6 +222,11 @@ create policy if not exists bookings_read on public.bookings for select using (p
 create policy if not exists bookings_create on public.bookings for insert with check (public.is_employee());
 create policy if not exists bookings_admin_write on public.bookings for update using (public.is_admin()) with check (public.is_admin());
 create policy if not exists bookings_admin_delete on public.bookings for delete using (public.is_admin());
+-- Customer visibility and control over their own bookings
+alter table if exists public.bookings add column if not exists customer_id uuid references auth.users(id);
+create policy if not exists bookings_customer_select on public.bookings for select using (customer_id = auth.uid());
+create policy if not exists bookings_customer_insert on public.bookings for insert with check (customer_id = auth.uid());
+create policy if not exists bookings_customer_update on public.bookings for update using (customer_id = auth.uid()) with check (customer_id = auth.uid());
 
 alter table if exists public.bookings
   add column if not exists updated_at timestamptz default now();
@@ -246,10 +309,18 @@ alter table if exists public.customers enable row level security;
 create policy if not exists customers_read on public.customers for select using (public.is_employee());
 create policy if not exists customers_admin_write on public.customers for update using (public.is_admin()) with check (public.is_admin());
 create policy if not exists customers_admin_delete on public.customers for delete using (public.is_admin());
+-- Customers can view and modify only their own profile
+create policy if not exists customers_self_select on public.customers for select using (id = auth.uid());
+create policy if not exists customers_self_insert on public.customers for insert with check (id = auth.uid());
+create policy if not exists customers_self_update on public.customers for update using (id = auth.uid()) with check (id = auth.uid());
 
 -- Invoices
 alter table if exists public.invoices enable row level security;
+-- Ensure per-customer access via customer_id
+alter table if exists public.invoices add column if not exists customer_id uuid references auth.users(id);
 create policy if not exists invoices_read on public.invoices for select using (public.is_employee());
+create policy if not exists invoices_customer_select on public.invoices for select using (customer_id = auth.uid());
+create policy if not exists invoices_customer_update on public.invoices for update using (customer_id = auth.uid()) with check (customer_id = auth.uid());
 create policy if not exists invoices_admin_write on public.invoices for update using (public.is_admin()) with check (public.is_admin());
 create policy if not exists invoices_admin_delete on public.invoices for delete using (public.is_admin());
 
@@ -305,6 +376,28 @@ alter table public.audit_log enable row level security;
 create policy if not exists audit_admin_read on public.audit_log for select using (public.is_admin());
 create policy if not exists audit_admin_write on public.audit_log for insert with check (public.is_admin());
 
+-- Receivables (payments owed or collected)
+create table if not exists public.receivables (
+  id uuid primary key default gen_random_uuid(),
+  amount numeric not null,
+  category text,
+  description text,
+  date timestamptz not null default now(),
+  customer_id uuid references auth.users(id),
+  customer_name text,
+  payment_method text,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+alter table public.receivables enable row level security;
+-- Employees can view receivables; admins can manage all
+create policy if not exists receivables_employee_select on public.receivables for select using (public.is_employee());
+create policy if not exists receivables_admin_all on public.receivables for all using (public.is_admin()) with check (public.is_admin());
+-- Customers can view and modify only their own receivables
+create policy if not exists receivables_customer_select on public.receivables for select using (customer_id = auth.uid());
+create policy if not exists receivables_customer_insert on public.receivables for insert with check (customer_id = auth.uid());
+create policy if not exists receivables_customer_update on public.receivables for update using (customer_id = auth.uid()) with check (customer_id = auth.uid());
+
 -- Index checks and additions (idempotent)
 do $$ begin
   if exists (select 1 from pg_tables where schemaname='public' and tablename='customers') then
@@ -328,3 +421,20 @@ do $$ begin
     create index if not exists inventory_records_date_idx on public.inventory_records (date);
   end if;
 end $$;
+
+-- Payments captured via Stripe checkout webhook
+create table if not exists public.payments (
+  id uuid primary key default gen_random_uuid(),
+  stripe_session_id text unique,
+  customer_email text,
+  amount_total numeric,
+  currency text,
+  payment_status text,
+  items jsonb,
+  created_at timestamptz not null default now()
+);
+alter table public.payments enable row level security;
+create policy if not exists payments_admin_all on public.payments for all using (public.is_admin()) with check (public.is_admin());
+create policy if not exists payments_employee_select on public.payments for select using (public.is_employee());
+
+-- Subscriptions are not used by this app. All subscription tables and policies removed.

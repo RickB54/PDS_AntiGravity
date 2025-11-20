@@ -640,6 +640,42 @@ const BookNow = () => {
               <Button type="submit" className="w-full bg-gradient-hero text-lg py-6 min-h-[56px] mt-4" disabled={isSubmitting}>
                 {isSubmitting ? "Submitting..." : "Submit Booking Request"}
               </Button>
+              {/* New: Separate Estimate and Payment actions */}
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mt-3">
+                <Button
+                  type="button"
+                  variant="outline"
+                  className="w-full py-6"
+                  onClick={async () => {
+                    try {
+                      const dateIso = formData.datetime ? new Date(formData.datetime).toISOString() : new Date().toISOString();
+                      const estimatePayload = {
+                        kind: 'estimate-request',
+                        customer: { name: formData.name, email: formData.email, phone: formData.phone },
+                        vehicle: { year: formData.year, make: formData.make, model: formData.model, type: vehicleType },
+                        package: formData.package,
+                        addOns,
+                        preferredDate: dateIso,
+                        notes: formData.message,
+                      };
+                      await fetch("http://localhost:6061/api/email/admin", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(estimatePayload) });
+                      toast({ title: "Your estimate request has been sent.", description: "Rick will reach out to confirm.", duration: 4000 });
+                    } catch {
+                      toast({ title: "Estimate request queued", description: "We’ll try sending again shortly.", duration: 4000 });
+                    }
+                  }}
+                >
+                  Schedule an Estimate
+                </Button>
+                {/* Checkout removed */}
+                <Button
+                  type="button"
+                  className="w-full bg-primary text-primary-foreground py-6"
+                  asChild
+                >
+                  <Link to="/checkout">Make a Payment / Checkout</Link>
+                </Button>
+              </div>
             </form>
           </Card>
 
@@ -648,11 +684,7 @@ const BookNow = () => {
           </p>
         </div>
       </main>
-      <div style={{background:'red',color:'white',padding:'10px',fontWeight:'bold',position:'fixed',bottom:0,left:0,right:0,zIndex:9999}}>
-        BOOK NOW LOADED: <span id="book-sync">{lastSyncTs ? new Date(lastSyncTs).toLocaleTimeString() : 'Never'}</span> | 
-        PACKAGES: <span id="book-pkgs">{livePackages.length}</span> | 
-        ADD-ONS: <span id="book-addons">{liveAddOns.length}</span>
-      </div>
+      {/* Removed bottom debug banner for production */}
     </div>
   );
 };

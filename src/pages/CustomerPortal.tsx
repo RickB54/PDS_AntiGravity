@@ -28,6 +28,8 @@ const packageImages: Record<string, string> = {
 
 const CustomerPortal = () => {
   const navigate = useNavigate();
+  const { toast } = useToast();
+  const addToCart = useCartStore((s) => s.addItem);
   const [vehicleType, setVehicleType] = useState<string>('compact');
   const [vehicleLabels, setVehicleLabels] = useState<Record<string, string>>({
     compact: "Compact/Sedan",
@@ -465,19 +467,7 @@ const CustomerPortal = () => {
           {/* Removed confirmation button per request */}
         </Card>
       </main>
-      {/* Debug Bar - fixed overlay at bottom */}
-      <div className="fixed bottom-0 left-0 right-0 z-[9999] bg-red-600 text-white px-4 py-2 text-sm flex items-center justify-between shadow-lg">
-        <div>
-          <span className="font-semibold">LAST SYNC:</span> {lastSyncTs ? new Date(lastSyncTs).toLocaleTimeString() : '—'}
-        </div>
-        <div>
-          <span className="font-semibold">PACKAGES:</span> {(() => {
-            const visibleBuiltIns = builtInPackages.filter(p => (packageMetaLive[p.id]?.visible) !== false);
-            const visibleCustomPkgs = customPackagesLive.filter((p: any) => (packageMetaLive[p.id]?.visible) !== false);
-            return [...visibleBuiltIns, ...visibleCustomPkgs].length;
-          })()}
-        </div>
-      </div>
+      {/* Debug Bar removed: production environment with Supabase enabled */}
 
       {/* Learn More Dialog */}
       <Dialog open={!!learnMorePackage} onOpenChange={() => setLearnMorePackage(null)}>
@@ -511,7 +501,16 @@ const CustomerPortal = () => {
                 className="flex-1 bg-gradient-hero"
                 onClick={() => {
                   if (learnMorePackage) {
-                    setSelectedService(learnMorePackage.id);
+                    // Add selected package to cart with current vehicleType pricing
+                    const price = learnMorePackage.pricing[vehicleType];
+                    addToCart({
+                      id: learnMorePackage.id,
+                      name: learnMorePackage.name.replace(' (BEST VALUE)', ''),
+                      price,
+                      quantity: 1,
+                      vehicleType,
+                    });
+                    toast({ title: "Added to Cart", description: `${learnMorePackage.name} — $${price}`, duration: 2500 });
                   }
                   setLearnMorePackage(null);
                 }}
@@ -530,3 +529,5 @@ const CustomerPortal = () => {
 };
 
 export default CustomerPortal;
+import { useCartStore } from "@/store/cart";
+import { useToast } from "@/hooks/use-toast";

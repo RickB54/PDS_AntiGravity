@@ -12,7 +12,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { useToast } from "@/hooks/use-toast";
-import api from "@/lib/api";
+import supabase from "@/lib/supabase";
 
 export default function UserManagement() {
   const { toast } = useToast();
@@ -27,8 +27,13 @@ export default function UserManagement() {
 
   const loadEmployees = async () => {
     try {
-      const list = await api("/api/users/employees", { method: "GET" });
-      setEmployees(Array.isArray(list) ? list : []);
+      const { data, error } = await supabase
+        .from("app_users")
+        .select("id,email,name,role,updated_at")
+        .eq("role", "employee")
+        .order("updated_at", { ascending: false });
+      if (error) throw error;
+      setEmployees((data || []) as any[]);
     } catch {
       setEmployees([]);
     }
@@ -43,54 +48,55 @@ export default function UserManagement() {
       toast({ title: "Name and Email required" });
       return;
     }
-    const res = await api("/api/users/create-employee", {
-      method: "POST",
-      body: JSON.stringify({ name: empNewName, email: empNewEmail, password: empNewPassword }),
-    });
-    if (res?.ok) {
+    try {
+      const { data, error } = await supabase.functions.invoke("create-employee", {
+        body: { name: empNewName, email: empNewEmail, password: empNewPassword },
+      });
+      if (error || !data?.ok) throw error || new Error("create_employee_failed");
       setEmpNewName("");
       setEmpNewEmail("");
       setEmpNewPassword("");
       await loadEmployees();
-      toast({ title: "Employee created", description: res?.user?.email });
-    } else {
-      toast({ title: "Failed to create employee" });
+      toast({ title: "Employee created", description: data?.user?.email || empNewEmail });
+    } catch (e: any) {
+      toast({ title: "Failed to create employee", description: String(e?.message || e) });
     }
   };
 
   const updateEmployee = async () => {
     if (!empEditId) return;
-    const res = await api("/api/users/update", {
-      method: "POST",
-      body: JSON.stringify({ id: empEditId, name: empEditName, email: empEditEmail }),
-    });
-    if (res?.ok) {
+    try {
+      const { error } = await supabase
+        .from("app_users")
+        .update({ name: empEditName })
+        .eq("id", empEditId);
+      if (error) throw error;
       setEmpEditId(null);
       setEmpEditName("");
       setEmpEditEmail("");
       await loadEmployees();
       toast({ title: "Employee updated" });
-    } else {
+    } catch {
       toast({ title: "Update failed" });
     }
   };
 
-  const impersonateEmployee = async (id: string) => {
-    const res = await api(`/api/users/impersonate/${id}`, { method: "POST" });
-    if (res?.ok) {
-      toast({ title: "Impersonating employee", description: res?.user?.email });
-    } else {
-      toast({ title: "Impersonation failed" });
-    }
+  const impersonateEmployee = async (_id: string) => {
+    toast({ title: "Impersonation disabled", description: "Use role-based login instead." });
   };
 
   const deleteEmployee = async (id: string) => {
     if (!confirm("Delete this employee?")) return;
-    const res = await api(`/api/users/${id}`, { method: "DELETE" });
-    if (res?.ok) {
+    try {
+      const { error } = await supabase
+        .from("app_users")
+        .delete()
+        .eq("id", id)
+        .eq("role", "employee");
+      if (error) throw error;
       await loadEmployees();
       toast({ title: "Employee deleted" });
-    } else {
+    } catch {
       toast({ title: "Delete failed" });
     }
   };
@@ -156,7 +162,7 @@ export default function UserManagement() {
                     </TableCell>
                     <TableCell className="text-zinc-300">Employee</TableCell>
                     <TableCell className="text-zinc-300">
-                      {u.lastLogin ? new Date(u.lastLogin).toLocaleString() : "—"}
+                      {u.updated_at ? new Date(u.updated_at).toLocaleString() : "—"}
                     </TableCell>
                     <TableCell className="space-x-2">
                       {empEditId === u.id ? (

@@ -1,4 +1,5 @@
 import { useState, useEffect } from "react";
+import { useSearchParams } from "react-router-dom";
 import { PageHeader } from "@/components/PageHeader";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -6,6 +7,9 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Printer, Save, AlertTriangle } from "lucide-react";
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { servicePackages } from "@/lib/services";
+import { savePDFToArchive } from "@/lib/pdfArchive";
 import localforage from "localforage";
 import DateRangeFilter, { DateRangeValue } from "@/components/filters/DateRangeFilter";
 import jsPDF from "jspdf";
@@ -20,10 +24,17 @@ const Reports = () => {
   const [materials, setMaterials] = useState<any[]>([]);
   const [jobs, setJobs] = useState<any[]>([]);
   const [estimates, setEstimates] = useState<any[]>([]);
+  const [payrollHistory, setPayrollHistory] = useState<any[]>([]);
   const [selectedCustomer, setSelectedCustomer] = useState<string>("");
   // Accounting
   const [income, setIncome] = useState<any[]>([]);
   const [expenses, setExpenses] = useState<any[]>([]);
+  // UI state for modals
+  const [checklistOpen, setChecklistOpen] = useState<boolean>(false);
+  const [selectedJob, setSelectedJob] = useState<any | null>(null);
+  const [customerJobsOpen, setCustomerJobsOpen] = useState<boolean>(false);
+  const [customerJobs, setCustomerJobs] = useState<any[]>([]);
+  const [customerJobsCustomer, setCustomerJobsCustomer] = useState<any | null>(null);
   
   const currentUser = getCurrentUser();
   const isAdmin = currentUser?.email.includes('admin');
@@ -37,10 +48,19 @@ const Reports = () => {
     const inv = (await localforage.getItem<any[]>("invoices")) || [];
     const chems = (await localforage.getItem<any[]>("chemicals")) || [];
     const mats = (await localforage.getItem<any[]>("materials")) || [];
-    const jobsData = (await localforage.getItem<any[]>("completed-jobs")) || [];
+    let jobsData = (await localforage.getItem<any[]>("completed-jobs")) || [];
+    if (!jobsData || jobsData.length === 0) {
+      try {
+        const ls = localStorage.getItem("completedJobs");
+        jobsData = ls ? JSON.parse(ls) : [];
+      } catch {
+        jobsData = [];
+      }
+    }
     const estimatesData = (await localforage.getItem<any[]>("estimates")) || [];
     const incomeData = (await localforage.getItem<any[]>("receivables")) || [];
     const expenseData = (await localforage.getItem<any[]>("expenses")) || [];
+    const payrollData = (await localforage.getItem<any[]>("payroll-history")) || [];
     setCustomers(cust);
     setInvoices(inv);
     setChemicals(chems);
@@ -49,6 +69,7 @@ const Reports = () => {
     setEstimates(estimatesData);
     setIncome(incomeData);
     setExpenses(expenseData);
+    setPayrollHistory(payrollData);
   };
 
   const filterByDate = (items: any[], dateField = "createdAt") => {
@@ -194,6 +215,53 @@ const Reports = () => {
     else window.open(doc.output('bloburl'), '_blank');
   };
 
+  // Build a PDF for a specific customer's jobs; returns data URL or blob URL
+  const buildCustomerJobsPDF = (cust: any, jobsForCust: any[], returnDataUrl: boolean) => {
+    const doc = new jsPDF();
+    doc.setFontSize(18);
+    doc.text("Customer Jobs Report", 105, 20, { align: "center" });
+    doc.setFontSize(10);
+    doc.text(`Generated: ${new Date().toLocaleString()}`, 105, 28, { align: "center" });
+
+    let y = 40;
+    doc.setFontSize(12);
+    doc.text(`Customer: ${cust?.name || '—'}`, 20, y);
+    y += 6;
+    const vehicleLine = `Vehicle: ${cust?.year || ''} ${cust?.vehicle || ''} ${cust?.model || ''}`.trim();
+    if (vehicleLine.length > 9) { doc.text(vehicleLine, 20, y); y += 6; }
+    if (cust?.email || cust?.phone) { doc.text(`Contact: ${cust?.email || '—'} | ${cust?.phone || '—'}`, 20, y); y += 10; }
+
+    doc.setFontSize(12);
+    doc.text(`Total Jobs: ${jobsForCust.length}`, 20, y);
+    y += 8;
+
+    jobsForCust.forEach(job => {
+      if (y > 270) { doc.addPage(); y = 20; }
+      doc.setFontSize(10);
+      const dateStr = job.finishedAt ? new Date(job.finishedAt).toLocaleString() : '—';
+      const employeeStr = job.employee?.name || job.employee || job.employeeName || '—';
+      const pkg = job.service || job.package || '—';
+      const addOnsStr = Array.isArray(job.addOns) ? job.addOns.join(', ') : (job.addOns || '—');
+      const durationStr = job.totalTime || job.duration || '—';
+      const totalStr = `$${Number(job.totalRevenue || job.total || 0).toFixed(2)}`;
+
+      doc.text(`Date/Time: ${dateStr}`, 20, y); y += 5;
+      doc.text(`Employee: ${employeeStr}`, 20, y); y += 5;
+      doc.text(`Package: ${pkg}`, 20, y); y += 5;
+      doc.text(`Add-ons: ${addOnsStr}`, 20, y); y += 5;
+      doc.text(`Duration: ${durationStr} | Total: ${totalStr}`, 20, y); y += 8;
+
+      // Optional: attach checklist info from servicePackages if available
+      const svc = servicePackages.find(sp => sp.id === job.serviceId || sp.name === job.service);
+      if (svc) {
+        const stepCount = (svc.steps || []).length;
+        doc.text(`Checklist Tasks: ${stepCount}`, 20, y); y += 8;
+      }
+    });
+
+    return returnDataUrl ? doc.output('datauristring') : doc.output('bloburl');
+  };
+
   // Admin-only check
   if (!isAdmin) {
     return (
@@ -215,7 +283,30 @@ const Reports = () => {
   }
 
   const lowStockChemicals = chemicals.filter(c => c.currentStock <= c.threshold);
-  const totalInventoryValue = chemicals.reduce((sum, c) => sum + (c.costPerBottle * c.currentStock), 0);
+  const lowStockMaterials = materials.filter(m => (m.quantity || 0) <= (m.threshold || m.lowThreshold || 0));
+  const totalInventoryValue = chemicals.reduce((sum, c) => sum + ((c.costPerBottle || 0) * (c.currentStock || 0)), 0);
+  const totalMaterialsValue = materials.reduce((sum, m) => sum + ((m.costPerItem || 0) * (m.quantity || 0)), 0);
+  const chemicalsSorted = [...chemicals].sort((a,b) => {
+    const alow = a.currentStock <= a.threshold; const blow = b.currentStock <= b.threshold;
+    if (alow !== blow) return alow ? -1 : 1; return (a.name||'').localeCompare(b.name||'');
+  });
+  const materialsSorted = [...materials].sort((a,b) => {
+    const alow = (a.quantity||0) <= (a.threshold || a.lowThreshold || 0);
+    const blow = (b.quantity||0) <= (b.threshold || b.lowThreshold || 0);
+    if (alow !== blow) return alow ? -1 : 1; return (a.name||'').localeCompare(b.name||'');
+  });
+
+  const [params] = useSearchParams();
+  const initialTab = (params.get('tab') || 'customers') as 'customers' | 'invoices' | 'inventory' | 'employee' | 'estimates' | 'accounting';
+  const [tab, setTab] = useState<typeof initialTab>(initialTab);
+
+  useEffect(() => {
+    try {
+      const url = new URL(window.location.href);
+      url.searchParams.set('tab', tab);
+      window.history.replaceState({}, '', url.toString());
+    } catch {}
+  }, [tab]);
 
   return (
     <div className="min-h-screen bg-background">
@@ -240,8 +331,8 @@ const Reports = () => {
             </div>
           </Card>
 
-          <Tabs defaultValue="customers" className="space-y-4">
-<TabsList className="grid w-full grid-cols-1 sm:grid-cols-2 md:grid-cols-6 bg-muted">
+          <Tabs value={tab} onValueChange={(v)=>setTab(v as any)} className="space-y-4">
+            <TabsList className="grid w-full grid-cols-1 sm:grid-cols-2 md:grid-cols-6 bg-muted">
               <TabsTrigger value="customers">Customers</TabsTrigger>
               <TabsTrigger value="invoices">Invoices</TabsTrigger>
               <TabsTrigger value="inventory">Inventory</TabsTrigger>
@@ -294,7 +385,15 @@ const Reports = () => {
                     
                     return (
                       <div className="mt-4 p-4 bg-muted/20 rounded-lg">
-                        <h3 className="font-bold text-lg mb-2">{cust?.name}</h3>
+                        <button
+                          className="font-bold text-lg mb-2 text-primary underline"
+                          onClick={() => {
+                            const jobsForCustomer = jobs.filter(j => (j.customerId || j.customer?.id) === cust?.id || (j.customer || j.customerName) === cust?.name);
+                            setCustomerJobs(jobsForCustomer);
+                            setCustomerJobsCustomer(cust);
+                            setCustomerJobsOpen(true);
+                          }}
+                        >{cust?.name}</button>
 <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-3">
                           <div>
                             <p className="text-xs text-muted-foreground">Total Spent</p>
@@ -371,18 +470,18 @@ const Reports = () => {
                   </div>
                 </div>
                 
-<div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 mb-6">
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 mb-6">
                   <div>
                     <p className="text-xs text-muted-foreground">Total Chemicals</p>
                     <p className="text-2xl font-bold text-foreground">{chemicals.length}</p>
                   </div>
                   <div>
                     <p className="text-xs text-muted-foreground">Low Stock Items</p>
-                    <p className="text-2xl font-bold text-destructive">{lowStockChemicals.length}</p>
+                    <p className="text-2xl font-bold text-destructive">{lowStockChemicals.length + lowStockMaterials.length}</p>
                   </div>
                   <div>
                     <p className="text-xs text-muted-foreground">Total Value</p>
-                    <p className="text-2xl font-bold text-success">${totalInventoryValue.toFixed(2)}</p>
+                    <p className="text-2xl font-bold text-success">${(totalInventoryValue + totalMaterialsValue).toFixed(2)}</p>
                   </div>
                 </div>
 
@@ -396,7 +495,7 @@ const Reports = () => {
                     </TableRow>
                   </TableHeader>
                   <TableBody>
-                    {chemicals.map(chem => (
+                    {chemicalsSorted.map(chem => (
                       <TableRow key={chem.id}>
                         <TableCell className="font-medium">{chem.name}</TableCell>
                         <TableCell>{chem.bottleSize}</TableCell>
@@ -414,6 +513,43 @@ const Reports = () => {
                     ))}
                   </TableBody>
                 </Table>
+
+                <div className="mt-6">
+                  <h3 className="text-lg font-semibold mb-2">Materials</h3>
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead>Item</TableHead>
+                        <TableHead>Subtype</TableHead>
+                        <TableHead>Quantity</TableHead>
+                        <TableHead>Status</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {materialsSorted.map(mat => (
+                        <TableRow key={mat.id}>
+                          <TableCell className="font-medium">{mat.name}</TableCell>
+                          <TableCell>{mat.subtype || mat.type || '—'}</TableCell>
+                          <TableCell className={(mat.quantity||0) <= (mat.threshold || mat.lowThreshold || 0) ? 'text-destructive font-bold' : ''}>
+                            {mat.quantity || 0}
+                          </TableCell>
+                          <TableCell>
+                            {(mat.quantity||0) <= (mat.threshold || mat.lowThreshold || 0) ? (
+                              <span className="text-destructive font-semibold">⚠️ LOW STOCK</span>
+                            ) : (
+                              <span className="text-success">✓ OK</span>
+                            )}
+                          </TableCell>
+                        </TableRow>
+                      ))}
+                      {materialsSorted.length === 0 && (
+                        <TableRow>
+                          <TableCell colSpan={4} className="text-center text-muted-foreground py-6">No materials tracked.</TableCell>
+                        </TableRow>
+                      )}
+                    </TableBody>
+                  </Table>
+                </div>
               </Card>
             </TabsContent>
 
@@ -431,12 +567,37 @@ const Reports = () => {
                     </Button>
                   </div>
                 </div>
-                
-                <div className="mb-6">
-                  <p className="text-sm text-muted-foreground">
-                    Total Jobs Completed: <span className="font-semibold text-foreground">{filterByDate(jobs, 'finishedAt').length}</span>
-                  </p>
-                </div>
+                {(() => {
+                  const filteredJobs = filterByDate(jobs, 'finishedAt');
+                  const filteredPayments = filterByDate(payrollHistory, 'date');
+                  const totalPaid = filteredPayments.reduce((s,p)=> s + (p.amount||0), 0);
+                  const hoursRegex = /([0-9]+(?:\.[0-9]+)?)\s*hrs/i;
+                  const totalHours = filteredPayments.reduce((s,p)=>{
+                    const d = String(p.description||'');
+                    const m = d.match(hoursRegex); return s + (m ? Number(m[1]) : 0);
+                  }, 0);
+                  const employeesPaid = Array.from(new Set(filteredPayments.map(p=>p.employee).filter(Boolean))).length;
+                  return (
+                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
+                      <div>
+                        <p className="text-xs text-muted-foreground">Jobs Completed</p>
+                        <p className="text-2xl font-bold text-foreground">{filteredJobs.length}</p>
+                      </div>
+                      <div>
+                        <p className="text-xs text-muted-foreground">Total Paid</p>
+                        <p className="text-2xl font-bold text-success">${totalPaid.toFixed(2)}</p>
+                      </div>
+                      <div>
+                        <p className="text-xs text-muted-foreground">Total Hours</p>
+                        <p className="text-2xl font-bold text-primary">{totalHours.toFixed(2)}</p>
+                      </div>
+                      <div>
+                        <p className="text-xs text-muted-foreground">Employees Paid</p>
+                        <p className="text-2xl font-bold text-foreground">{employeesPaid}</p>
+                      </div>
+                    </div>
+                  );
+                })()}
 
                 <Table>
                   <TableHeader>
@@ -451,7 +612,14 @@ const Reports = () => {
                   <TableBody>
                     {filterByDate(jobs, 'finishedAt').map((job, idx) => (
                       <TableRow key={idx}>
-                        <TableCell className="font-medium">{job.employee || 'N/A'}</TableCell>
+                        <TableCell className="font-medium">
+                          <span
+                            className="text-primary underline cursor-pointer"
+                            onClick={() => { setSelectedJob(job); setChecklistOpen(true); }}
+                          >
+                            {job.employee || 'N/A'}
+                          </span>
+                        </TableCell>
                         <TableCell>{job.customer || 'N/A'}</TableCell>
                         <TableCell>{job.service || 'N/A'}</TableCell>
                         <TableCell>{job.totalTime || 'N/A'}</TableCell>
@@ -467,6 +635,39 @@ const Reports = () => {
                     )}
                   </TableBody>
                 </Table>
+
+                <div className="mt-6">
+                  <h3 className="text-lg font-semibold mb-2">Payroll Payments</h3>
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead>Date</TableHead>
+                        <TableHead>Employee</TableHead>
+                        <TableHead>Type</TableHead>
+                        <TableHead>Description</TableHead>
+                        <TableHead>Amount</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {filterByDate(payrollHistory, 'date').map((p, idx) => (
+                        <TableRow key={idx}>
+                          <TableCell>{p.date ? new Date(p.date).toLocaleDateString() : 'N/A'}</TableCell>
+                          <TableCell className="font-medium">{p.employee || 'N/A'}</TableCell>
+                          <TableCell>{p.type || 'N/A'}</TableCell>
+                          <TableCell>{p.description || '—'}</TableCell>
+                          <TableCell className="text-primary font-semibold">${Number(p.amount||0).toFixed(2)}</TableCell>
+                        </TableRow>
+                      ))}
+                      {filterByDate(payrollHistory, 'date').length === 0 && (
+                        <TableRow>
+                          <TableCell colSpan={5} className="text-center text-muted-foreground py-8">
+                            No payroll payments for the selected period.
+                          </TableCell>
+                        </TableRow>
+                      )}
+                    </TableBody>
+                  </Table>
+                </div>
               </Card>
             </TabsContent>
 
@@ -661,6 +862,149 @@ const Reports = () => {
             </TabsContent>
           </Tabs>
         </div>
+
+        {/* Checklist Modal for Employee Report */}
+        <Dialog open={checklistOpen} onOpenChange={setChecklistOpen}>
+          <DialogContent className="max-w-2xl">
+            <DialogHeader>
+              <DialogTitle>Job Checklist</DialogTitle>
+            </DialogHeader>
+            {selectedJob && (
+              <div className="space-y-3">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+                  <div>
+                    <div className="text-sm text-muted-foreground">Customer</div>
+                    <div>{selectedJob.customer || selectedJob.customerName || '—'}</div>
+                  </div>
+                  <div>
+                    <div className="text-sm text-muted-foreground">Vehicle</div>
+                    <div>{selectedJob.vehicle || selectedJob.vehicleType || '—'}</div>
+                  </div>
+                  <div>
+                    <div className="text-sm text-muted-foreground">Service</div>
+                    <div>{selectedJob.service || selectedJob.package || '—'}</div>
+                  </div>
+                  <div>
+                    <div className="text-sm text-muted-foreground">Employee</div>
+                    <div>{selectedJob.employee || selectedJob.employeeName || '—'}</div>
+                  </div>
+                  <div>
+                    <div className="text-sm text-muted-foreground">Finished</div>
+                    <div>{selectedJob.finishedAt ? new Date(selectedJob.finishedAt).toLocaleString() : '—'}</div>
+                  </div>
+                  <div>
+                    <div className="text-sm text-muted-foreground">Total</div>
+                    <div>${Number(selectedJob.totalRevenue || selectedJob.total || 0).toFixed(2)}</div>
+                  </div>
+                </div>
+
+                {!!(selectedJob.addOns && selectedJob.addOns.length) && (
+                  <div>
+                    <div className="text-sm font-medium">Add-ons</div>
+                    <ul className="list-disc ml-5">
+                      {selectedJob.addOns.map((a: string, idx: number) => (
+                        <li key={idx}>{a}</li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+
+                {(selectedJob.tasks && selectedJob.tasks.length > 0) ? (
+                  <div>
+                    <div className="text-sm font-medium">Checklist Tasks</div>
+                    <ul className="list-disc ml-5">
+                      {selectedJob.tasks.map((t: string, idx: number) => (
+                        <li key={idx}>{t}</li>
+                      ))}
+                    </ul>
+                  </div>
+                ) : (
+                  <div>
+                    <div className="text-sm font-medium">Checklist Tasks</div>
+                    <ul className="list-disc ml-5">
+                      {(() => {
+                        const svcKey = selectedJob.service || selectedJob.package;
+                        const pkg = servicePackages.find(s => s.id === svcKey) || servicePackages.find(s => s.name === svcKey);
+                        const steps = pkg?.steps || [];
+                        return steps.map((step, idx) => (<li key={idx}>{step.name}</li>));
+                      })()}
+                    </ul>
+                  </div>
+                )}
+              </div>
+            )}
+          </DialogContent>
+        </Dialog>
+
+        {/* Customer Jobs Modal */}
+        <Dialog open={customerJobsOpen} onOpenChange={setCustomerJobsOpen}>
+          <DialogContent className="max-w-4xl">
+            <DialogHeader>
+              <DialogTitle>Customer Jobs Report</DialogTitle>
+            </DialogHeader>
+            {customerJobsCustomer && (
+              <div className="space-y-4">
+                <div className="flex items-start justify-between">
+                  <div>
+                    <h3 className="text-lg font-bold">{customerJobsCustomer.name}</h3>
+                    <p className="text-sm text-muted-foreground">{customerJobsCustomer.email || '—'} • {customerJobsCustomer.phone || '—'}</p>
+                    <p className="text-sm text-muted-foreground">Vehicle: {customerJobsCustomer.year || ''} {customerJobsCustomer.vehicle || ''} {customerJobsCustomer.model || ''}</p>
+                  </div>
+                  <div className="flex gap-2">
+                    <Button variant="outline" size="sm" onClick={() => {
+                      try {
+                        const url = buildCustomerJobsPDF(customerJobsCustomer, customerJobs, false);
+                        window.open(url, '_blank');
+                      } catch {}
+                    }}>
+                      <Printer className="h-4 w-4 mr-2" />Print
+                    </Button>
+                    <Button variant="outline" size="sm" onClick={() => {
+                      try {
+                        const dataUrl = buildCustomerJobsPDF(customerJobsCustomer, customerJobs, true);
+                        const fileName = `CustomerJobs_${String(customerJobsCustomer.name||'Customer').replace(/\s/g,'_')}_${new Date().toISOString().slice(0,10)}.pdf`;
+                        savePDFToArchive('Customer', customerJobsCustomer.name || 'Customer', customerJobsCustomer.id || String(Date.now()), dataUrl, { fileName });
+                      } catch {}
+                    }}>
+                      <Save className="h-4 w-4 mr-2" />Save to File Manager
+                    </Button>
+                  </div>
+                </div>
+
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Date</TableHead>
+                      <TableHead>Employee</TableHead>
+                      <TableHead>Service</TableHead>
+                      <TableHead>Add-ons</TableHead>
+                      <TableHead>Time</TableHead>
+                      <TableHead>Total</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {customerJobs.map((job, idx) => (
+                      <TableRow key={idx}>
+                        <TableCell>{job.finishedAt ? new Date(job.finishedAt).toLocaleString() : '—'}</TableCell>
+                        <TableCell>{job.employee?.name || job.employee || job.employeeName || '—'}</TableCell>
+                        <TableCell>{job.service || job.package || '—'}</TableCell>
+                        <TableCell>{Array.isArray(job.addOns) ? job.addOns.join(', ') : (job.addOns || '—')}</TableCell>
+                        <TableCell>{job.totalTime || job.duration || '—'}</TableCell>
+                        <TableCell>${Number(job.totalRevenue || job.total || 0).toFixed(2)}</TableCell>
+                      </TableRow>
+                    ))}
+                    {customerJobs.length === 0 && (
+                      <TableRow>
+                        <TableCell colSpan={6} className="text-center text-muted-foreground py-8">No jobs found for this customer.</TableCell>
+                      </TableRow>
+                    )}
+                  </TableBody>
+                </Table>
+              </div>
+            )}
+          </DialogContent>
+        </Dialog>
+
       </main>
     </div>
   );

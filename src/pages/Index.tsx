@@ -1,7 +1,8 @@
 import { useEffect } from "react";
-import { useNavigate } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 import { Navbar } from "@/components/Navbar";
 import { Card } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
 import { getCurrentUser } from "@/lib/auth";
 import CustomerPortal from "./CustomerPortal";
 
@@ -19,6 +20,7 @@ const Index = () => {
   return (
     <div className="min-h-screen bg-background">
       <Navbar />
+      {/* Single sign-in entry lives in Navbar; homepage card removed */}
       <CustomerPortal />
     </div>
   );

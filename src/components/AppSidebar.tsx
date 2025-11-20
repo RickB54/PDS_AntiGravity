@@ -39,7 +39,7 @@ import { isViewed } from "@/lib/viewTracker";
 export function AppSidebar() {
   const { open, setOpenMobile, setOpen } = useSidebar();
   const location = useLocation();
-  const user = getCurrentUser();
+  const [user, setUser] = useState(getCurrentUser());
   const isAdmin = user?.role === 'admin';
   const isEmployee = user?.role === 'employee';
   const isCustomer = user?.role === 'customer';
@@ -65,11 +65,16 @@ export function AppSidebar() {
       setTick((t) => t + 1);
     }
     window.addEventListener('storage', onStorage as any);
+    const updateUser = () => setUser(getCurrentUser());
+    window.addEventListener('auth-changed', updateUser as any);
     // Listen for proactive update events that fire in the same tab
     const bump = () => setTick(t => t + 1);
     window.addEventListener('admin_alerts_updated', bump as any);
     window.addEventListener('pdf_archive_updated', bump as any);
-    return () => window.removeEventListener('storage', onStorage as any);
+    return () => {
+      window.removeEventListener('storage', onStorage as any);
+      window.removeEventListener('auth-changed', updateUser as any);
+    };
   }, [refresh]);
 
   // Auto-close the slide-out menu on any route change for more page space
@@ -169,6 +174,16 @@ export function AppSidebar() {
                     <NavLink to="/admin-dashboard" className={linkClass}>
                       <LayoutDashboard className="h-4 w-4" />
                       <span>Admin Dashboard</span>
+                    </NavLink>
+                  </SidebarMenuButton>
+                </SidebarMenuItem>
+              )}
+              {isAdmin && (
+                <SidebarMenuItem>
+                  <SidebarMenuButton asChild onClick={handleNavClick}>
+                    <NavLink to="/admin/users" className={linkClass}>
+                      <Users className="h-4 w-4" />
+                      <span>Users & Roles</span>
                     </NavLink>
                   </SidebarMenuButton>
                 </SidebarMenuItem>
@@ -290,7 +305,7 @@ export function AppSidebar() {
                   )}
                 </SidebarMenuItem>
               )}
-              {isAdmin && !isHidden('employee-training') && (
+              {isEmployee && !isHidden('employee-training') && (
                 <SidebarMenuItem>
                   <SidebarMenuButton asChild onClick={handleNavClick}>
                     <NavLink to="/employee-training" className={linkClass}>

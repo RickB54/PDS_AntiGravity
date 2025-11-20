@@ -58,6 +58,7 @@ const Payroll = () => {
   const [checkDate, setCheckDate] = useState<string>(new Date().toISOString().slice(0,10));
   const [checkMemo, setCheckMemo] = useState<string>('');
   const [checkType, setCheckType] = useState<'Check' | 'Cash' | 'Direct Deposit'>('Check');
+  const [checkPayeeType, setCheckPayeeType] = useState<'Employee' | 'Customer' | 'Other'>('Employee');
 
   useEffect(() => {
     const load = async () => {
@@ -485,6 +486,8 @@ const addJobRowFromCompleted = (job: any) => {
           await upsertExpense({
             amount: amt,
             description: (checkMemo && checkMemo.trim().length > 0) ? checkMemo.trim() : `Payroll: ${checkEmployee} (${checkType})`,
+            category: 'Payroll',
+            paymentMethod: checkType,
             createdAt: new Date(checkDate).toISOString(),
           });
         } catch {}
@@ -511,8 +514,20 @@ const addJobRowFromCompleted = (job: any) => {
             <h2 className="text-2xl font-bold text-foreground mb-4">Finalize Payment</h2>
             <div className="space-y-3">
               <div className="space-y-2">
-                <Label>Employee</Label>
-                <Input className="border-red-600 text-white" value={checkEmployee} onChange={(e) => setCheckEmployee(e.target.value)} />
+                <Label>Payee</Label>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                  <Select value={checkPayeeType} onValueChange={(v:any)=>setCheckPayeeType(v)}>
+                    <SelectTrigger className="h-8 w-full border-red-700 text-white bg-black">
+                      <SelectValue placeholder="Select" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="Employee">Employee</SelectItem>
+                      <SelectItem value="Customer">Customer</SelectItem>
+                      <SelectItem value="Other">Other</SelectItem>
+                    </SelectContent>
+                  </Select>
+                  <Input className="border-red-600 text-white" placeholder={`${checkPayeeType} name`} value={checkEmployee} onChange={(e) => setCheckEmployee(e.target.value)} />
+                </div>
               </div>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mt-2">
                 <div className="space-y-2">
@@ -557,10 +572,11 @@ const addJobRowFromCompleted = (job: any) => {
       <PageHeader title="Payroll" />
       <main className="container mx-auto px-4 py-6 max-w-6xl">
         <div className="space-y-6">
-          <div className="flex gap-2 mb-2">
+          <div className="flex gap-2 mb-2 items-center flex-wrap">
             <Button className={`rounded-lg py-2 px-4 ${tab==='current'? 'bg-red-700 hover:bg-red-800' : ''}`} variant={tab==='current'? 'default':'outline'} onClick={() => setTab('current')}>Current</Button>
             <Button className={`rounded-lg py-2 px-4 ${tab==='history'? 'bg-red-700 hover:bg-red-800' : ''}`} variant={tab==='history'? 'default':'outline'} onClick={() => setTab('history')}>History</Button>
             <Button className={`rounded-lg py-2 px-4 ${tab==='checks'? 'bg-red-700 hover:bg-red-800' : ''}`} variant={tab==='checks'? 'default':'outline'} onClick={() => setTab('checks')}>Write Checks</Button>
+            <Button variant="outline" onClick={() => { try { window.location.href = '/reports?tab=employee'; } catch {} }}>Employee Report</Button>
           </div>
           {/* Render tab content using explicit conditional blocks to avoid parser confusion */}
           {tab === 'current' && (
@@ -886,6 +902,19 @@ const addJobRowFromCompleted = (job: any) => {
                 </Select>
               </div>
               <div className="space-y-2">
+                <Label>Payee Type</Label>
+                <Select value={checkPayeeType} onValueChange={(v)=>setCheckPayeeType(v as any)}>
+                  <SelectTrigger className="h-8 w-full border-red-700 text-white bg-black">
+                    <SelectValue placeholder="Select payee type" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="Employee">Employee</SelectItem>
+                    <SelectItem value="Customer">Customer</SelectItem>
+                    <SelectItem value="Other">Other</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-2">
                 <Label>Check Amount ($)</Label>
                 <Input className="border-red-600 text-white" type="number" step="0.01" value={checkAmount} onChange={(e)=>setCheckAmount(e.target.value)} />
               </div>
@@ -926,8 +955,9 @@ const addJobRowFromCompleted = (job: any) => {
                   doc.setFontSize(12); doc.text(`No.: ${checkNumber || 'N/A'}`, 20, 30);
                   doc.text(`Date: ${checkDate}`, 120, 30);
                   doc.setFontSize(16); doc.text(`Pay to: ${checkEmployee || 'Employee'}`, 20, 42);
-                  doc.setFontSize(14); doc.text(`Amount: $${amt.toFixed(2)}`, 20, 52);
-                  if (checkMemo) doc.text(`Memo: ${checkMemo}`, 20, 62);
+                  doc.setFontSize(12); doc.text(`Payee Type: ${checkPayeeType}`, 20, 50);
+                  doc.setFontSize(14); doc.text(`Amount: $${amt.toFixed(2)}`, 20, 62);
+                  if (checkMemo) doc.text(`Memo: ${checkMemo}`, 20, 72);
                   const pdf = doc.output('dataurlstring');
                   savePDFToArchive('Payroll', 'Company', `check-${checkNumber || Date.now()}`, pdf, { fileName: `Check_${checkNumber || 'N/A'}_${checkEmployee || 'Employee'}.pdf`, path: `Payroll Checks/` });
                   try { pushAdminAlert('pdf_saved', 'Payroll check PDF saved', 'system', { recordType: 'Payroll Checks' }); } catch {}
@@ -937,7 +967,9 @@ const addJobRowFromCompleted = (job: any) => {
                   try {
                     await upsertExpense({
                       amount: amt,
-                      description: (checkMemo && checkMemo.trim().length > 0) ? checkMemo.trim() : `Payroll: ${checkEmployee} (${checkType})`,
+                      description: (checkMemo && checkMemo.trim().length > 0) ? checkMemo.trim() : `Payroll: ${checkEmployee} (${checkType}, ${checkPayeeType})`,
+                      category: 'Payroll',
+                      paymentMethod: checkType,
                       createdAt: new Date(checkDate).toISOString(),
                     });
                   } catch {}

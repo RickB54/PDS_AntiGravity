@@ -211,11 +211,11 @@ export default function UnifiedInventoryModal({ mode, open, onOpenChange, initia
             <Input type="number" value={form.threshold} onChange={(e) => setForm({ ...form, threshold: e.target.value })} />
           </div>
         </div>
-        <DialogFooter>
+        <DialogFooter className="flex items-center gap-2">
+          <Button variant="outline" onClick={() => { try { window.location.href = '/reports?tab=inventory'; } catch {} }}>View Inventory Report</Button>
           <Button onClick={save} className="bg-gradient-hero">Save</Button>
         </DialogFooter>
       </DialogContent>
     </Dialog>
   );
 }
-

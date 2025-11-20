@@ -47,7 +47,7 @@ import { savePDFToArchive } from "@/lib/pdfArchive";
 interface PDFRecord {
   id: string;
   fileName: string;
-  recordType: "Invoice" | "Estimate" | "Job" | "Checklist" | "Customer" | "Employee Training" | "Bookings" | "Admin Updates" | "Payroll" | "Employee Contact" | "add-Ons";
+  recordType: "Invoice" | "Estimate" | "Job" | "Checklist" | "Customer" | "Employee Training" | "Bookings" | "Admin Updates" | "Payroll" | "Employee Contact" | "add-Ons" | "Mock Data";
   customerName: string;
   date: string;
   timestamp: string;

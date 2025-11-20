@@ -229,12 +229,14 @@ const Accounting = () => {
                 </SelectContent>
               </Select>
               <DateRangeFilter value={dateRange} onChange={setDateRange} storageKey="accounting-range" />
+              <Button variant="outline" onClick={() => { try { window.location.href = '/reports?tab=accounting'; } catch {} }}>Report</Button>
               <Button size="icon" variant="outline" onClick={() => generatePDF(false)}>
                 <Printer className="h-4 w-4" />
               </Button>
               <Button size="icon" variant="outline" onClick={() => generatePDF(true)}>
                 <Save className="h-4 w-4" />
               </Button>
+              <Button variant="outline" onClick={() => { try { window.location.href = '/reports?tab=accounting'; } catch {} }}>View Accounting Report</Button>
             </div>
           </div>
 
@@ -375,6 +377,86 @@ const Accounting = () => {
                 {profit >= 0 ? 'Profit' : 'Loss'}
               </span>
             </div>
+          </Card>
+
+          {/* Simple Line Chart: Income vs Expenses */}
+          <Card className="p-6 bg-gradient-card border-border">
+            <h2 className="text-2xl font-bold text-foreground mb-4">Income vs Expenses</h2>
+            {(() => {
+              // Build a day range based on filters (default 14 days)
+              const buildRange = () => {
+                const days: string[] = [];
+                let start = new Date();
+                let end = new Date();
+                if (dateFilter === 'daily') {
+                  start = new Date(new Date().setHours(0,0,0,0));
+                } else if (dateFilter === 'weekly') {
+                  start = new Date(Date.now() - 7*24*60*60*1000);
+                } else if (dateFilter === 'monthly') {
+                  start = new Date(new Date().getFullYear(), new Date().getMonth(), 1);
+                } else {
+                  // all time -> last 14 days for visualization
+                  start = new Date(Date.now() - 13*24*60*60*1000);
+                }
+                if (dateRange.from) start = new Date(dateRange.from.setHours(0,0,0,0));
+                if (dateRange.to) end = new Date(dateRange.to.setHours(23,59,59,999));
+                const d0 = new Date(start);
+                while (d0 <= end) {
+                  days.push(d0.toISOString().slice(0,10));
+                  d0.setDate(d0.getDate()+1);
+                }
+                if (days.length === 0) {
+                  const today = new Date().toISOString().slice(0,10);
+                  days.push(today);
+                }
+                return days;
+              };
+              const days = buildRange();
+              const incomeByDay = new Map<string, number>();
+              const expenseByDay = new Map<string, number>();
+              days.forEach(d => { incomeByDay.set(d, 0); expenseByDay.set(d, 0); });
+              incomeList.forEach(rcv => {
+                const d = (rcv.date || rcv.createdAt || '').slice(0,10);
+                if (incomeByDay.has(d)) incomeByDay.set(d, (incomeByDay.get(d) || 0) + (rcv.amount || 0));
+              });
+              expenseList.forEach(exp => {
+                const d = (exp.createdAt || '').slice(0,10);
+                if (expenseByDay.has(d)) expenseByDay.set(d, (expenseByDay.get(d) || 0) + (exp.amount || 0));
+              });
+
+              const w = 680, h = 220, pad = 30;
+              const maxY = Math.max(
+                ...days.map(d => Math.max(incomeByDay.get(d) || 0, expenseByDay.get(d) || 0)),
+                1
+              );
+              const xFor = (i: number) => pad + (i * (w - 2*pad)) / Math.max(1, days.length - 1);
+              const yFor = (v: number) => h - pad - (v * (h - 2*pad)) / maxY;
+              const pathFor = (series: number[]) => series.map((v,i) => `${i===0?'M':'L'} ${xFor(i)} ${yFor(v)}`).join(' ');
+              const incomeSeries = days.map(d => incomeByDay.get(d) || 0);
+              const expenseSeries = days.map(d => expenseByDay.get(d) || 0);
+
+              return (
+                <div className="overflow-x-auto">
+                  <svg width={w} height={h} className="min-w-[680px]">
+                    {/* Axes */}
+                    <line x1={pad} y1={h-pad} x2={w-pad} y2={h-pad} stroke="currentColor" opacity="0.2" />
+                    <line x1={pad} y1={pad} x2={pad} y2={h-pad} stroke="currentColor" opacity="0.2" />
+                    {/* Income line */}
+                    <path d={pathFor(incomeSeries)} fill="none" stroke="hsl(var(--success))" strokeWidth="2" />
+                    {/* Expenses line */}
+                    <path d={pathFor(expenseSeries)} fill="none" stroke="hsl(var(--destructive))" strokeWidth="2" />
+                    {/* Legend */}
+                    <g>
+                      <circle cx={pad+10} cy={pad-10} r={4} fill="hsl(var(--success))" />
+                      <text x={pad+20} y={pad-7} fontSize="12" fill="currentColor">Income</text>
+                      <circle cx={pad+90} cy={pad-10} r={4} fill="hsl(var(--destructive))" />
+                      <text x={pad+100} y={pad-7} fontSize="12" fill="currentColor">Expenses</text>
+                    </g>
+                  </svg>
+                  <div className="text-xs text-muted-foreground mt-2">Showing {days.length} day(s)</div>
+                </div>
+              );
+            })()}
           </Card>
 
           <Card className="p-6 bg-gradient-card border-border">

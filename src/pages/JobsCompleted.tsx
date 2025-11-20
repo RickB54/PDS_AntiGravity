@@ -8,6 +8,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import JobHistoryModal from "@/components/checklist/JobHistoryModal";
 import { useSearchParams } from "react-router-dom";
 import { getCurrentUser } from "@/lib/auth";
+import { getInvoices } from "@/lib/db";
 
 type PDFRecord = {
   id: string;
@@ -46,6 +47,8 @@ export default function JobsCompleted() {
   const [openIdx, setOpenIdx] = useState<number | null>(null);
   const [employees, setEmployees] = useState<Array<{ name: string; email?: string }>>([]);
   const [employeeFilter, setEmployeeFilter] = useState<string>("");
+  const [invoices, setInvoices] = useState<any[]>([]);
+  const [groupBy, setGroupBy] = useState<'none'|'month'|'employee'>('none');
 
   useEffect(() => {
     // Load Job PDFs
@@ -69,6 +72,14 @@ export default function JobsCompleted() {
           names.unshift({ name: 'Admin', email: cur.email });
         }
         setEmployees(names);
+      } catch {}
+    })();
+
+    // Load invoices
+    (async () => {
+      try {
+        const invs = await getInvoices<any>();
+        setInvoices(invs || []);
       } catch {}
     })();
   }, []);
@@ -125,6 +136,22 @@ export default function JobsCompleted() {
     return empFiltered;
   }, [pdfJobs, checklists, preset, fromDate, toDate, employeeFilter]);
 
+  const monthKey = (iso: string) => {
+    const d = new Date(iso);
+    const y = d.getFullYear();
+    const m = String(d.getMonth()+1).padStart(2,'0');
+    return `${y}-${m}`;
+  };
+
+  const paymentsForJobMonth = (row: { pdf: PDFRecord; cl: ChecklistRecord|null }) => {
+    const cid = row.cl?.customerId || '';
+    const mkey = monthKey(row.pdf.timestamp);
+    const monthInvs = invoices.filter(inv => inv.customerId === cid && monthKey(inv.date || inv.createdAt || row.pdf.timestamp) === mkey);
+    const total = monthInvs.reduce((s, inv) => s + (inv.total || 0), 0);
+    const paid = monthInvs.reduce((s, inv) => s + (inv.paidAmount || 0), 0);
+    return { total, paid };
+  };
+
   const [selectedJob, setSelectedJob] = useState<{ pdf: PDFRecord; cl: ChecklistRecord | null } | null>(null);
   const adminPdfForSelected = useMemo(() => {
     if (!selectedJob?.cl) return null;
@@ -180,44 +207,133 @@ export default function JobsCompleted() {
               </SelectContent>
             </Select>
           </div>
+          <div>
+            <p className="text-sm text-muted-foreground mb-1">Group by</p>
+            <Select value={groupBy} onValueChange={(v) => setGroupBy(v as any)}>
+              <SelectTrigger className="w-full">
+                <SelectValue placeholder="Grouping" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="none">None</SelectItem>
+                <SelectItem value="month">Month</SelectItem>
+                <SelectItem value="employee">Employee</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
         </div>
       </Card>
 
-      <Card className="p-0 overflow-hidden border-border">
-        <Table>
-          <TableHeader>
-            <TableRow>
-              <TableHead>Customer</TableHead>
-              <TableHead>Completed</TableHead>
-              <TableHead>Package</TableHead>
-              <TableHead>Vehicle</TableHead>
-              <TableHead>Employee</TableHead>
-              <TableHead>Progress</TableHead>
-              <TableHead className="w-[120px]">Actions</TableHead>
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {rows.map((row, idx) => (
-              <TableRow key={row.pdf.id}>
-                <TableCell className="text-foreground">{row.pdf.customerName}</TableCell>
-                <TableCell className="text-foreground">{row.pdf.date}</TableCell>
-                <TableCell className="text-foreground">{row.cl?.packageId || '-'}</TableCell>
-                <TableCell className="text-foreground">{row.cl?.vehicleType || '-'}</TableCell>
-                <TableCell className="text-foreground">{row.cl?.employeeId || '-'}</TableCell>
-                <TableCell className="text-foreground">{row.cl ? `${Math.round(row.cl.progress || 0)}%` : '-'}</TableCell>
-                <TableCell>
-                  <Button size="sm" variant="secondary" onClick={() => { setSelectedJob(row as any); setOpenIdx(idx); }}>View</Button>
-                </TableCell>
-              </TableRow>
-            ))}
-            {rows.length === 0 && (
+      {/* Grouped or Flat Table */}
+      {groupBy === 'none' && (
+        <Card className="p-0 overflow-hidden border-border">
+          <Table>
+            <TableHeader>
               <TableRow>
-                <TableCell colSpan={6} className="text-center text-muted-foreground">No jobs found for selected range.</TableCell>
+                <TableHead>Customer</TableHead>
+                <TableHead>Completed</TableHead>
+                <TableHead>Package</TableHead>
+                <TableHead>Vehicle</TableHead>
+                <TableHead>Employee</TableHead>
+                <TableHead>Progress</TableHead>
+                <TableHead>Invoice Total</TableHead>
+                <TableHead>Paid</TableHead>
+                <TableHead className="w-[120px]">Actions</TableHead>
               </TableRow>
-            )}
-          </TableBody>
-        </Table>
-      </Card>
+            </TableHeader>
+            <TableBody>
+              {rows.map((row, idx) => {
+                const pay = paymentsForJobMonth(row);
+                return (
+                  <TableRow key={row.pdf.id}>
+                    <TableCell className="text-foreground">{row.pdf.customerName}</TableCell>
+                    <TableCell className="text-foreground">{row.pdf.date}</TableCell>
+                    <TableCell className="text-foreground">{row.cl?.packageId || '-'}</TableCell>
+                    <TableCell className="text-foreground">{row.cl?.vehicleType || '-'}</TableCell>
+                    <TableCell className="text-foreground">{row.cl?.employeeId || '-'}</TableCell>
+                    <TableCell className="text-foreground">{row.cl ? `${Math.round(row.cl.progress || 0)}%` : '-'}</TableCell>
+                    <TableCell className="text-foreground">${pay.total.toFixed(2)}</TableCell>
+                    <TableCell className="text-foreground">${pay.paid.toFixed(2)}</TableCell>
+                    <TableCell>
+                      <Button size="sm" variant="secondary" onClick={() => { setSelectedJob(row as any); setOpenIdx(idx); }}>View</Button>
+                    </TableCell>
+                  </TableRow>
+                );
+              })}
+              {rows.length === 0 && (
+                <TableRow>
+                  <TableCell colSpan={8} className="text-center text-muted-foreground">No jobs found for selected range.</TableCell>
+                </TableRow>
+              )}
+            </TableBody>
+          </Table>
+        </Card>
+      )}
+
+      {groupBy !== 'none' && (
+        <div className="space-y-6">
+          {Object.entries(
+            rows.reduce((acc: Record<string, typeof rows>, r) => {
+              const key = groupBy === 'month' ? monthKey(r.pdf.timestamp) : (r.cl?.employeeId || 'Unknown');
+              acc[key] = acc[key] || [];
+              acc[key].push(r);
+              return acc;
+            }, {})
+          ).map(([key, list]) => {
+            const summary = list.reduce((s, r) => {
+              const p = paymentsForJobMonth(r);
+              s.jobs += 1;
+              s.total += p.total;
+              s.paid += p.paid;
+              return s;
+            }, { jobs: 0, total: 0, paid: 0 });
+            return (
+              <Card key={key} className="p-0 overflow-hidden border-border">
+                <div className="px-4 py-3 border-b border-border bg-background/60 flex items-center justify-between">
+                  <div className="text-foreground font-semibold">
+                    {groupBy === 'month' ? `Month: ${key}` : `Employee: ${key}`}
+                  </div>
+                  <div className="text-sm text-muted-foreground">Jobs: {summary.jobs} • Invoice Total: ${summary.total.toFixed(2)} • Paid: ${summary.paid.toFixed(2)}</div>
+                </div>
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Customer</TableHead>
+                      <TableHead>Completed</TableHead>
+                      <TableHead>Package</TableHead>
+                      <TableHead>Vehicle</TableHead>
+                      <TableHead>Employee</TableHead>
+                      <TableHead>Progress</TableHead>
+                      <TableHead>Invoice Total</TableHead>
+                      <TableHead>Paid</TableHead>
+                      <TableHead className="w-[120px]">Actions</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {list.map((row, idx) => {
+                      const pay = paymentsForJobMonth(row);
+                      return (
+                        <TableRow key={row.pdf.id}>
+                          <TableCell className="text-foreground">{row.pdf.customerName}</TableCell>
+                          <TableCell className="text-foreground">{row.pdf.date}</TableCell>
+                          <TableCell className="text-foreground">{row.cl?.packageId || '-'}</TableCell>
+                          <TableCell className="text-foreground">{row.cl?.vehicleType || '-'}</TableCell>
+                          <TableCell className="text-foreground">{row.cl?.employeeId || '-'}</TableCell>
+                          <TableCell className="text-foreground">{row.cl ? `${Math.round(row.cl.progress || 0)}%` : '-'}</TableCell>
+                          <TableCell className="text-foreground">${pay.total.toFixed(2)}</TableCell>
+                          <TableCell className="text-foreground">${pay.paid.toFixed(2)}</TableCell>
+                          <TableCell>
+                            <Button size="sm" variant="secondary" onClick={() => { setSelectedJob(row as any); setOpenIdx(idx); }}>View</Button>
+                          </TableCell>
+                        </TableRow>
+                      );
+                    })}
+                  </TableBody>
+                </Table>
+              </Card>
+            );
+          })}
+        </div>
+      )}
 
       <JobHistoryModal
         open={openIdx !== null}

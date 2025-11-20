@@ -1,10 +1,11 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Link, useLocation } from "react-router-dom";
 import { Button } from "@/components/ui/button";
-import { Menu, X, UserCog, User } from "lucide-react";
+import { Menu, X, UserCog, User, ShoppingCart } from "lucide-react";
 import { getCurrentUser, logout } from "@/lib/auth";
 import logo from "@/assets/logo-3inch.png";
 import NotificationBell from "@/components/NotificationBell";
+import { useCartStore } from "@/store/cart";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -15,7 +16,18 @@ import {
 export const Navbar = () => {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const location = useLocation();
-  const user = getCurrentUser();
+  const [user, setUser] = useState(getCurrentUser());
+  const cartCount = useCartStore((s) => s.count());
+
+  useEffect(() => {
+    const update = () => setUser(getCurrentUser());
+    window.addEventListener('auth-changed', update as EventListener);
+    window.addEventListener('storage', update);
+    return () => {
+      window.removeEventListener('auth-changed', update as EventListener);
+      window.removeEventListener('storage', update);
+    };
+  }, []);
 
   const handleLogout = () => {
     logout();
@@ -55,6 +67,18 @@ export const Navbar = () => {
                 {link.label}
               </Link>
             ))}
+            {/* Checkout link with cart count */}
+            <Link to="/checkout" className="relative">
+              <Button variant="outline" size="sm" className="flex items-center">
+                <ShoppingCart className="h-4 w-4 mr-2" />
+                Checkout
+              </Button>
+              {cartCount > 0 && (
+                <span className="absolute -top-2 -right-2 bg-primary text-primary-foreground rounded-full text-xs px-2 py-0.5">
+                  {cartCount}
+                </span>
+              )}
+            </Link>
             
             {user ? (
               <>
@@ -70,31 +94,12 @@ export const Navbar = () => {
                 </Button>
               </>
             ) : (
-              <DropdownMenu>
-                <DropdownMenuTrigger asChild>
-                  <Button variant="default" size="sm" className="bg-gradient-hero min-h-[48px]">
-                    <UserCog className="h-4 w-4 mr-2" />
-                    Staff Login
-                  </Button>
-                </DropdownMenuTrigger>
-                <DropdownMenuContent align="end" className="w-56 bg-popover z-50">
-                  <DropdownMenuItem asChild>
-                    <Link to="/login" className="w-full cursor-pointer">
-                      Access Portal (Credentials)
-                    </Link>
-                  </DropdownMenuItem>
-                  <DropdownMenuItem asChild>
-                    <Link to="/login/quick/admin" className="w-full cursor-pointer">
-                      Admin (Quick Access)
-                    </Link>
-                  </DropdownMenuItem>
-                  <DropdownMenuItem asChild>
-                    <Link to="/login/quick/employee" className="w-full cursor-pointer">
-                      Employee (Quick Access)
-                    </Link>
-                  </DropdownMenuItem>
-                </DropdownMenuContent>
-              </DropdownMenu>
+              <Button asChild variant="default" size="sm" className="bg-gradient-hero min-h-[48px]">
+                <Link to="/login" className="w-full cursor-pointer">
+                  <UserCog className="h-4 w-4 mr-2" />
+                  Sign In
+                </Link>
+              </Button>
             )}
           </div>
 
@@ -129,6 +134,20 @@ export const Navbar = () => {
                 </Link>
               ))}
 
+              {/* Checkout in mobile menu */}
+              <Link
+                to="/checkout"
+                onClick={() => setMobileMenuOpen(false)}
+                className={`text-sm font-medium transition-colors hover:text-primary px-2 py-1 ${
+                  isActive('/checkout') ? 'text-primary' : 'text-muted-foreground'
+                }`}
+              >
+                <span className="inline-flex items-center">
+                  <ShoppingCart className="h-4 w-4 mr-2" />
+                  Checkout {cartCount > 0 ? `(${cartCount})` : ''}
+                </span>
+              </Link>
+
               {user ? (
                 <>
                   <span className="text-sm text-muted-foreground px-2 flex items-center">
@@ -147,17 +166,7 @@ export const Navbar = () => {
                   <Link to="/login" onClick={() => setMobileMenuOpen(false)}>
                     <Button variant="default" size="sm" className="w-full bg-gradient-hero min-h-[48px]">
                       <UserCog className="h-4 w-4 mr-2" />
-                      Staff Login
-                    </Button>
-                  </Link>
-                  <Link to="/login/quick/admin" onClick={() => setMobileMenuOpen(false)}>
-                    <Button variant="outline" size="sm" className="w-full">
-                      Admin (Quick Access)
-                    </Button>
-                  </Link>
-                  <Link to="/login/quick/employee" onClick={() => setMobileMenuOpen(false)}>
-                    <Button variant="outline" size="sm" className="w-full">
-                      Employee (Quick Access)
+                      Sign In
                     </Button>
                   </Link>
                 </div>

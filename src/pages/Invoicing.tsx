@@ -4,7 +4,7 @@ import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { FileText, Printer, Save, Trash2, DollarSign, FileBarChart } from "lucide-react";
+import { FileText, Printer, Save, Trash2, FileBarChart, DollarSign } from "lucide-react";
 import { Link } from "react-router-dom";
 import { getInvoices, upsertInvoice, getCustomers, deleteInvoice } from "@/lib/db";
 import { Customer } from "@/components/customers/CustomerModal";
@@ -56,8 +56,8 @@ const Invoicing = () => {
   const [dateRange, setDateRange] = useState<DateRangeValue>({});
   const [showCreateForm, setShowCreateForm] = useState(false);
   const [deleteId, setDeleteId] = useState<string | null>(null);
-  const [paymentDialog, setPaymentDialog] = useState<Invoice | null>(null);
-  const [paymentAmount, setPaymentAmount] = useState("");
+  const [paymentDialogOpen, setPaymentDialogOpen] = useState(false);
+  const [paymentAmount, setPaymentAmount] = useState<string>("");
   const [selectedInvoice, setSelectedInvoice] = useState<Invoice | null>(null);
   const [filterCustomerId, setFilterCustomerId] = useState("");
 
@@ -196,28 +196,18 @@ const Invoicing = () => {
     .reduce((sum, inv) => sum + (inv.total - (inv.paidAmount || 0)), 0);
 
   const updatePayment = async () => {
-    try {
-      if (!paymentDialog || !paymentAmount) return;
-      const paid = parseFloat(paymentAmount);
-      const newPaidAmount = (paymentDialog.paidAmount || 0) + paid;
-      const newStatus: "unpaid" | "partially-paid" | "paid" = 
-        newPaidAmount >= paymentDialog.total ? "paid" : newPaidAmount > 0 ? "partially-paid" : "unpaid";
-
-      await upsertInvoice({
-        ...paymentDialog,
-        paidAmount: newPaidAmount,
-        paymentStatus: newStatus,
-        paidDate: new Date().toISOString()
-      });
-
-      await loadData();
-      setPaymentDialog(null);
-      setPaymentAmount("");
-      toast({ title: "Payment Recorded", description: "Invoice payment updated." });
-    } catch (err) {
-      console.error('Failed to update payment', err);
-      toast({ title: "Payment Failed", description: "Could not update invoice payment.", variant: "destructive" });
-    }
+    if (!selectedInvoice) return;
+    const amt = parseFloat(paymentAmount);
+    if (Number.isNaN(amt) || amt <= 0) return;
+    const newPaid = (selectedInvoice.paidAmount || 0) + amt;
+    const status = newPaid >= selectedInvoice.total ? "paid" : "partially-paid";
+    const updated: Invoice = { ...selectedInvoice, paidAmount: newPaid, paymentStatus: status, paidDate: new Date().toISOString() };
+    await upsertInvoice(updated);
+    setPaymentDialogOpen(false);
+    setPaymentAmount("");
+    setSelectedInvoice(updated);
+    loadData();
+    toast({ title: "Payment recorded", description: `Added $${amt.toFixed(2)} to invoice #${updated.invoiceNumber}` });
   };
 
   const generateListPDF = (download = false) => {
@@ -412,12 +402,17 @@ const Invoicing = () => {
                         <Trash2 className="h-4 w-4" />
                       </Button>
                     </div>
-                    {(inv.paymentStatus || "unpaid") !== "paid" && (
-                      <Button size="sm" onClick={() => setPaymentDialog(inv)}>
-                        <DollarSign className="h-4 w-4 mr-1" />
-                        Record Payment
-                      </Button>
-                    )}
+                    <Button
+                      variant="outline"
+                      onClick={() => {
+                        setSelectedInvoice(inv);
+                        const remaining = inv.total - (inv.paidAmount || 0);
+                        setPaymentAmount(remaining > 0 ? String(remaining.toFixed(2)) : "");
+                        setPaymentDialogOpen(true);
+                      }}
+                    >
+                      Record Payment
+                    </Button>
                   </div>
                 </div>
               </Card>
@@ -442,9 +437,9 @@ const Invoicing = () => {
       </AlertDialog>
 
       <PaymentDialog
-        open={paymentDialog !== null}
-        onOpenChange={(open) => !open && setPaymentDialog(null)}
-        invoice={paymentDialog}
+        open={paymentDialogOpen}
+        onOpenChange={setPaymentDialogOpen}
+        invoice={selectedInvoice}
         paymentAmount={paymentAmount}
         setPaymentAmount={setPaymentAmount}
         onConfirm={updatePayment}
@@ -516,11 +511,7 @@ const Invoicing = () => {
                 <Button variant="outline" onClick={() => generatePDF(selectedInvoice, true)}>
                   <Save className="h-4 w-4 mr-2" />Save PDF
                 </Button>
-                {(selectedInvoice.paymentStatus || "unpaid") !== "paid" && (
-                  <Button onClick={() => { setPaymentDialog(selectedInvoice); setSelectedInvoice(null); }}>
-                    <DollarSign className="h-4 w-4 mr-2" />Record Payment
-                  </Button>
-                )}
+                {/* Record Payment removed */}
               </div>
             </div>
           </Card>

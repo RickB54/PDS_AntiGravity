@@ -48,12 +48,15 @@ import { useAlertsStore } from "@/store/alerts";
 import { useBookingsStore } from "@/store/bookings";
 import { isViewed } from "@/lib/viewTracker";
 import { getInvoices, upsertCustomer } from "@/lib/db";
+import { insertStaticMockBasic, removeStaticMockBasic } from "@/lib/staticMock";
 import api from "@/lib/api";
 import { postFullSync } from "@/lib/servicesMeta";
 import { useToast } from "@/hooks/use-toast";
 import { notify } from "@/store/alerts";
 import CustomerModal from "@/components/customers/CustomerModal";
-import { restoreDefaults } from "../lib/restoreDefaults";
+import OrientationModal from "@/components/training/OrientationModal";
+import jsPDF from 'jspdf';
+import { savePDFToArchive } from '@/lib/pdfArchive';
 
 type Job = { finishedAt: string; totalRevenue: number; status: string };
 
@@ -177,8 +180,11 @@ export default function AdminDashboard() {
   const [newAboutContent, setNewAboutContent] = useState('');
   // Cheat Sheet modal
   const [cheatOpen, setCheatOpen] = useState(false);
+  const [orientationOpen, setOrientationOpen] = useState(false);
   const user = getCurrentUser();
   const [helpOpen, setHelpOpen] = useState(false);
+  const [mockDataOpen, setMockDataOpen] = useState(false);
+  const [mockReport, setMockReport] = useState<any | null>(null);
 
   // Removed auto-open for Website Administration to decouple from Admin Dashboard
 
@@ -590,10 +596,10 @@ export default function AdminDashboard() {
                   <Cog className="w-3.5 h-3.5 text-indigo-600" />
                   <span>Manage Exam</span>
                 </Link>
-                <Link to="/exam" className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md border border-pink-600 text-pink-600 hover:bg-pink-600/10">
-                  <ClipboardCheck className="w-3.5 h-3.5 text-pink-600" />
-                  <span>Open Entire Exam</span>
-                </Link>
+                <button type="button" onClick={() => setOrientationOpen(true)} className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md border border-orange-600 text-orange-600 hover:bg-orange-600/10">
+                  <ClipboardCheck className="w-3.5 h-3.5 text-orange-600" />
+                  <span>Welcome To Prime Detail Solutions!</span>
+                </button>
                 {/* Place Take Exam directly under Open Entire Exam without disturbing layout */}
                 <div className="w-full"></div>
                 <Link to="/employee-dashboard?startExam=1" className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md border border-green-600 text-green-600 hover:bg-green-600/10">
@@ -618,9 +624,9 @@ export default function AdminDashboard() {
                   <Shield className="w-3.5 h-3.5 text-blue-600" />
                   <span>Website Administration</span>
                 </Link>
-                <Link to="/user-management" className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md border border-pink-600 text-pink-600 hover:bg-pink-600/10">
+                <Link to="/admin/users" className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md border border-pink-600 text-pink-600 hover:bg-pink-600/10">
                   <Users className="w-3.5 h-3.5 text-pink-600" />
-                  <span>User Management</span>
+                  <span>Users & Roles</span>
                 </Link>
                 {!isMenuHidden('settings') && (
                   <Link to="/settings" className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md border border-cyan-600 text-cyan-600 hover:bg-cyan-600/10">
@@ -628,29 +634,11 @@ export default function AdminDashboard() {
                     <span>Company Settings</span>
                   </Link>
                 )}
-                <button
-                  type="button"
-                  onClick={async () => {
-                    if (!confirm('Restore default website content and pricing? This will overwrite current content.')) return;
-                    try {
-                      toast({ title: 'Restoring Defaults', description: 'Seeding website content and pricing...' });
-                      await restoreDefaults();
-                      // Notify listeners
-                      window.dispatchEvent(new CustomEvent('content-changed', { detail: { kind: 'vehicle-types' } }));
-                      window.dispatchEvent(new CustomEvent('content-changed', { detail: { kind: 'packages' } }));
-                      window.dispatchEvent(new CustomEvent('content-changed', { detail: { kind: 'faqs' } }));
-                      window.dispatchEvent(new CustomEvent('content-changed', { detail: { kind: 'contact' } }));
-                      window.dispatchEvent(new CustomEvent('content-changed', { detail: { kind: 'about' } }));
-                      toast({ title: 'Defaults Restored', description: 'Website content and pricing reset. Live site updated.' });
-                    } catch (err: any) {
-                      toast({ title: 'Restore Failed', description: err?.message || String(err), variant: 'destructive' });
-                    }
-                  }}
-                  className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md border border-amber-500 text-amber-400 hover:bg-amber-500/10"
-                >
-                  <RotateCcw className="w-3.5 h-3.5 text-amber-400" />
-                  <span>Restore Defaults</span>
+                <button onClick={() => { setMockDataOpen(true); setMockReport(null); }} className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md border border-red-600 text-red-600 hover:bg-red-600/10">
+                  <Tag className="w-3.5 h-3.5 text-red-600" />
+                  <span>Mock Data System</span>
                 </button>
+                {/* Restore Defaults moved to Settings → Danger Zone */}
               </div>
             </Card>
           </Card>
@@ -793,6 +781,12 @@ export default function AdminDashboard() {
             }}
           />
 
+          {/* Orientation Welcome Popup */}
+          <OrientationModal
+            open={orientationOpen}
+            onOpenChange={setOrientationOpen}
+          />
+
           {/* Tasks & Portal — moved under Customer Hub above */}
 
           {/* Pricing — moved under Inventory & Files above */}
@@ -805,6 +799,142 @@ export default function AdminDashboard() {
               <DialogTitle>Training Cheat Sheet</DialogTitle>
             </DialogHeader>
             <CheatSheetPanel embedded />
+          </DialogContent>
+        </Dialog>
+
+        {/* Mock Data System Popup — local-only users/employees/inventory */}
+        <Dialog open={mockDataOpen} onOpenChange={setMockDataOpen}>
+          <DialogContent className="max-w-3xl">
+            <DialogHeader>
+              <DialogTitle>Mock Data System (Local Only)</DialogTitle>
+            </DialogHeader>
+            <div className="space-y-6 text-sm">
+              <div className="flex flex-wrap gap-3">
+                <Button
+                  className="bg-red-700 hover:bg-red-800"
+                  onClick={async () => {
+                    try {
+                      setMockReport({ progress: ['Starting local-only insertion…'], createdAt: new Date().toISOString() });
+                      const push = (msg: string) => setMockReport((prev: any) => ({ ...(prev||{}), progress: [ ...((prev?.progress)||[]), `${new Date().toLocaleTimeString()} — ${msg}` ] }));
+                      const tracker = await insertStaticMockBasic(push, { customers: 5, employees: 5, chemicals: 3, materials: 3 });
+                      // Build simple report
+                      const usersLF = (await localforage.getItem<any[]>('users')) || [];
+                      const customersLF = (await localforage.getItem<any[]>('customers')) || [];
+                      const employeesLF = (await localforage.getItem<any[]>('company-employees')) || [];
+                      const chemicalsLF = (await localforage.getItem<any[]>('chemicals')) || [];
+                      const materialsLF = (await localforage.getItem<any[]>('materials')) || [];
+                      const summary = {
+                        local_users: usersLF.length,
+                        local_customers: customersLF.length,
+                        local_employees: employeesLF.length,
+                        chemicals_count: chemicalsLF.length,
+                        materials_count: materialsLF.length,
+                        mode: 'Local only — Not Linked to Supabase',
+                      };
+                      setMockReport((prev: any) => ({ ...(prev||{}), customers: tracker.customers, employees: tracker.employees, inventory: tracker.inventory, summary }));
+                      try {
+                        window.dispatchEvent(new CustomEvent('content-changed', { detail: { kind: 'users' } }));
+                        window.dispatchEvent(new CustomEvent('content-changed', { detail: { kind: 'customers' } }));
+                        window.dispatchEvent(new CustomEvent('content-changed', { detail: { kind: 'employees' } }));
+                        window.dispatchEvent(new CustomEvent('inventory-changed'));
+                      } catch {}
+                      toast?.({ title: 'Static Mock Data Inserted', description: 'Added customers, employees, and inventory locally.' });
+                    } catch (e: any) {
+                      const errMsg = e?.message || String(e);
+                      setMockReport((prev: any) => ({ ...(prev||{}), errors: [ ...(prev?.errors||[]), errMsg ] }));
+                    }
+                  }}
+                >Insert Mock Data</Button>
+                <Button
+                  variant="outline"
+                  className="border-red-700 text-red-700 hover:bg-red-700/10"
+                  onClick={async () => {
+                    try {
+                      setMockReport((prev:any) => ({ ...(prev||{}), progress: ['Removing local-only mock data…'] }));
+                      await removeStaticMockBasic((msg) => setMockReport((prev: any) => ({ ...(prev||{}), progress: [ ...((prev?.progress)||[]), `${new Date().toLocaleTimeString()} — ${msg}` ] })));
+                      try {
+                        window.dispatchEvent(new CustomEvent('content-changed', { detail: { kind: 'users' } }));
+                        window.dispatchEvent(new CustomEvent('content-changed', { detail: { kind: 'customers' } }));
+                        window.dispatchEvent(new CustomEvent('content-changed', { detail: { kind: 'employees' } }));
+                        window.dispatchEvent(new CustomEvent('inventory-changed'));
+                      } catch {}
+                      setMockReport((prev: any) => ({ ...(prev||{}), removed: true, removedAt: new Date().toISOString() }));
+                      toast?.({ title: 'Static Mock Data Removed', description: 'Local-only mock data was cleared.' });
+                    } catch (e: any) {
+                      const errMsg = e?.message || String(e);
+                      setMockReport((prev: any) => ({ ...(prev||{}), errors: [ ...(prev?.errors||[]), errMsg ] }));
+                    }
+                  }}
+                >Remove Mock Data</Button>
+                <Button
+                  variant="secondary"
+                  className="border-red-700 text-white bg-red-700 hover:bg-red-800"
+                  onClick={() => {
+                    try {
+                      const doc = new jsPDF();
+                      doc.setFontSize(18);
+                      doc.text('Mock Data Report', 105, 18, { align: 'center' });
+                      doc.setFontSize(11);
+                      const created = mockReport?.createdAt ? new Date(mockReport.createdAt).toLocaleString() : new Date().toLocaleString();
+                      const removed = mockReport?.removedAt ? new Date(mockReport.removedAt).toLocaleString() : '—';
+                      doc.text(`Created: ${created}`, 20, 30);
+                      doc.text(`Removed: ${removed}`, 20, 36);
+                      let y = 44;
+                      doc.setFontSize(12);
+                      doc.text('Customers:', 20, y); y += 8;
+                      (mockReport?.customers || []).forEach((c:any) => { doc.text(`${c.name} — ${c.email}`, 26, y); y += 6; if (y > 270) { doc.addPage(); y = 20; } });
+                      y += 2; doc.text('Employees:', 20, y); y += 8;
+                      (mockReport?.employees || []).forEach((e:any) => { doc.text(`${e.name} — ${e.email}`, 26, y); y += 6; if (y > 270) { doc.addPage(); y = 20; } });
+                      y += 2; doc.text('Inventory:', 20, y); y += 8;
+                      (mockReport?.inventory || []).forEach((i:any) => { doc.text(`${i.category}: ${i.name}`, 26, y); y += 6; if (y > 270) { doc.addPage(); y = 20; } });
+                      const dataUrl = doc.output('dataurlstring');
+                      const today = new Date().toISOString().split('T')[0];
+                      const fileName = `MockData_Report_${today}.pdf`;
+                      savePDFToArchive('Mock Data' as any, 'Admin', `mock-data-${Date.now()}`, dataUrl, { fileName, path: 'Mock Data/' });
+                      toast?.({ title: 'Saved to File Manager', description: 'Mock Data Report archived.' });
+                    } catch (e:any) {
+                      toast?.({ title: 'Save Failed', description: e?.message || 'Could not generate PDF', variant: 'destructive' });
+                    }
+                  }}
+                >Save to PDF</Button>
+              </div>
+
+              {mockReport?.progress && (
+                <div className="rounded-md border p-3">
+                  <div className="font-semibold mb-2">Live Progress</div>
+                  {(mockReport.progress || []).map((ln: string, i: number) => (
+                    <div key={`md-prog-${i}`}>- {ln}</div>
+                  ))}
+                </div>
+              )}
+
+              <div>
+                <div className="font-semibold">Customers Created</div>
+                {(mockReport?.customers || []).map((c: any, i: number) => (
+                  <div key={`md-c-${i}`} className="mt-1">- {c.name} ({c.email}) — Local only; appears in Admin → Customers and dropdowns</div>
+                ))}
+              </div>
+              <div>
+                <div className="font-semibold">Employees Created</div>
+                {(mockReport?.employees || []).map((e: any, i: number) => (
+                  <div key={`md-e-${i}`} className="mt-1">- {e.name} ({e.email}) — Local only; appears in Admin → Company Employees and selectors</div>
+                ))}
+              </div>
+              <div>
+                <div className="font-semibold">Inventory Added</div>
+                {(mockReport?.inventory || []).map((i: any, idx: number) => (
+                  <div key={`md-i-${idx}`} className="mt-1">- {i.name} — {i.category} — Local only; appears in Inventory Control and Inventory Report</div>
+                ))}
+              </div>
+              <div>
+                <div className="font-semibold">Summary</div>
+                <div className="text-muted-foreground">{mockReport?.summary?.mode}</div>
+                {mockReport?.summary && (
+                  <div className="text-muted-foreground">Local counts — users={mockReport.summary.local_users}, customers={mockReport.summary.local_customers}, employees={mockReport.summary.local_employees}, chemicals={mockReport.summary.chemicals_count}, materials={mockReport.summary.materials_count}</div>
+                )}
+                <div className="text-xs mt-1">No Supabase interactions. If using Supabase-backed mock system later, ensure your Supabase env/config is valid.</div>
+              </div>
+            </div>
           </DialogContent>
         </Dialog>
 

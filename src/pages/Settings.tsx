@@ -8,13 +8,20 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useToast } from "@/hooks/use-toast";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
-import { Download, Upload, Trash2 } from "lucide-react";
+import { Download, Upload, Trash2, RotateCcw } from "lucide-react";
 import { postFullSync, postServicesFullSync } from "@/lib/servicesMeta";
 import { exportAllData, downloadBackup, restoreFromJSON, SCHEMA_VERSION } from '@/lib/backup';
 import { isDriveEnabled, uploadJSONToDrive, pickDriveFileAndDownload } from '@/lib/googleDrive';
 import { deleteCustomersOlderThan, deleteInvoicesOlderThan, deleteExpensesOlderThan, deleteInventoryUsageOlderThan, deleteBookingsOlderThan, deleteEverything as deleteAllSupabase } from '@/services/supabase/adminOps';
 import localforage from "localforage";
 import EnvironmentHealthModal from '@/components/admin/EnvironmentHealthModal';
+import { restoreDefaults } from '@/lib/restoreDefaults';
+import { insertMockData, removeMockData } from '@/lib/mockData';
+import { insertStaticMockData, removeStaticMockData, insertStaticMockBasic, removeStaticMockBasic } from '@/lib/staticMock';
+import jsPDF from 'jspdf';
+import { savePDFToArchive } from '@/lib/pdfArchive';
+import supabase, { isSupabaseConfigured } from '@/lib/supabase';
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 
 const Settings = () => {
   const { toast } = useToast();
@@ -26,6 +33,12 @@ const Settings = () => {
   const [summaryOpen, setSummaryOpen] = useState(false);
   const [summaryData, setSummaryData] = useState<{ preserved: string[]; deleted: string[]; note?: string } | null>(null);
   const [healthOpen, setHealthOpen] = useState(false);
+  const [reportOpen, setReportOpen] = useState(false);
+  const [reportData, setReportData] = useState<any | null>(null);
+  const [staticReportOpen, setStaticReportOpen] = useState(false);
+  const [staticReportData, setStaticReportData] = useState<any | null>(null);
+  const [mockDataOpen, setMockDataOpen] = useState(false);
+  const [mockReport, setMockReport] = useState<any | null>(null);
 
   // Redirect non-admin users
   if (user?.role !== 'admin') {
@@ -281,6 +294,29 @@ const Settings = () => {
     }
   };
 
+  const handleRestoreDefaults = async () => {
+    const ok = confirm('Restore default website content and pricing? This will overwrite current content.');
+    if (!ok) return;
+    try {
+      toast({ title: 'Restoring Defaults', description: 'Seeding website content and pricing...' });
+      await restoreDefaults();
+      // Notify listeners of content changes
+      try {
+        window.dispatchEvent(new CustomEvent('content-changed', { detail: { kind: 'vehicle-types' } }));
+        window.dispatchEvent(new CustomEvent('content-changed', { detail: { kind: 'packages' } }));
+        window.dispatchEvent(new CustomEvent('content-changed', { detail: { kind: 'faqs' } }));
+        window.dispatchEvent(new CustomEvent('content-changed', { detail: { kind: 'contact' } }));
+        window.dispatchEvent(new CustomEvent('content-changed', { detail: { kind: 'about' } }));
+      } catch {}
+      // Revalidate live content endpoints on port 6061 if available
+      try { await fetch(`http://localhost:6061/api/packages/live?v=${Date.now()}`, { headers: { 'Cache-Control': 'no-cache' } }); } catch {}
+      try { await fetch(`http://localhost:6061/api/addons/live?v=${Date.now()}`, { headers: { 'Cache-Control': 'no-cache' } }); } catch {}
+      toast({ title: 'Defaults Restored', description: 'Website content and pricing reset. Live site updated.' });
+    } catch (err: any) {
+      toast({ title: 'Restore Failed', description: err?.message || String(err), variant: 'destructive' });
+    }
+  };
+
   // Load dry-run preview when dialog opens or timeRange changes
   useEffect(() => {
     const load = async () => {
@@ -348,12 +384,190 @@ const Settings = () => {
             </div>
           </Card>
 
+          {/* Mock Data System (Local Only) */}
+          <Card className="p-6 bg-gradient-card border-border">
+            <h2 className="text-2xl font-bold text-foreground mb-4">Mock Data System</h2>
+            <p className="text-sm text-muted-foreground mb-4">Insert and remove local-only mock customers, employees, and inventory. No Supabase interaction.</p>
+            <div className="flex flex-wrap gap-4">
+              <Button variant="default" onClick={() => { setMockDataOpen(true); setMockReport(null); }}>
+                Open Mock Data System
+              </Button>
+            </div>
+          </Card>
+
+          {/* Mock Data Tools */}
+          <Card className="p-6 bg-gradient-card border-border hidden">
+            <h2 className="text-2xl font-bold text-foreground mb-4">Mock Data Tools</h2>
+            <p className="text-sm text-muted-foreground mb-4">Create and remove realistic test users and jobs via normal backend flows. Mock entries are tagged internally and removable.</p>
+            <div className="flex flex-wrap gap-4">
+              <Button
+                variant="default"
+                onClick={async () => {
+                  try {
+                    toast({ title: 'Seeding Mock Data', description: 'Creating users, jobs, invoices, inventory…' });
+                    // Open report immediately and stream progress lines
+                    setReportData({ progress: ['Starting mock data insertion…'] });
+                    setReportOpen(true);
+                    const push = (msg: string) => {
+                      setReportData((prev: any) => ({ ...(prev||{}), progress: [ ...((prev?.progress)||[]), `${new Date().toLocaleTimeString()} — ${msg}` ] }));
+                    };
+                    const tracker = await insertMockData(push);
+                    // Trigger UI refresh events so other pages pick up changes
+                    try {
+                      window.dispatchEvent(new CustomEvent('content-changed', { detail: { kind: 'users' } }));
+                      window.dispatchEvent(new CustomEvent('content-changed', { detail: { kind: 'customers' } }));
+                      window.dispatchEvent(new CustomEvent('content-changed', { detail: { kind: 'employees' } }));
+                      window.dispatchEvent(new CustomEvent('content-changed', { detail: { kind: 'invoices' } }));
+                      window.dispatchEvent(new CustomEvent('content-changed', { detail: { kind: 'jobs' } }));
+                      window.dispatchEvent(new CustomEvent('inventory-changed'));
+                    } catch {}
+                    // Build full report with local + supabase verification
+                    const errors: Array<{ step: string; message: string; fallback?: string; suggestion?: string }> = [];
+                    const usersLF = (await localforage.getItem<any[]>('users')) || [];
+                    const customersLF = (await localforage.getItem<any[]>('customers')) || [];
+                    const employeesLF = (await localforage.getItem<any[]>('company-employees')) || [];
+                    const invoicesLF = (await localforage.getItem<any[]>('invoices')) || [];
+                    const checklistsLF = (await localforage.getItem<any[]>('generic-checklists')) || [];
+                    let pdfCount = 0;
+                    try { const pdfRaw = JSON.parse(localStorage.getItem('pdfArchive') || '[]'); pdfCount = Array.isArray(pdfRaw) ? pdfRaw.length : 0; } catch {}
+                    let appUsersSB: any[] = [];
+                    let customersSB: any[] = [];
+                    let supabaseNote = 'Supabase not configured';
+                    if (isSupabaseConfigured()) {
+                      try {
+                        const ids = tracker.users.map((u: any) => u.id);
+                        const custIds = tracker.users.filter((u: any) => u.role === 'customer').map((u: any) => u.id);
+                        const { data: au, error: auErr } = await supabase.from('app_users').select('id,email').in('id', ids);
+                        const { data: cu, error: cuErr } = await supabase.from('customers').select('id,email').in('id', custIds);
+                        appUsersSB = Array.isArray(au) ? au : [];
+                        customersSB = Array.isArray(cu) ? cu : [];
+                        supabaseNote = 'Verified app_users and customers tables';
+                        if (auErr || cuErr) {
+                          errors.push({ step: 'Supabase verify', message: 'Verification partially failed', fallback: 'Local caches present', suggestion: 'Check RLS policies for app_users/customers' });
+                        }
+                      } catch (e: any) {
+                        errors.push({ step: 'Supabase verify', message: e?.message || 'Failed to read Supabase tables', fallback: 'Local-only data inserted', suggestion: 'Ensure VITE_SUPABASE_URL and anon key are set, and RLS allows reads' });
+                      }
+                    }
+                    // Build customers and employees sections
+                    const custSection = tracker.users.filter((u: any) => u.role === 'customer').map((u: any) => {
+                      const inUsers = usersLF.some(x => x.id === u.id);
+                      const inCustomers = customersLF.some(x => x.id === u.id);
+                      const sbApp = appUsersSB.some(x => x.id === u.id);
+                      const sbCust = customersSB.some(x => x.id === u.id);
+                      if (!sbApp && isSupabaseConfigured()) errors.push({ step: 'Create user (app_users)', message: `Customer ${u.email} not found in app_users`, fallback: 'Local cache created', suggestion: 'Confirm edge function create-user executed' });
+                      return {
+                        name: u.name,
+                        email: u.email,
+                        role: 'customer',
+                        supabase: { app_users: sbApp, customers: sbCust, auth_users: 'unavailable' },
+                        local: { users: inUsers, customers: inCustomers },
+                        appears: [
+                          'Appears in Customers list under Admin → Customers',
+                          'Searchable via Customers search and dropdown selectors',
+                          isSupabaseConfigured() ? 'Added to Supabase table customers (if configured)' : 'Local only — Supabase not configured',
+                        ],
+                      };
+                    });
+                    const empSection = tracker.users.filter((u: any) => u.role === 'employee').map((u: any) => {
+                      const inUsers = usersLF.some(x => x.id === u.id);
+                      const inEmployees = employeesLF.some(x => x.id === u.id);
+                      const sbApp = appUsersSB.some(x => x.id === u.id);
+                      if (!sbApp && isSupabaseConfigured()) errors.push({ step: 'Create user (app_users)', message: `Employee ${u.email} not found in app_users`, fallback: 'Local cache created', suggestion: 'Confirm edge function create-user executed' });
+                      return {
+                        name: u.name,
+                        email: u.email,
+                        role: 'employee',
+                        supabase: { app_users: sbApp, customers: false, auth_users: 'unavailable' },
+                        local: { users: inUsers, employees: inEmployees },
+                        appears: [
+                          'Appears in Employees list under Admin → Company Employees',
+                          'Appears in employee dropdown for job assignment',
+                          isSupabaseConfigured() ? 'Added to Supabase table app_users (if configured)' : 'Local only — Supabase not configured',
+                        ],
+                      };
+                    });
+                    // Jobs + invoices
+                    const jobsSection = (tracker.jobDetails || []).map((j: any) => {
+                      const inChecklist = checklistsLF.some(x => x.id === j.id);
+                      const invObj = invoicesLF.find(x => x.id === j?.invoice?.id);
+                      const invInfo = invObj ? { total: invObj.total, paidAmount: invObj.paidAmount, paymentStatus: invObj.paymentStatus } : j.invoice;
+                      if (!inChecklist) errors.push({ step: 'Checklist creation', message: `Job ${j.id} not found in generic-checklists`, fallback: 'Invoice may still exist', suggestion: 'Check Jobs Completed page filters' });
+                      return {
+                        id: j.id,
+                        customer: j.customerName,
+                        employee: j.employeeName,
+                        package: j.packageName,
+                        invoice: invInfo,
+                        appears: [
+                          'Appears in Jobs Completed; enable grouping if helpful',
+                          'Shows totals in Invoicing; filter by customer',
+                          'PDF archived if jsPDF available (Job PDF Archive)',
+                        ],
+                      };
+                    });
+                    const inventorySection = (tracker.inventory || []).map((i: any) => ({
+                      name: i.name,
+                      category: i.category,
+                      appears: [
+                        i.category === 'Chemical' ? 'In Inventory Control under Chemicals' : 'In Inventory Control under Materials',
+                        'Shows in Inventory Report',
+                      ],
+                    }));
+                    const summary = {
+                      supabase_app_users: appUsersSB.length,
+                      supabase_customers: customersSB.length,
+                      supabase_auth_users: 'unavailable',
+                      local_users: usersLF.length,
+                      local_customers: customersLF.length,
+                      local_employees: employeesLF.length,
+                      local_invoices: invoicesLF.length,
+                      local_checklists: checklistsLF.length,
+                      pdf_archive_count: pdfCount,
+                      note: isSupabaseConfigured() ? supabaseNote : 'Local-only mode',
+                    };
+                    setReportData((prev: any) => ({ ...(prev||{}), customers: custSection, employees: empSection, jobs: jobsSection, inventory: inventorySection, summary, errors }));
+                    toast({ title: 'Mock Data Inserted', description: `Users: ${tracker.users.length}, Jobs: ${tracker.jobs.length}, Invoices: ${tracker.invoices.length}` });
+                    // Revalidate content endpoints on 6061 if available
+                    try { await fetch(`http://localhost:6061/api/packages/live?v=${Date.now()}`, { headers: { 'Cache-Control': 'no-cache' } }); } catch {}
+                    try { await fetch(`http://localhost:6061/api/addons/live?v=${Date.now()}`, { headers: { 'Cache-Control': 'no-cache' } }); } catch {}
+                  } catch (e) {
+                    toast({ title: 'Insert Failed', description: 'Could not insert mock data.', variant: 'destructive' });
+                  }
+                }}
+              >Insert Mock Data</Button>
+              <Button
+                variant="destructive"
+                onClick={async () => {
+                  try {
+                    await removeMockData();
+                    try { window.dispatchEvent(new CustomEvent('content-changed', { detail: { kind: 'users' } })); } catch {}
+                    toast({ title: 'Mock Data Removed', description: 'Local caches and counts refreshed.' });
+                  } catch (e) {
+                    toast({ title: 'Remove Failed', description: 'Could not remove mock data.', variant: 'destructive' });
+                  }
+                }}
+              >Remove Mock Data</Button>
+            </div>
+          </Card>
+
           {/* Danger Zone */}
           <Card className="p-6 bg-gradient-card border-destructive border-2">
             <h2 className="text-2xl font-bold text-destructive mb-4">⚠️ Danger Zone</h2>
             <p className="text-muted-foreground mb-6">These actions cannot be undone. Proceed with caution.</p>
             
             <div className="space-y-4">
+              <div className="flex items-center justify-between flex-wrap gap-4">
+                <div>
+                  <h3 className="font-semibold text-foreground">Restore Default Website Content & Pricing</h3>
+                  <p className="text-sm text-muted-foreground">Overwrite current content with defaults (packages, FAQs, contact, about)</p>
+                </div>
+                <Button variant="outline" onClick={handleRestoreDefaults} className="border-amber-500 text-amber-400">
+                  <RotateCcw className="h-4 w-4 mr-2" />
+                  Restore Defaults
+                </Button>
+              </div>
+
               <div className="flex items-center justify-between flex-wrap gap-4">
                 <div>
                   <h3 className="font-semibold text-foreground">Delete Customer Records</h3>
@@ -485,9 +699,450 @@ const Settings = () => {
         </AlertDialogContent>
       </AlertDialog>
 
-      <EnvironmentHealthModal open={healthOpen} onOpenChange={setHealthOpen} />
+  <EnvironmentHealthModal open={healthOpen} onOpenChange={setHealthOpen} />
+      {/* Mock Data System Popup — local-only users/employees/inventory */}
+      <Dialog open={mockDataOpen} onOpenChange={setMockDataOpen}>
+        <DialogContent className="max-w-3xl">
+          <DialogHeader>
+            <DialogTitle>Mock Data System (Local Only)</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-6 text-sm">
+            <div className="flex flex-wrap gap-3">
+              <Button
+                className="bg-red-700 hover:bg-red-800"
+                onClick={async () => {
+                  try {
+                    setMockReport({ progress: ['Starting local-only insertion…'], createdAt: new Date().toISOString() });
+                    const push = (msg: string) => setMockReport((prev: any) => ({ ...(prev||{}), progress: [ ...((prev?.progress)||[]), `${new Date().toLocaleTimeString()} — ${msg}` ] }));
+                    const tracker = await insertStaticMockBasic(push, { customers: 5, employees: 5, chemicals: 3, materials: 3 });
+                    // Build simple report
+                    const usersLF = (await localforage.getItem<any[]>('users')) || [];
+                    const customersLF = (await localforage.getItem<any[]>('customers')) || [];
+                    const employeesLF = (await localforage.getItem<any[]>('company-employees')) || [];
+                    const chemicalsLF = (await localforage.getItem<any[]>('chemicals')) || [];
+                    const materialsLF = (await localforage.getItem<any[]>('materials')) || [];
+                    const summary = {
+                      local_users: usersLF.length,
+                      local_customers: customersLF.length,
+                      local_employees: employeesLF.length,
+                      chemicals_count: chemicalsLF.length,
+                      materials_count: materialsLF.length,
+                      mode: 'Local only — Not Linked to Supabase',
+                    };
+                    setMockReport((prev: any) => ({ ...(prev||{}), customers: tracker.customers, employees: tracker.employees, inventory: tracker.inventory, summary }));
+                    try {
+                      window.dispatchEvent(new CustomEvent('content-changed', { detail: { kind: 'users' } }));
+                      window.dispatchEvent(new CustomEvent('content-changed', { detail: { kind: 'customers' } }));
+                      window.dispatchEvent(new CustomEvent('content-changed', { detail: { kind: 'employees' } }));
+                      window.dispatchEvent(new CustomEvent('inventory-changed'));
+                    } catch {}
+                    toast?.({ title: 'Static Mock Data Inserted', description: 'Added customers, employees, and inventory locally.' });
+                  } catch (e: any) {
+                    const errMsg = e?.message || String(e);
+                    setMockReport((prev: any) => ({ ...(prev||{}), errors: [ ...(prev?.errors||[]), errMsg ] }));
+                  }
+                }}
+              >Insert Mock Data</Button>
+              <Button
+                variant="outline"
+                className="border-red-700 text-red-700 hover:bg-red-700/10"
+                onClick={async () => {
+                  try {
+                    setMockReport((prev:any) => ({ ...(prev||{}), progress: ['Removing local-only mock data…'] }));
+                    await removeStaticMockBasic((msg) => setMockReport((prev: any) => ({ ...(prev||{}), progress: [ ...((prev?.progress)||[]), `${new Date().toLocaleTimeString()} — ${msg}` ] })));
+                    try {
+                      window.dispatchEvent(new CustomEvent('content-changed', { detail: { kind: 'users' } }));
+                      window.dispatchEvent(new CustomEvent('content-changed', { detail: { kind: 'customers' } }));
+                      window.dispatchEvent(new CustomEvent('content-changed', { detail: { kind: 'employees' } }));
+                      window.dispatchEvent(new CustomEvent('inventory-changed'));
+                    } catch {}
+                    setMockReport((prev: any) => ({ ...(prev||{}), removed: true, removedAt: new Date().toISOString() }));
+                    toast?.({ title: 'Static Mock Data Removed', description: 'Local-only mock data was cleared.' });
+                  } catch (e: any) {
+                    const errMsg = e?.message || String(e);
+                    setMockReport((prev: any) => ({ ...(prev||{}), errors: [ ...(prev?.errors||[]), errMsg ] }));
+                  }
+                }}
+              >Remove Mock Data</Button>
+              <Button
+                variant="secondary"
+                className="border-red-700 text-white bg-red-700 hover:bg-red-800"
+                onClick={() => {
+                  try {
+                    const doc = new jsPDF();
+                    doc.setFontSize(18);
+                    doc.text('Mock Data Report', 105, 18, { align: 'center' });
+                    doc.setFontSize(11);
+                    const created = mockReport?.createdAt ? new Date(mockReport.createdAt).toLocaleString() : new Date().toLocaleString();
+                    const removed = mockReport?.removedAt ? new Date(mockReport.removedAt).toLocaleString() : '—';
+                    doc.text(`Created: ${created}`, 20, 30);
+                    doc.text(`Removed: ${removed}`, 20, 36);
+                    let y = 44;
+                    doc.setFontSize(12);
+                    doc.text('Customers:', 20, y); y += 8;
+                    (mockReport?.customers || []).forEach((c:any) => { doc.text(`${c.name} — ${c.email}`, 26, y); y += 6; if (y > 270) { doc.addPage(); y = 20; } });
+                    y += 2; doc.text('Employees:', 20, y); y += 8;
+                    (mockReport?.employees || []).forEach((e:any) => { doc.text(`${e.name} — ${e.email}`, 26, y); y += 6; if (y > 270) { doc.addPage(); y = 20; } });
+                    y += 2; doc.text('Inventory:', 20, y); y += 8;
+                    (mockReport?.inventory || []).forEach((i:any) => { doc.text(`${i.category}: ${i.name}`, 26, y); y += 6; if (y > 270) { doc.addPage(); y = 20; } });
+                    const dataUrl = doc.output('dataurlstring');
+                    const today = new Date().toISOString().split('T')[0];
+                    const fileName = `MockData_Report_${today}.pdf`;
+                    savePDFToArchive('Mock Data' as any, 'Admin', `mock-data-${Date.now()}`, dataUrl, { fileName, path: 'Mock Data/' });
+                    toast?.({ title: 'Saved to File Manager', description: 'Mock Data Report archived.' });
+                  } catch (e:any) {
+                    toast?.({ title: 'Save Failed', description: e?.message || 'Could not generate PDF', variant: 'destructive' });
+                  }
+                }}
+              >Save to PDF</Button>
+            </div>
+            {/* Live Progress */}
+            {mockReport?.progress && (
+              <div className="rounded-md border p-3">
+                <div className="font-semibold mb-2">Live Progress</div>
+                {(mockReport.progress || []).map((ln: string, i: number) => (
+                  <div key={`prog-${i}`}>- {ln}</div>
+                ))}
+              </div>
+            )}
+            {/* Summary */}
+            {mockReport?.summary && (
+              <div className="rounded-md border p-3">
+                <div className="font-semibold mb-2">Summary</div>
+                <div className="grid grid-cols-2 gap-2">
+                  <div>Local Users: {mockReport.summary.local_users}</div>
+                  <div>Local Customers: {mockReport.summary.local_customers}</div>
+                  <div>Local Employees: {mockReport.summary.local_employees}</div>
+                  <div>Chemicals: {mockReport.summary.chemicals_count}</div>
+                  <div>Materials: {mockReport.summary.materials_count}</div>
+                  <div>Mode: {mockReport.summary.mode}</div>
+                </div>
+              </div>
+            )}
+            {/* Created lists */}
+            {mockReport?.customers && (
+              <div className="rounded-md border p-3">
+                <div className="font-semibold mb-2">Customers</div>
+                <ul className="list-disc ml-5">
+                  {mockReport.customers.map((c:any, i:number) => (
+                    <li key={`c-${i}`}>{c.name} — {c.email}</li>
+                  ))}
+                </ul>
+              </div>
+            )}
+            {mockReport?.employees && (
+              <div className="rounded-md border p-3">
+                <div className="font-semibold mb-2">Employees</div>
+                <ul className="list-disc ml-5">
+                  {mockReport.employees.map((e:any, i:number) => (
+                    <li key={`e-${i}`}>{e.name} — {e.email}</li>
+                  ))}
+                </ul>
+              </div>
+            )}
+            {mockReport?.inventory && (
+              <div className="rounded-md border p-3">
+                <div className="font-semibold mb-2">Inventory</div>
+                <ul className="list-disc ml-5">
+                  {mockReport.inventory.map((it:any, i:number) => (
+                    <li key={`i-${i}`}>{it.category}: {it.name}</li>
+                  ))}
+                </ul>
+              </div>
+            )}
+            {/* Removal status */}
+            {mockReport?.removed && (
+              <div className="rounded-md border border-yellow-600 p-3 text-yellow-600">
+                Mock data removed at {new Date(mockReport.removedAt).toLocaleString()}
+              </div>
+            )}
+            {/* Errors */}
+            {mockReport?.errors?.length > 0 && (
+              <div className="rounded-md border border-destructive p-3 text-destructive">
+                <div className="font-semibold mb-2">Issues detected</div>
+                {mockReport.errors.map((err: any, i: number) => (
+                  <div key={i} className="mb-1">- {String(err)}</div>
+                ))}
+              </div>
+            )}
+          </div>
+        </DialogContent>
+      </Dialog>
+      {/* Mock Data Report Popup */}
+      <Dialog open={reportOpen} onOpenChange={setReportOpen}>
+        <DialogContent className="max-w-3xl">
+          <DialogHeader>
+            <DialogTitle>Mock Data Report</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-6 text-sm">
+            {reportData?.progress && (
+              <div className="rounded-md border p-3">
+                <div className="font-semibold mb-2">Live Progress</div>
+                {(reportData.progress || []).map((ln: string, i: number) => (
+                  <div key={`prog-${i}`}>- {ln}</div>
+                ))}
+              </div>
+            )}
+            {reportData?.errors?.length > 0 && (
+              <div className="rounded-md border border-destructive p-3 text-destructive">
+                <div className="font-semibold mb-2">Issues detected</div>
+                {reportData.errors.map((err: any, i: number) => (
+                  <div key={i} className="mb-1">
+                    - {err.step}: {err.message}
+                    {err.fallback ? ` — fallback: ${err.fallback}` : ''}
+                    {err.suggestion ? ` — check: ${err.suggestion}` : ''}
+                  </div>
+                ))}
+              </div>
+            )}
+            <div>
+              <div className="font-semibold">Customers</div>
+              {(reportData?.customers || []).map((c: any, i: number) => (
+                <div key={`cust-${i}`} className="mt-2">
+                  - {c.name} ({c.email}) — role: {c.role}
+                  <div className="text-muted-foreground">
+                    Supabase: app_users={String(c.supabase.app_users)}, customers={String(c.supabase.customers)}
+                  </div>
+                  <div className="text-muted-foreground">Local: users={String(c.local.users)}, customers={String(c.local.customers)}</div>
+                  <div className="mt-1 text-xs">{c.appears.join(' • ')}</div>
+                </div>
+              ))}
+            </div>
+            <div>
+              <div className="font-semibold">Employees</div>
+              {(reportData?.employees || []).map((e: any, i: number) => (
+                <div key={`emp-${i}`} className="mt-2">
+                  - {e.name} ({e.email}) — role: {e.role}
+                  <div className="text-muted-foreground">Supabase: app_users={String(e.supabase.app_users)}</div>
+                  <div className="text-muted-foreground">Local: users={String(e.local.users)}, employees={String(e.local.employees)}</div>
+                  <div className="mt-1 text-xs">{e.appears.join(' • ')}</div>
+                </div>
+              ))}
+            </div>
+            <div>
+              <div className="font-semibold">Jobs</div>
+              {(reportData?.jobs || []).map((j: any, i: number) => (
+                <div key={`job-${i}`} className="mt-2">
+                  - {j.id} — customer: {j.customer}, employee: {j.employee}, package: {j.package}
+                  <div className="text-muted-foreground">Invoice: status={j?.invoice?.paymentStatus}, total={j?.invoice?.total}, paid={j?.invoice?.paidAmount}</div>
+                  <div className="mt-1 text-xs">{j.appears.join(' • ')}</div>
+                </div>
+              ))}
+            </div>
+            <div>
+              <div className="font-semibold">Inventory</div>
+              {(reportData?.inventory || []).map((i: any, idx: number) => (
+                <div key={`inv-${idx}`} className="mt-2">
+                  - {i.name} — {i.category}
+                  <div className="mt-1 text-xs">{i.appears.join(' • ')}</div>
+                </div>
+              ))}
+            </div>
+            <div>
+              <div className="font-semibold">Summary</div>
+              <div className="text-muted-foreground">
+                Supabase: app_users={reportData?.summary?.supabase_app_users}, customers={reportData?.summary?.supabase_customers} ({reportData?.summary?.note})
+              </div>
+              <div className="text-muted-foreground">
+                Local counts — users={reportData?.summary?.local_users}, customers={reportData?.summary?.local_customers}, employees={reportData?.summary?.local_employees}, invoices={reportData?.summary?.local_invoices}, checklists={reportData?.summary?.local_checklists}, pdfArchive={reportData?.summary?.pdf_archive_count}
+              </div>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
+      {/* Static Mock Data Report (Local Only) */}
+      <Dialog open={staticReportOpen} onOpenChange={setStaticReportOpen}>
+        <DialogContent className="max-w-3xl">
+          <DialogHeader>
+            <DialogTitle>Static Mock Data Report (Local Only — Not Linked to Supabase)</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-6 text-sm">
+            {staticReportData?.progress && (
+              <div className="rounded-md border p-3">
+                <div className="font-semibold mb-2">Live Progress</div>
+                {(staticReportData.progress || []).map((ln: string, i: number) => (
+                  <div key={`s-prog-${i}`}>- {ln}</div>
+                ))}
+              </div>
+            )}
+            <div>
+              <div className="font-semibold">Customers</div>
+              {(staticReportData?.customers || []).map((c: any, i: number) => (
+                <div key={`s-cust-${i}`} className="mt-2">
+                  - {c.name} ({c.email}) — role: {c.role}
+                  <div className="text-muted-foreground">{c.supabase}</div>
+                  <div className="text-muted-foreground">Local: users={String(c.local.users)}, customers={String(c.local.customers)}</div>
+                  <div className="mt-1 text-xs">{c.appears.join(' • ')}</div>
+                  <div className="mt-1 text-xs italic">{c.where}</div>
+                </div>
+              ))}
+            </div>
+            <div>
+              <div className="font-semibold">Employees</div>
+              {(staticReportData?.employees || []).map((e: any, i: number) => (
+                <div key={`s-emp-${i}`} className="mt-2">
+                  - {e.name} ({e.email}) — role: {e.role}
+                  <div className="text-muted-foreground">{e.supabase}</div>
+                  <div className="text-muted-foreground">Local: users={String(e.local.users)}, employees={String(e.local.employees)}</div>
+                  <div className="mt-1 text-xs">{e.appears.join(' • ')}</div>
+                  <div className="mt-1 text-xs italic">{e.where}</div>
+                </div>
+              ))}
+            </div>
+            <div>
+              <div className="font-semibold">Jobs</div>
+              {(staticReportData?.jobs || []).map((j: any, i: number) => (
+                <div key={`s-job-${i}`} className="mt-2">
+                  - {j.id} — customer: {j.customer}, employee: {j.employee}, package: {j.package}
+                  <div className="text-muted-foreground">Invoice: status={j?.invoice?.paymentStatus}, total={j?.invoice?.total}, paid={j?.invoice?.paidAmount}</div>
+                  <div className="mt-1 text-xs">{j.appears.join(' • ')}</div>
+                  <div className="mt-1 text-xs italic">{j.where}</div>
+                  <div className="mt-1 text-xs italic">Mode: {j.mode}</div>
+                </div>
+              ))}
+            </div>
+            <div>
+              <div className="font-semibold">Inventory</div>
+              {(staticReportData?.inventory || []).map((i: any, idx: number) => (
+                <div key={`s-inv-${idx}`} className="mt-2">
+                  - {i.name} — {i.category}
+                  <div className="mt-1 text-xs">{i.appears.join(' • ')}</div>
+                  <div className="mt-1 text-xs italic">{i.where}</div>
+                  <div className="mt-1 text-xs italic">Mode: {i.mode}</div>
+                </div>
+              ))}
+            </div>
+            <div>
+              <div className="font-semibold">Summary</div>
+              <div className="text-muted-foreground">{staticReportData?.summary?.mode}</div>
+              <div className="text-muted-foreground">
+                Local counts — users={staticReportData?.summary?.local_users}, customers={staticReportData?.summary?.local_customers}, employees={staticReportData?.summary?.local_employees}, invoices={staticReportData?.summary?.local_invoices}, checklists={staticReportData?.summary?.local_checklists}, pdfArchive={staticReportData?.summary?.pdf_archive_count}
+              </div>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 };
 
 export default Settings;
+          {/* Static Mock Data (Local Only) */}
+          <Card className="p-6 bg-muted border-border">
+            <h2 className="text-2xl font-bold text-foreground mb-2">Static Mock Data (Local Only)</h2>
+            <p className="text-sm text-muted-foreground mb-4">Insert test data entirely in local storage. No Supabase calls or checks are made.</p>
+            <div className="flex flex-wrap gap-4">
+              <Button
+                variant="default"
+                onClick={async () => {
+                  try {
+                    toast({ title: 'Seeding Static Mock Data', description: 'Local-only users, jobs, invoices, inventory…' });
+                    setStaticReportData({ progress: ['Starting static mock data insertion…'] });
+                    setStaticReportOpen(true);
+                    const push = (msg: string) => {
+                      setStaticReportData((prev: any) => ({ ...(prev||{}), progress: [ ...((prev?.progress)||[]), `${new Date().toLocaleTimeString()} — ${msg}` ] }));
+                    };
+                    const tracker = await insertStaticMockData(push);
+                    // Trigger UI refresh
+                    try {
+                      window.dispatchEvent(new CustomEvent('content-changed', { detail: { kind: 'users' } }));
+                      window.dispatchEvent(new CustomEvent('content-changed', { detail: { kind: 'customers' } }));
+                      window.dispatchEvent(new CustomEvent('content-changed', { detail: { kind: 'employees' } }));
+                      window.dispatchEvent(new CustomEvent('content-changed', { detail: { kind: 'invoices' } }));
+                      window.dispatchEvent(new CustomEvent('content-changed', { detail: { kind: 'jobs' } }));
+                      window.dispatchEvent(new CustomEvent('inventory-changed'));
+                    } catch {}
+                    // Build local-only report
+                    const usersLF = (await localforage.getItem<any[]>('users')) || [];
+                    const customersLF = (await localforage.getItem<any[]>('customers')) || [];
+                    const employeesLF = (await localforage.getItem<any[]>('company-employees')) || [];
+                    const invoicesLF = (await localforage.getItem<any[]>('invoices')) || [];
+                    const checklistsLF = (await localforage.getItem<any[]>('generic-checklists')) || [];
+                    let pdfCount = 0;
+                    try { const pdfRaw = JSON.parse(localStorage.getItem('pdfArchive') || '[]'); pdfCount = Array.isArray(pdfRaw) ? pdfRaw.length : 0; } catch {}
+                    const custSection = tracker.users.filter((u: any) => u.role === 'customer').map((u: any) => ({
+                      name: u.name,
+                      email: u.email,
+                      role: 'customer',
+                      supabase: 'Local only — no Supabase',
+                      local: { users: usersLF.some(x => x.id === u.id), customers: customersLF.some(x => x.id === u.id) },
+                      appears: [
+                        'Appears in Customers list under Admin → Customers',
+                        'Searchable via Customers search and dropdown selectors',
+                        'Local-only; not linked to Supabase',
+                      ],
+                      where: 'Inserted into localforage keys: users, customers',
+                    }));
+                    const empSection = tracker.users.filter((u: any) => u.role === 'employee').map((u: any) => ({
+                      name: u.name,
+                      email: u.email,
+                      role: 'employee',
+                      supabase: 'Local only — no Supabase',
+                      local: { users: usersLF.some(x => x.id === u.id), employees: employeesLF.some(x => x.id === u.id) },
+                      appears: [
+                        'Appears in Employees list under Admin → Company Employees',
+                        'Appears in employee dropdown for job assignment',
+                        'Local-only; not linked to Supabase',
+                      ],
+                      where: 'Inserted into localforage keys: users, company-employees',
+                    }));
+                    const jobsSection = (tracker.jobDetails || []).map((j: any) => {
+                      const inChecklist = checklistsLF.some(x => x.id === j.id);
+                      const invObj = invoicesLF.find(x => x.id === j?.invoice?.id);
+                      const invInfo = invObj ? { total: invObj.total, paidAmount: invObj.paidAmount, paymentStatus: invObj.paymentStatus } : j.invoice;
+                      return {
+                        id: j.id,
+                        customer: j.customerName,
+                        employee: j.employeeName,
+                        package: j.packageName,
+                        invoice: invInfo,
+                        appears: [
+                          'Appears in Jobs Completed; enable grouping if helpful',
+                          'Shows totals in Invoicing; filter by customer',
+                          'PDF archived (placeholder) in Job PDF Archive',
+                        ],
+                        where: 'Inserted into localforage: generic-checklists; PDF record in localStorage: pdfArchive',
+                        mode: 'Local only',
+                      };
+                    });
+                    const inventorySection = (tracker.inventory || []).map((i: any) => ({
+                      name: i.name,
+                      category: i.category,
+                      appears: [
+                        i.category === 'Chemical' ? 'In Inventory Control under Chemicals' : 'In Inventory Control under Materials',
+                        'Shows in Inventory Report',
+                      ],
+                      where: 'Inserted into localforage keys: chemicals/materials',
+                      mode: 'Local only',
+                    }));
+                    const summary = {
+                      mode: 'Local only — Not Linked to Supabase',
+                      local_users: usersLF.length,
+                      local_customers: customersLF.length,
+                      local_employees: employeesLF.length,
+                      local_invoices: invoicesLF.length,
+                      local_checklists: checklistsLF.length,
+                      pdf_archive_count: pdfCount,
+                    };
+                    setStaticReportData((prev: any) => ({ ...(prev||{}), customers: custSection, employees: empSection, jobs: jobsSection, inventory: inventorySection, summary }));
+                    toast({ title: 'Static Mock Data Inserted', description: `Users: ${tracker.users.length}, Jobs: ${tracker.jobs.length}, Invoices: ${tracker.invoices.length}` });
+                  } catch (e) {
+                    toast({ title: 'Insert Failed', description: 'Could not insert static mock data.', variant: 'destructive' });
+                  }
+                }}
+              >Insert Static Mock Data (local only — no Supabase)</Button>
+              <Button
+                variant="destructive"
+                onClick={async () => {
+                  try {
+                    await removeStaticMockData();
+                    setStaticReportData({});
+                    setStaticReportOpen(true);
+                    toast({ title: 'Static Mock Data Removed', description: 'Local-only mock data was cleared.' });
+                  } catch {
+                    toast({ title: 'Remove Failed', description: 'Could not remove static mock data.', variant: 'destructive' });
+                  }
+                }}
+              >Remove Static Mock Data (local only — no Supabase)</Button>
+            </div>
+          </Card>

@@ -341,11 +341,28 @@ const EmployeeTrainingCourse = () => {
     doc.setFontSize(18);
     doc.text("Prime Detail – 113-Step Cheat Sheet", 105, 20, { align: "center" });
     doc.setFontSize(10);
+    // Render in 3 columns per page (25 items per column). When we reach the
+    // 4th column, start a new page to avoid overlapping.
+    let currentPage = 1;
+    const xPositions = [10, 75, 140];
+    const rowsPerColumn = 25;
     TRAINING_STEPS.forEach((s, i) => {
-      const y = 30 + (i % 25) * 6;
-      const x = i < 25 ? 10 : i < 50 ? 75 : i < 75 ? 140 : 10;
-      doc.text(`${i + 1}. ${s}`, x, y);
-      if ((i + 1) % 100 === 0) doc.addPage();
+      const columnIndex = Math.floor(i / rowsPerColumn); // 0..4
+      const pageIndex = Math.floor(columnIndex / 3); // 0 for first page, 1 for second, etc.
+      const colOnPage = columnIndex % 3; // 0..2
+      const x = xPositions[colOnPage] || xPositions[0];
+      const y = 30 + (i % rowsPerColumn) * 6;
+      // If we moved to a new page, add it
+      if (pageIndex + 1 > currentPage) {
+        doc.addPage();
+        currentPage = pageIndex + 1;
+        // Reprint title on subsequent pages for clarity
+        doc.setFontSize(14);
+        doc.text("113-Step Cheat Sheet (cont.)", 105, 18, { align: "center" });
+        doc.setFontSize(10);
+      }
+      // Write item number + text; keep maxWidth to avoid accidental wrap overflow
+      doc.text(`${i + 1}. ${s}`, x, y, { maxWidth: 60 });
     });
     const pdfDataUrl = doc.output("dataurlstring");
     savePDFToArchive("Employee Training" as any, employeeName, `CHEATSHEET-${Date.now()}`, String(pdfDataUrl));

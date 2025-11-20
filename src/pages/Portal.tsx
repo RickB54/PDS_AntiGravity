@@ -1,6 +1,6 @@
 import { useEffect } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
-import { quickAccessLogin, getCurrentUser } from "@/lib/auth";
+import { getCurrentUser } from "@/lib/auth";
 
 const Portal = () => {
   const navigate = useNavigate();
@@ -9,23 +9,13 @@ const Portal = () => {
   const user = getCurrentUser();
 
   useEffect(() => {
-    // If token exists, grant customer access then go to portal
-    if (token) {
-      // Simulate magic-link: set a temporary customer session
-      quickAccessLogin("customer");
-      navigate("/customer-portal", { replace: true });
-      return;
-    }
-
-    // If already a customer, go straight to portal
+    // Magic link is not supported in this build; require real auth
     if (user?.role === "customer") {
       navigate("/customer-portal", { replace: true });
       return;
     }
-
-    // Otherwise, fallback to public site
-    navigate("/", { replace: true });
-  }, [token, user, navigate]);
+    navigate("/login", { replace: true });
+  }, [user, navigate]);
 
   return (
     <div className="min-h-screen bg-background flex items-center justify-center">

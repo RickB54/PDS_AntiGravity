@@ -6,7 +6,7 @@ import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 import { useEffect, useState } from "react";
 import { SidebarProvider } from "@/components/ui/sidebar";
 import { AppSidebar } from "@/components/AppSidebar";
-import { getCurrentUser, isIdentityEnabled, initSupabaseAuth } from "@/lib/auth";
+import { getCurrentUser, initSupabaseAuth, setAuthMode, isSupabaseEnabled } from "@/lib/auth";
 import Index from "./pages/Index";
 import Login from "./pages/Login";
 import CustomerPortal from "./pages/CustomerPortal";
@@ -32,12 +32,13 @@ import Contact from "./pages/Contact";
 import FAQ from "./pages/FAQ";
 import BookNow from "./pages/BookNow";
 import ThankYou from "./pages/ThankYou";
+import Checkout from "./pages/Checkout";
 import CustomerAccount from "./pages/CustomerAccount";
 import CustomerProfile from "./pages/CustomerProfile";
 import Portal from "./pages/Portal";
-import QuickLogin from "./pages/QuickLogin";
 import AdminDashboard from "./pages/AdminDashboard";
 import UserManagement from "./pages/UserManagement";
+import AdminUsers from "./pages/AdminUsers";
 import WebsiteAdministration from "./pages/WebsiteAdministration";
 import BookingsPage from "./pages/BookingsPage";
 import DiscountCoupons from "./pages/DiscountCoupons";
@@ -55,13 +56,20 @@ const queryClient = new QueryClient();
 
 const ProtectedRoute = ({ children, allowedRoles }: { children: React.ReactNode; allowedRoles: string[] }) => {
   const user = getCurrentUser();
-  
+  // In Supabase mode, require an active session regardless of cached user
+  if (isSupabaseEnabled()) {
+    try {
+      const sid = localStorage.getItem('session_user_id');
+      if (!sid) return <Navigate to="/login" replace />;
+    } catch { return <Navigate to="/login" replace />; }
+  }
+
   if (!user && allowedRoles.length > 0) {
     return <Navigate to="/login" replace />;
   }
   
   if (user && allowedRoles.length > 0 && !allowedRoles.includes(user.role)) {
-    return <Navigate to={isIdentityEnabled() ? "/login" : "/"} replace />;
+    return <Navigate to="/login" replace />;
   }
   
   return <>{children}</>;
@@ -71,6 +79,11 @@ const App = () => {
   const [user, setUser] = useState(getCurrentUser());
 
   useEffect(() => {
+    // Force Supabase mode if environment requests it
+    try {
+      const envMode = (import.meta as any)?.env?.VITE_AUTH_MODE;
+      if (envMode === 'supabase') setAuthMode('supabase');
+    } catch {}
     // Initialize Supabase auth listener so roles map correctly in Supabase mode
     try { initSupabaseAuth(); } catch {}
     const updateUser = () => setUser(getCurrentUser());
@@ -96,7 +109,7 @@ const App = () => {
                 <ErrorBoundary>
                   <Routes>
                     <Route path="/login" element={<Login />} />
-                    <Route path="/login/quick/:role" element={<QuickLogin />} />
+                    {/* QuickLogin removed: Supabase-only authentication */}
                     {/* Public homepage routes */}
                     <Route path="/about" element={<About />} />
                     <Route path="/contact" element={<Contact />} />
@@ -106,6 +119,7 @@ const App = () => {
                     <Route path="/book-now" element={<BookNow />} />
                     {/* Public services page */}
                     <Route path="/services" element={<CustomerPortal />} />
+                    <Route path="/checkout" element={<Checkout />} />
                     <Route path="/portal" element={<Portal />} />
                     <Route path="/" element={<Index />} />
                     <Route
@@ -210,6 +224,11 @@ const App = () => {
                     <Route path="/user-management" element={
                       <ProtectedRoute allowedRoles={['admin']}>
                         <UserManagement />
+                      </ProtectedRoute>
+                    } />
+                    <Route path="/admin/users" element={
+                      <ProtectedRoute allowedRoles={['admin']}>
+                        <AdminUsers />
                       </ProtectedRoute>
                     } />
                     <Route path="/website-admin" element={

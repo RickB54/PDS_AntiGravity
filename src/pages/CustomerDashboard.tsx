@@ -5,7 +5,7 @@ import { Button } from "@/components/ui/button";
 import { getInvoices } from "@/lib/db";
 import { getCurrentUser, logout } from "@/lib/auth";
 import { useNavigate, Link } from "react-router-dom";
-import { FileText, Download, Eye, Clock, CheckCircle2 } from "lucide-react";
+import { FileText, Download, Eye, Clock, CheckCircle2, Trash2, ShoppingCart, CreditCard } from "lucide-react";
 import jsPDF from "jspdf";
 import {
   Dialog,
@@ -41,6 +41,7 @@ const CustomerDashboard = () => {
   const [selectedInvoice, setSelectedInvoice] = useState<Invoice | null>(null);
   const user = getCurrentUser();
   const navigate = useNavigate();
+  const { items, subtotal, removeItem } = useCartStore();
 
   useEffect(() => {
     loadData();
@@ -88,6 +89,8 @@ const CustomerDashboard = () => {
 
   const activeJobs = jobs.filter(j => j.status === "active");
   const completedJobs = jobs.filter(j => j.status === "completed");
+  const unpaidInvoices = invoices.filter(inv => (inv.paymentStatus || "unpaid") !== "paid");
+  const paidInvoices = invoices.filter(inv => (inv.paymentStatus || "unpaid") === "paid");
 
   return (
     <div className="min-h-screen bg-background">
@@ -143,6 +146,100 @@ const CustomerDashboard = () => {
                 ))}
               </div>
             )}
+          </Card>
+
+          {/* Payments & Cart */}
+          <Card className="p-6 bg-gradient-card border-border">
+            <div className="flex items-center gap-3 mb-4">
+              <ShoppingCart className="h-6 w-6 text-primary" />
+              <h2 className="text-2xl font-bold text-foreground">Payments & Cart</h2>
+            </div>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+              {/* My Cart */}
+              <div>
+                <h3 className="text-lg font-semibold text-foreground mb-2">My Cart</h3>
+                {items.length === 0 ? (
+                  <p className="text-muted-foreground">Your cart is empty.</p>
+                ) : (
+                  <div className="space-y-2">
+                    {items.map(i => (
+                      <div key={i.id} className="flex items-center justify-between p-3 bg-background/50 rounded border border-border">
+                        <div>
+                          <p className="font-semibold text-foreground">{i.name}</p>
+                          <p className="text-sm text-muted-foreground">Qty: {i.quantity} {i.vehicleType ? `· ${i.vehicleType}` : ""}</p>
+                        </div>
+                        <div className="flex items-center gap-3">
+                          <p className="font-bold text-primary">${(i.price * i.quantity).toFixed(2)}</p>
+                          <Button variant="ghost" size="icon" onClick={() => removeItem(i.id)} aria-label="Remove">
+                            <Trash2 className="h-4 w-4" />
+                          </Button>
+                        </div>
+                      </div>
+                    ))}
+                    <div className="flex items-center justify-between p-2">
+                      <span className="text-sm text-muted-foreground">Subtotal</span>
+                      <span className="text-lg font-bold text-foreground">${subtotal().toFixed(2)}</span>
+                    </div>
+                  </div>
+                )}
+                {items.length > 0 && (
+                  <div className="mt-3 flex items-center justify-end">
+                    <Link to="/checkout">
+                      <Button variant="default" className="bg-primary text-primary-foreground">
+                        <ShoppingCart className="h-4 w-4 mr-2" />
+                        Make a Payment
+                      </Button>
+                    </Link>
+                  </div>
+                )}
+              </div>
+
+              {/* Unpaid Invoices */}
+              <div>
+                <h3 className="text-lg font-semibold text-foreground mb-2">Unpaid Invoices</h3>
+                {unpaidInvoices.length === 0 ? (
+                  <p className="text-muted-foreground">No unpaid invoices.</p>
+                ) : (
+                  <div className="space-y-2">
+                    {unpaidInvoices.map(inv => (
+                      <div key={inv.id} className="p-3 bg-background/50 rounded border border-border flex items-center justify-between">
+                        <div>
+                          <p className="font-semibold text-foreground">Invoice #{inv.invoiceNumber}</p>
+                          <p className="text-sm text-muted-foreground">${inv.total.toFixed(2)}</p>
+                        </div>
+                        <div className="flex items-center gap-3">
+                          <Link to={`/checkout?invoice=${inv.id}`}>
+                            <Button variant="default" className="bg-primary text-primary-foreground">
+                              <CreditCard className="h-4 w-4 mr-2" />
+                              Pay Invoice
+                            </Button>
+                          </Link>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </div>
+
+            {/* Payment History */}
+            <div className="mt-6">
+              <h3 className="text-lg font-semibold text-foreground mb-2">Payment History</h3>
+              {paidInvoices.length === 0 ? (
+                <p className="text-muted-foreground">No payments yet.</p>
+              ) : (
+                <div className="space-y-2">
+                  {paidInvoices.map(inv => (
+                    <div key={inv.id} className="p-3 bg-background/50 rounded border border-border">
+                      <div className="flex justify-between">
+                        <span>Invoice #{inv.invoiceNumber} — {inv.date}</span>
+                        <span className="font-semibold text-success">${inv.total.toFixed(2)}</span>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
           </Card>
 
           {/* Invoices */}
@@ -235,3 +332,4 @@ const CustomerDashboard = () => {
 };
 
 export default CustomerDashboard;
+import { useCartStore } from "@/store/cart";
