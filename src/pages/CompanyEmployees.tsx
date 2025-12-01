@@ -121,7 +121,7 @@ const CompanyEmployees = () => {
   const saveEmployees = async (list: Employee[]) => {
     // Persist to both localforage and localStorage to avoid driver issues
     await localforage.setItem("company-employees", list);
-    try { localStorage.setItem('company-employees', JSON.stringify(list)); } catch {}
+    try { localStorage.setItem('company-employees', JSON.stringify(list)); } catch { }
     setEmployees(list);
   };
 
@@ -164,16 +164,16 @@ const CompanyEmployees = () => {
     doc.text("Employee Work History", 105, 20, { align: "center" });
     doc.setFontSize(10);
     doc.text(`Generated: ${new Date().toLocaleString()}`, 20, 30);
-    
+
     if (selectedEmployee) {
       const emp = employees.find(e => e.email === selectedEmployee);
       doc.text(`Employee: ${emp?.name || selectedEmployee}`, 20, 40);
     }
-    
+
     let y = 50;
     doc.text("Job | Customer | Vehicle | Service | Date", 20, y);
     y += 7;
-    
+
     filteredJobs.forEach((job) => {
       if (y > 280) {
         doc.addPage();
@@ -186,7 +186,7 @@ const CompanyEmployees = () => {
       );
       y += 7;
     });
-    
+
     doc.save(`Employee_History_${new Date().toISOString().split('T')[0]}.pdf`);
   };
 
@@ -237,13 +237,13 @@ const CompanyEmployees = () => {
       await saveEmployees(next);
       setModalOpen(false);
       toast({ title: 'Saved', description: actionLabel });
-    } catch (e:any) {
+    } catch (e: any) {
       toast({ title: 'Save failed', description: e?.message || 'Could not persist employee.', variant: 'destructive' });
       return;
     }
 
     // Try syncing to API non-blocking
-    try { await api('/api/employees', { method: 'POST', body: JSON.stringify(payload) }); } catch {}
+    try { await api('/api/employees', { method: 'POST', body: JSON.stringify(payload) }); } catch { }
   };
 
   if (user?.role !== 'admin') {
@@ -287,19 +287,21 @@ const CompanyEmployees = () => {
               </Button>
             </div>
             {selectedEmployee && (
-  <div className="mt-4 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                {(() => { const emp = employees.find(e => e.email === selectedEmployee); const lastPaid = (emp as any)?.lastPaid || '—'; const owed = owedMap[selectedEmployee] || 0; return (
-                <>
-                  <div className="p-3 rounded border border-border">
-                    <p className="text-sm text-muted-foreground">Last Paid</p>
-                    <p className="text-lg font-semibold text-foreground">{String(lastPaid)}</p>
-                  </div>
-                  <div className="p-3 rounded border border-border">
-                    <p className="text-sm text-muted-foreground">Owed Balance</p>
-                    <p className="text-lg font-semibold text-foreground">${owed.toFixed(2)}</p>
-                  </div>
-                </>
-                ); })()}
+              <div className="mt-4 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                {(() => {
+                  const emp = employees.find(e => e.email === selectedEmployee); const lastPaid = (emp as any)?.lastPaid || '—'; const owed = owedMap[selectedEmployee] || 0; return (
+                    <>
+                      <div className="p-3 rounded border border-border">
+                        <p className="text-sm text-muted-foreground">Last Paid</p>
+                        <p className="text-lg font-semibold text-foreground">{String(lastPaid)}</p>
+                      </div>
+                      <div className="p-3 rounded border border-border">
+                        <p className="text-sm text-muted-foreground">Owed Balance</p>
+                        <p className="text-lg font-semibold text-foreground">${owed.toFixed(2)}</p>
+                      </div>
+                    </>
+                  );
+                })()}
               </div>
             )}
           </Card>
@@ -307,16 +309,22 @@ const CompanyEmployees = () => {
           {/* All Employees */}
           <Card className="p-6 bg-gradient-card border-border">
             <h2 className="text-xl font-bold text-foreground mb-4">All Employees</h2>
-  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
               {employees.map((emp) => (
                 <div key={emp.email} className="p-3 rounded border border-border">
-                  <div className="flex items-center justify-between gap-2">
-                    <div>
-                      <p className="font-medium text-foreground">{emp.name}</p>
-                      <p className="text-sm text-muted-foreground">{emp.email}</p>
+                  <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
+                    <div className="flex-1 min-w-0">
+                      <p className="font-medium text-foreground truncate">{emp.name}</p>
+                      <p className="text-sm text-muted-foreground truncate">{emp.email}</p>
                       <p className="text-xs text-muted-foreground">Role: {emp.role}</p>
                     </div>
-                    <Button size="sm" className="bg-red-700 hover:bg-red-800" onClick={() => impersonateEmployee(emp)}>Impersonate</Button>
+                    <Button
+                      size="sm"
+                      className="bg-red-700 hover:bg-red-800 w-full sm:w-auto whitespace-nowrap shrink-0"
+                      onClick={() => impersonateEmployee(emp)}
+                    >
+                      Impersonate
+                    </Button>
                   </div>
                 </div>
               ))}
@@ -327,7 +335,7 @@ const CompanyEmployees = () => {
           </Card>
 
           {/* Stats */}
-  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
             <Card className="p-6 bg-gradient-card border-border">
               <div className="flex items-center gap-4">
                 <div className="p-3 bg-primary/20 rounded-lg">
@@ -477,7 +485,7 @@ const CompanyEmployees = () => {
                 <option>Admin</option>
               </select>
             </div>
-  <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
               <div className="space-y-1">
                 <Label>Flat Rate</Label>
                 <Input type="number" step="0.01" value={form.flatRate} onChange={(e) => setForm({ ...form, flatRate: e.target.value })} placeholder="e.g., 20.00" />
@@ -494,7 +502,7 @@ const CompanyEmployees = () => {
             {form.paymentByJob && (
               <div className="mt-2 space-y-2">
                 <Label>Job Rate Editor (per service/add-on payout)</Label>
-  <div className="grid grid-cols-1 md:grid-cols-2 gap-3 max-h-[40vh] overflow-y-auto p-2 border rounded">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-3 max-h-[40vh] overflow-y-auto p-2 border rounded">
                   {[...servicePackages.map((p: any) => ({ id: p.id, name: p.name })), ...addOns.map((a: any) => ({ id: a.id, name: a.name }))].map((item: any) => (
                     <div key={item.id} className="space-y-1">
                       <Label className="text-xs">{item.name}</Label>
@@ -505,9 +513,9 @@ const CompanyEmployees = () => {
               </div>
             )}
           </div>
-<DialogFooter className="button-group-responsive">
+          <DialogFooter className="button-group-responsive">
             <Button className="bg-gradient-hero" onClick={handleSave}>Save</Button>
-</DialogFooter>
+          </DialogFooter>
         </DialogContent>
       </Dialog>
     </div>

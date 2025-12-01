@@ -24,14 +24,19 @@ const CLASSIFICATION_OPTIONS: ClassificationType[] = [
     "Oversized Specialty"
 ];
 
+// Stable data structure that handles both old and new formats
 interface SavedClassification {
     id: string;
     make: string;
     model: string;
-    classification: string;
-    customer_name?: string;
-    customer_id?: string;
+    category: string; // Changed from 'classification' to match user's spec
     timestamp: string;
+    customer?: {
+        id?: string;
+        name?: string;
+        phone?: string;
+        email?: string;
+    };
 }
 
 interface Customer {
@@ -41,61 +46,132 @@ interface Customer {
     phone?: string;
 }
 
+// Safe type for vehicle database
+type VehicleDB = Record<string, Record<string, string>>;
+
 export default function VehicleClassification() {
     const { toast } = useToast();
     const [step, setStep] = useState<1 | 2 | 3 | 4>(1);
     const [selectedMake, setSelectedMake] = useState<string>("");
     const [selectedModel, setSelectedModel] = useState<string>("");
-    const [classification, setClassification] = useState<string>("");
+    const [category, setCategory] = useState<string>("");
     const [overrideModalOpen, setOverrideModalOpen] = useState(false);
     const [makeSearchQuery, setMakeSearchQuery] = useState("");
     const [history, setHistory] = useState<SavedClassification[]>([]);
     const [editingId, setEditingId] = useState<string | null>(null);
     const [customers, setCustomers] = useState<Customer[]>([]);
-    const [selectedCustomer, setSelectedCustomer] = useState<string>("");
+    const [selectedCustomerId, setSelectedCustomerId] = useState<string>("");
 
-    // Load history from localStorage on mount
+    // Load history and customers on mount
     useEffect(() => {
         loadHistory();
         loadCustomers();
     }, []);
 
     const loadCustomers = async () => {
-        const custs = await getCustomers<Customer>();
-        setCustomers(custs);
+        try {
+            const custs = await getCustomers<Customer>();
+            setCustomers(Array.isArray(custs) ? custs : []);
+        } catch (error) {
+            console.error("Failed to load customers:", error);
+            setCustomers([]);
+        }
     };
 
     const loadHistory = () => {
         try {
             const stored = localStorage.getItem("vehicle_classification_history");
-            if (stored) {
-                setHistory(JSON.parse(stored));
+            if (!stored) {
+                setHistory([]);
+                return;
             }
+
+            const parsed = JSON.parse(stored);
+            if (!Array.isArray(parsed)) {
+                setHistory([]);
+                return;
+            }
+
+            // Normalize old and new formats
+            const normalized: SavedClassification[] = parsed.map((item: any) => {
+                // Handle old format without customer field
+                const base: SavedClassification = {
+                    id: String(item.id || Date.now()),
+                    make: String(item.make || ""),
+                    model: String(item.model || ""),
+                    category: String(item.category || item.classification || ""),
+                    timestamp: String(item.timestamp || new Date().toISOString())
+                };
+
+                // Only add customer if it exists and has data
+                if (item.customer && typeof item.customer === 'object') {
+                    base.customer = {
+                        id: item.customer.id || undefined,
+                        name: item.customer.name || undefined,
+                        phone: item.customer.phone || undefined,
+                        email: item.customer.email || undefined
+                    };
+                } else if (item.customer_id || item.customer_name) {
+                    // Handle legacy format
+                    base.customer = {
+                        id: item.customer_id || undefined,
+                        name: item.customer_name || undefined
+                    };
+                }
+
+                return base;
+            });
+
+            setHistory(normalized);
         } catch (error) {
             console.error("Failed to load history:", error);
+            setHistory([]);
         }
     };
 
-    // Get all makes from the database
-    const allMakes = useMemo(() => {
-        return Object.keys(vehicleDatabase).sort();
+    // Safely access vehicle database
+    const safeDB = useMemo((): VehicleDB => {
+        if (!vehicleDatabase || typeof vehicleDatabase !== 'object') {
+            console.error("Vehicle database is invalid");
+            return {};
+        }
+        return vehicleDatabase as VehicleDB;
     }, []);
+
+    // Get all makes
+    const allMakes = useMemo(() => {
+        try {
+            const makes = Object.keys(safeDB);
+            return makes.filter(m => m && typeof m === 'string').sort();
+        } catch (e) {
+            console.error("Error loading makes:", e);
+            return [];
+        }
+    }, [safeDB]);
 
     // Filter makes based on search
     const filteredMakes = useMemo(() => {
-        if (!makeSearchQuery.trim()) return allMakes;
-        const query = makeSearchQuery.toLowerCase();
+        if (!makeSearchQuery || !makeSearchQuery.trim()) return allMakes;
+        const query = makeSearchQuery.toLowerCase().trim();
         return allMakes.filter(make => make.toLowerCase().includes(query));
     }, [allMakes, makeSearchQuery]);
 
     // Get models for selected make
     const availableModels = useMemo(() => {
         if (!selectedMake) return [];
-        const models = vehicleDatabase[selectedMake as keyof typeof vehicleDatabase];
-        return Object.keys(models || {}).sort();
-    }, [selectedMake]);
+        try {
+            const makeData = safeDB[selectedMake];
+            if (!makeData || typeof makeData !== 'object') return [];
+            const models = Object.keys(makeData);
+            return models.filter(m => m && typeof m === 'string').sort();
+        } catch (e) {
+            console.error("Error loading models:", e);
+            return [];
+        }
+    }, [selectedMake, safeDB]);
 
     const handleMakeSelect = (make: string) => {
+        if (!make) return;
         setSelectedMake(make);
         setSelectedModel("");
         setMakeSearchQuery("");
@@ -103,13 +179,27 @@ export default function VehicleClassification() {
     };
 
     const handleModelSelect = (model: string) => {
+        if (!model) return;
         setSelectedModel(model);
 
-        // Determine classification
-        const vehicleData = vehicleDatabase[selectedMake as keyof typeof vehicleDatabase];
-        const autoClassification = vehicleData?.[model as keyof typeof vehicleData] || "Manual Classification Required";
+        // Determine category with safe access
+        let autoCategory = "Manual Classification Required";
 
-        setClassification(autoClassification as string);
+        try {
+            if (selectedMake && safeDB[selectedMake]) {
+                const makeData = safeDB[selectedMake];
+                if (makeData && typeof makeData === 'object' && model in makeData) {
+                    const value = makeData[model];
+                    if (value && typeof value === 'string') {
+                        autoCategory = value;
+                    }
+                }
+            }
+        } catch (e) {
+            console.error("Error determining category:", e);
+        }
+
+        setCategory(autoCategory);
         setStep(3);
     };
 
@@ -118,77 +208,99 @@ export default function VehicleClassification() {
         setStep(4);
     };
 
-    const handleOverride = (newClassification: string) => {
-        setClassification(newClassification);
+    const handleOverride = (newCategory: string) => {
+        setCategory(newCategory);
         setOverrideModalOpen(false);
         toast({
             title: "Classification Updated",
-            description: `Changed to: ${newClassification}`
+            description: `Changed to: ${newCategory}`
         });
     };
 
     const saveToLocalStorage = () => {
-        const customer = selectedCustomer ? customers.find(c => c.id === selectedCustomer) : null;
-        const data: SavedClassification = {
-            id: editingId || Date.now().toString(),
-            make: selectedMake,
-            model: selectedModel,
-            classification: classification,
-            customer_id: selectedCustomer || undefined,
-            customer_name: customer?.name || undefined,
-            timestamp: new Date().toISOString()
-        };
+        try {
+            const data: SavedClassification = {
+                id: editingId || Date.now().toString(),
+                make: selectedMake,
+                model: selectedModel,
+                category: category,
+                timestamp: new Date().toISOString()
+            };
 
-        // Update history
-        let updatedHistory: SavedClassification[];
-        if (editingId) {
-            // Update existing entry
-            updatedHistory = history.map(item => item.id === editingId ? data : item);
-        } else {
-            // Add new entry
-            updatedHistory = [data, ...history];
+            // Only add customer if one is selected
+            if (selectedCustomerId) {
+                const customer = customers.find(c => c.id === selectedCustomerId);
+                if (customer) {
+                    data.customer = {
+                        id: customer.id,
+                        name: customer.name,
+                        phone: customer.phone,
+                        email: customer.email
+                    };
+                }
+            }
+
+            // Update or add to history
+            let updatedHistory: SavedClassification[];
+            if (editingId) {
+                updatedHistory = history.map(item => item.id === editingId ? data : item);
+            } else {
+                updatedHistory = [data, ...history];
+            }
+
+            setHistory(updatedHistory);
+            localStorage.setItem("vehicle_classification_history", JSON.stringify(updatedHistory));
+            localStorage.setItem("vehicle_classification", JSON.stringify(data));
+
+            toast({
+                title: editingId ? "Classification Updated" : "Classification Saved",
+                description: "Vehicle classification stored successfully."
+            });
+
+            setEditingId(null);
+        } catch (error) {
+            console.error("Failed to save:", error);
+            toast({
+                title: "Save Failed",
+                description: "Could not save classification.",
+                variant: "destructive"
+            });
         }
-
-        setHistory(updatedHistory);
-        localStorage.setItem("vehicle_classification_history", JSON.stringify(updatedHistory));
-        localStorage.setItem("vehicle_classification", JSON.stringify(data));
-
-        toast({
-            title: editingId ? "Classification Updated" : "Classification Saved",
-            description: "Vehicle classification stored locally."
-        });
-
-        setEditingId(null);
     };
 
     const handleEdit = (item: SavedClassification) => {
         setEditingId(item.id);
         setSelectedMake(item.make);
         setSelectedModel(item.model);
-        setClassification(item.classification);
+        setCategory(item.category);
+        setSelectedCustomerId(item.customer?.id || "");
         setStep(2);
     };
 
     const handleDelete = (id: string) => {
         if (!confirm("Are you sure you want to delete this classification?")) return;
 
-        const updatedHistory = history.filter(item => item.id !== id);
-        setHistory(updatedHistory);
-        localStorage.setItem("vehicle_classification_history", JSON.stringify(updatedHistory));
+        try {
+            const updatedHistory = history.filter(item => item.id !== id);
+            setHistory(updatedHistory);
+            localStorage.setItem("vehicle_classification_history", JSON.stringify(updatedHistory));
 
-        toast({
-            title: "Classification Deleted",
-            description: "Vehicle removed from history."
-        });
+            toast({
+                title: "Classification Deleted",
+                description: "Vehicle removed from history."
+            });
+        } catch (error) {
+            console.error("Failed to delete:", error);
+        }
     };
 
     const handleReset = () => {
         setStep(1);
         setSelectedMake("");
         setSelectedModel("");
-        setClassification("");
+        setCategory("");
         setMakeSearchQuery("");
-        setSelectedCustomer("");
+        setSelectedCustomerId("");
         setEditingId(null);
     };
 
@@ -198,35 +310,40 @@ export default function VehicleClassification() {
             return;
         }
 
-        const doc = new jsPDF();
-        doc.setFontSize(18);
-        doc.text("Vehicle Classification History", 14, 20);
-        doc.setFontSize(10);
-        doc.text(`Generated: ${new Date().toLocaleString()}`, 14, 28);
+        try {
+            const doc = new jsPDF();
+            doc.setFontSize(18);
+            doc.text("Vehicle Classification History", 14, 20);
+            doc.setFontSize(10);
+            doc.text(`Generated: ${new Date().toLocaleString()}`, 14, 28);
 
-        const tableData = history.map((item) => [
-            item.make,
-            item.model,
-            item.classification,
-            item.customer_name || "-",
-            new Date(item.timestamp).toLocaleDateString()
-        ]);
+            const tableData = history.map((item) => [
+                item.make || "",
+                item.model || "",
+                item.category || "",
+                item.customer?.name || "-",
+                new Date(item.timestamp).toLocaleDateString()
+            ]);
 
-        autoTable(doc, {
-            startY: 35,
-            head: [["Make", "Model", "Classification", "Customer", "Date"]],
-            body: tableData,
-        });
+            autoTable(doc, {
+                startY: 35,
+                head: [["Make", "Model", "Classification", "Customer", "Date"]],
+                body: tableData,
+            });
 
-        const pdfBlob = doc.output("blob");
-        const reader = new FileReader();
-        reader.readAsDataURL(pdfBlob);
-        reader.onloadend = () => {
-            const base64data = reader.result as string;
-            const fileName = `vehicle-classification-${Date.now()}.pdf`;
-            savePDFToArchive("Vehicle History", "Admin Export", "export", base64data, { fileName });
-            toast({ title: "Export Successful", description: `Saved to File Manager as ${fileName}` });
-        };
+            const pdfBlob = doc.output("blob");
+            const reader = new FileReader();
+            reader.readAsDataURL(pdfBlob);
+            reader.onloadend = () => {
+                const base64data = reader.result as string;
+                const fileName = `vehicle-classification-${Date.now()}.pdf`;
+                savePDFToArchive("Vehicle History", "Admin Export", "export", base64data, { fileName });
+                toast({ title: "Export Successful", description: `Saved to File Manager as ${fileName}` });
+            };
+        } catch (error) {
+            console.error("PDF export failed:", error);
+            toast({ title: "Export Failed", description: "Could not generate PDF.", variant: "destructive" });
+        }
     };
 
     const getClassificationColor = (classif: string) => {
@@ -314,8 +431,8 @@ export default function VehicleClassification() {
                                                 <Car className="w-5 h-5 text-blue-400" />
                                                 <span className="font-semibold text-white">{item.make} {item.model}</span>
                                             </div>
-                                            <div className={`text-sm font-medium ${getClassificationColor(item.classification)}`}>
-                                                {item.classification}
+                                            <div className={`text-sm font-medium ${getClassificationColor(item.category)}`}>
+                                                {item.category}
                                             </div>
                                         </div>
                                     </AccordionTrigger>
@@ -332,8 +449,8 @@ export default function VehicleClassification() {
                                                 </div>
                                                 <div>
                                                     <div className="text-zinc-500">Classification</div>
-                                                    <div className={`font-medium ${getClassificationColor(item.classification)}`}>
-                                                        {item.classification}
+                                                    <div className={`font-medium ${getClassificationColor(item.category)}`}>
+                                                        {item.category}
                                                     </div>
                                                 </div>
                                                 <div>
@@ -342,6 +459,12 @@ export default function VehicleClassification() {
                                                         {new Date(item.timestamp).toLocaleDateString()}
                                                     </div>
                                                 </div>
+                                                {item.customer?.name && (
+                                                    <div className="col-span-2">
+                                                        <div className="text-zinc-500">Customer</div>
+                                                        <div className="text-white font-medium">{item.customer.name}</div>
+                                                    </div>
+                                                )}
                                             </div>
 
                                             <div className="flex gap-2 pt-2 border-t border-zinc-700">
@@ -393,11 +516,15 @@ export default function VehicleClassification() {
                                         <SelectValue placeholder="Choose a model..." />
                                     </SelectTrigger>
                                     <SelectContent className="bg-zinc-800 border-zinc-700 max-h-[300px]">
-                                        {availableModels.map((model) => (
-                                            <SelectItem key={model} value={model} className="text-white">
-                                                {model}
-                                            </SelectItem>
-                                        ))}
+                                        {availableModels.length === 0 ? (
+                                            <div className="p-4 text-center text-zinc-500">No models found</div>
+                                        ) : (
+                                            availableModels.map((model) => (
+                                                <SelectItem key={model} value={model} className="text-white">
+                                                    {model}
+                                                </SelectItem>
+                                            ))
+                                        )}
                                     </SelectContent>
                                 </Select>
                             </div>
@@ -434,12 +561,12 @@ export default function VehicleClassification() {
 
                                 <div className="border-t border-zinc-700 pt-4 mt-4">
                                     <div className="text-sm text-zinc-400 mb-2">System Classification</div>
-                                    <div className={`text-3xl font-bold ${getClassificationColor(classification)}`}>
-                                        {classification}
+                                    <div className={`text-3xl font-bold ${getClassificationColor(category)}`}>
+                                        {category}
                                     </div>
                                 </div>
 
-                                {classification === "Manual Classification Required" && (
+                                {category === "Manual Classification Required" && (
                                     <div className="mt-4 p-3 bg-yellow-900/20 border border-yellow-700 rounded-lg flex items-start gap-2">
                                         <AlertCircle className="w-5 h-5 text-yellow-500 mt-0.5" />
                                         <div className="text-sm text-yellow-200">
@@ -452,7 +579,7 @@ export default function VehicleClassification() {
                             {/* Customer Field (Optional) */}
                             <div>
                                 <label className="text-sm text-zinc-400 mb-2 block">Link to Customer (Optional)</label>
-                                <Select value={selectedCustomer} onValueChange={setSelectedCustomer}>
+                                <Select value={selectedCustomerId} onValueChange={setSelectedCustomerId}>
                                     <SelectTrigger className="bg-zinc-800 border-zinc-700 text-white">
                                         <SelectValue placeholder="Select a customer (optional)..." />
                                     </SelectTrigger>
@@ -460,12 +587,12 @@ export default function VehicleClassification() {
                                         <SelectItem value="" className="text-white">None</SelectItem>
                                         {customers.map(c => (
                                             <SelectItem key={c.id} value={c.id} className="text-white">
-                                                {c.name} {c.email && `(${c.email})`}
+                                                {c.name}{c.email ? ` (${c.email})` : ''}
                                             </SelectItem>
                                         ))}
                                     </SelectContent>
                                 </Select>
-                                {selectedCustomer && (
+                                {selectedCustomerId && (
                                     <div className="mt-2 text-xs text-zinc-500">
                                         This classification will be linked to the selected customer
                                     </div>
@@ -520,16 +647,16 @@ export default function VehicleClassification() {
                                     </div>
                                     <div>
                                         <div className="text-sm text-zinc-400">Classification</div>
-                                        <div className={`text-lg font-semibold ${getClassificationColor(classification)}`}>
-                                            {classification}
+                                        <div className={`text-lg font-semibold ${getClassificationColor(category)}`}>
+                                            {category}
                                         </div>
                                     </div>
                                 </div>
-                                {selectedCustomer && (
+                                {selectedCustomerId && (
                                     <div className="mt-4 pt-4 border-t border-green-700">
                                         <div className="text-sm text-zinc-400">Linked Customer</div>
                                         <div className="text-lg font-semibold text-white">
-                                            {customers.find(c => c.id === selectedCustomer)?.name}
+                                            {customers.find(c => c.id === selectedCustomerId)?.name || ""}
                                         </div>
                                     </div>
                                 )}
@@ -578,8 +705,7 @@ export default function VehicleClassification() {
                                     key={option}
                                     onClick={() => handleOverride(option)}
                                     variant="outline"
-                                    className={`w-full justify-start border-zinc-700 hover:bg-zinc-800 ${classification === option ? 'bg-zinc-800 border-blue-500' : ''
-                                        }`}
+                                    className={`w-full justify-start border-zinc-700 hover:bg-zinc-800 ${category === option ? 'bg-zinc-800 border-blue-500' : ''}`}
                                 >
                                     <span className={getClassificationColor(option)}>{option}</span>
                                 </Button>

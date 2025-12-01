@@ -33,8 +33,20 @@ interface UsageHistory {
   chemicalName?: string;
   materialId?: string;
   materialName?: string;
+  toolId?: string;
+  toolName?: string;
   serviceName: string;
   date: string;
+}
+
+interface Tool {
+  id: string;
+  name: string;
+  warranty: string;
+  purchaseDate: string;
+  price: number;
+  lifeExpectancy: string;
+  notes: string;
 }
 
 const InventoryControl = () => {
@@ -54,9 +66,10 @@ const InventoryControl = () => {
     createdAt: string;
   };
   const [materials, setMaterials] = useState<MaterialItem[]>([]);
+  const [tools, setTools] = useState<Tool[]>([]);
   const [usageHistory, setUsageHistory] = useState<UsageHistory[]>([]);
   const [modalOpen, setModalOpen] = useState(false);
-  const [modalMode, setModalMode] = useState<'chemical' | 'material'>('chemical');
+  const [modalMode, setModalMode] = useState<'chemical' | 'material' | 'tool'>('chemical');
   const [editing, setEditing] = useState<any | null>(null);
   const [dateFilter, setDateFilter] = useState<"all" | "daily" | "weekly" | "monthly">("all");
   const [dateRange, setDateRange] = useState<DateRangeValue>({});
@@ -101,10 +114,14 @@ const InventoryControl = () => {
   const loadData = async () => {
     const chems = (await localforage.getItem<Chemical[]>("chemicals")) || [];
     const mats = (await localforage.getItem<MaterialItem[]>("materials")) || [];
+    const tls = (await localforage.getItem<Tool[]>("tools")) || [];
     const usage = (await localforage.getItem<UsageHistory[]>("chemical-usage")) || [];
+    const toolUsage = (await localforage.getItem<UsageHistory[]>("tool-usage")) || [];
+    const allUsage = [...usage, ...toolUsage].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
     setChemicals(chems);
     setMaterials(mats);
-    setUsageHistory(usage);
+    setTools(tls);
+    setUsageHistory(allUsage);
   };
 
   const saveChemicals = async (data: Chemical[]) => {
@@ -124,7 +141,13 @@ const InventoryControl = () => {
     setModalOpen(true);
   };
 
-  const openEdit = (item: any, mode: 'chemical' | 'material') => {
+  const openAddTool = () => {
+    setEditing(null);
+    setModalMode('tool');
+    setModalOpen(true);
+  };
+
+  const openEdit = (item: any, mode: 'chemical' | 'material' | 'tool') => {
     setEditing(item);
     setModalMode(mode);
     setModalOpen(true);
@@ -132,16 +155,21 @@ const InventoryControl = () => {
 
   // Save handled inside UnifiedInventoryModal; refresh list on onSaved
 
-  const handleDelete = async (id: string, mode: 'chemical' | 'material') => {
+  const handleDelete = async (id: string, mode: 'chemical' | 'material' | 'tool') => {
     if (mode === 'chemical') {
       const updated = chemicals.filter(c => c.id !== id);
       await saveChemicals(updated);
       toast({ title: "Chemical Deleted", description: "Item removed from inventory." });
-    } else {
+    } else if (mode === 'material') {
       const updated = materials.filter(m => m.id !== id);
       await localforage.setItem("materials", updated);
       setMaterials(updated);
       toast({ title: "Material Deleted", description: "Item removed from inventory." });
+    } else {
+      const updated = tools.filter(t => t.id !== id);
+      await localforage.setItem("tools", updated);
+      setTools(updated);
+      toast({ title: "Tool Deleted", description: "Item removed from inventory." });
     }
   };
 
@@ -156,8 +184,8 @@ const InventoryControl = () => {
     if (dateFilter === "monthly") passQuick = now.getTime() - d.getTime() < 30 * dayMs;
 
     let passRange = true;
-    if (dateRange.from) passRange = d >= new Date(dateRange.from.setHours(0,0,0,0));
-    if (passRange && dateRange.to) passRange = d <= new Date(dateRange.to.setHours(23,59,59,999));
+    if (dateRange.from) passRange = d >= new Date(dateRange.from.setHours(0, 0, 0, 0));
+    if (passRange && dateRange.to) passRange = d <= new Date(dateRange.to.setHours(23, 59, 59, 999));
 
     return passQuick && passRange;
   };
@@ -195,20 +223,20 @@ const InventoryControl = () => {
           { count: ids.length, items: names, recordType: 'Inventory' }
         );
         // Immediately refresh alert UI
-        try { useAlertsStore.getState().refresh(); } catch {}
+        try { useAlertsStore.getState().refresh(); } catch { }
       }
       // If data loaded and no low inventory, clear hash to allow future alerts
       if (!hash && prev) {
         localStorage.removeItem('inventory_low_hash');
         localStorage.setItem('inventory_low_count', '0');
       }
-    } catch {}
+    } catch { }
   }, [chemicals, materials]);
 
   return (
     <div className="min-h-screen bg-background">
       <PageHeader title="Inventory Control" />
-      
+
       <main className="container mx-auto px-4 py-6 max-w-6xl">
         <div className="space-y-6 animate-fade-in">
           {lowStockTotal > 0 && (
@@ -221,7 +249,7 @@ const InventoryControl = () => {
               </div>
               <ul className="mt-2 ml-7 text-sm">
                 {[...lowStockMaterials.map(m => ({ id: m.id, label: `${m.name} (${m.category}) - ${m.quantity} remaining` })),
-                  ...lowStockChemicals.map(c => ({ id: c.id, label: `${c.name} (Chemical) - ${c.currentStock} remaining` }))]
+                ...lowStockChemicals.map(c => ({ id: c.id, label: `${c.name} (Chemical) - ${c.currentStock} remaining` }))]
                   .map(item => (
                     <li key={item.id}>{item.label}</li>
                   ))}
@@ -300,6 +328,46 @@ const InventoryControl = () => {
 
           <Card className="p-6 bg-gradient-card border-border">
             <div className="flex items-center justify-between mb-4 flex-wrap gap-2">
+              <h2 className="text-2xl font-bold text-foreground">Tools Inventory</h2>
+              <Button onClick={openAddTool} className="bg-gradient-hero">
+                <Plus className="h-4 w-4 mr-2" />
+                Add Tool
+              </Button>
+            </div>
+
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Name</TableHead>
+                  <TableHead>Warranty</TableHead>
+                  <TableHead>Purchase Date</TableHead>
+                  <TableHead>Price</TableHead>
+                  <TableHead>Life Expectancy</TableHead>
+                  <TableHead>Notes</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {tools.map((tool) => (
+                  <TableRow key={tool.id} className="cursor-pointer" onClick={() => openEdit(tool, 'tool')}>
+                    <TableCell className="font-medium">{tool.name}</TableCell>
+                    <TableCell>{tool.warranty || '-'}</TableCell>
+                    <TableCell>{tool.purchaseDate ? new Date(tool.purchaseDate).toLocaleDateString() : '-'}</TableCell>
+                    <TableCell>{tool.price ? `$${tool.price.toFixed(2)}` : '-'}</TableCell>
+                    <TableCell>{tool.lifeExpectancy || '-'}</TableCell>
+                    <TableCell>{tool.notes || '-'}</TableCell>
+                  </TableRow>
+                ))}
+                {tools.length === 0 && (
+                  <TableRow>
+                    <TableCell colSpan={6} className="text-center text-muted-foreground py-8">No tools added yet.</TableCell>
+                  </TableRow>
+                )}
+              </TableBody>
+            </Table>
+          </Card>
+
+          <Card className="p-6 bg-gradient-card border-border">
+            <div className="flex items-center justify-between mb-4 flex-wrap gap-2">
               <h2 className="text-2xl font-bold text-foreground">Usage History</h2>
               <div className="flex gap-2 items-center flex-wrap">
                 <select
@@ -323,6 +391,7 @@ const InventoryControl = () => {
                   <TableHead>Date</TableHead>
                   <TableHead>Chemical</TableHead>
                   <TableHead>Material</TableHead>
+                  <TableHead>Tool</TableHead>
                   <TableHead>Service</TableHead>
                 </TableRow>
               </TableHeader>
@@ -332,6 +401,7 @@ const InventoryControl = () => {
                     <TableCell>{new Date(item.date).toLocaleString()}</TableCell>
                     <TableCell>{item.chemicalName || '-'}</TableCell>
                     <TableCell>{(item as any).materialName || '-'}</TableCell>
+                    <TableCell>{(item as any).toolName || '-'}</TableCell>
                     <TableCell>{item.serviceName}</TableCell>
                   </TableRow>
                 ))}
@@ -374,7 +444,7 @@ const InventoryControl = () => {
             <DialogTitle>Material Updates</DialogTitle>
           </DialogHeader>
           <div className="space-y-4">
-  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div>
                 <Label>Material</Label>
                 <select value={updateMatId} onChange={(e) => setUpdateMatId(e.target.value)} className="mt-2 h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm">
@@ -391,7 +461,7 @@ const InventoryControl = () => {
                 </select>
                 <select value={updateChemFraction} onChange={(e) => setUpdateChemFraction(e.target.value)} className="mt-2 h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm">
                   <option value="">Fraction used</option>
-                  {['1/8','1/4','3/8','1/2','5/8','3/4','7/8','1'].map(f => (<option key={f} value={f}>{f}</option>))}
+                  {['1/8', '1/4', '3/8', '1/2', '5/8', '3/4', '7/8', '1'].map(f => (<option key={f} value={f}>{f}</option>))}
                 </select>
               </div>
             </div>
@@ -407,11 +477,11 @@ const InventoryControl = () => {
               <Label>Notify Employee</Label>
               <select value={updateEmployee} onChange={(e) => setUpdateEmployee(e.target.value)} className="mt-2 h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm">
                 <option value="">Select employee...</option>
-                {employees.map((e:any) => (<option key={e.id || e.email || e.name} value={String(e.id || e.email || e.name)}>{e.name || e.email || e.id}</option>))}
+                {employees.map((e: any) => (<option key={e.id || e.email || e.name} value={String(e.id || e.email || e.name)}>{e.name || e.email || e.id}</option>))}
               </select>
             </div>
           </div>
-<DialogFooter className="button-group-responsive">
+          <DialogFooter className="button-group-responsive">
             <Button
               variant="outline"
               onClick={() => {
@@ -424,8 +494,8 @@ const InventoryControl = () => {
             </Button>
             <Button className="bg-gradient-hero" onClick={async () => {
               const now = new Date().toISOString();
-              const matName = materials.find(m=>m.id===updateMatId)?.name;
-              const chemName = chemicals.find(c=>c.id===updateChemId)?.name;
+              const matName = materials.find(m => m.id === updateMatId)?.name;
+              const chemName = chemicals.find(c => c.id === updateChemId)?.name;
               const record: UsageHistory = {
                 id: `u_${Date.now()}`,
                 materialId: updateMatId || undefined,
@@ -448,16 +518,16 @@ const InventoryControl = () => {
                 let y = 42;
                 if (matName) { doc.text(`Material: ${matName} — ${updateMatQtyNote || '-'}`, 20, y); y += 8; }
                 if (chemName) { doc.text(`Chemical: ${chemName} — ${updateChemFraction || '-'}`, 20, y); y += 8; }
-                if (updateChecklistText) { doc.text('Checklist Items:', 20, y); y += 6; const t = doc.splitTextToSize(updateChecklistText, 170); doc.text(t, 20, y); y += t.length*6 + 6; }
+                if (updateChecklistText) { doc.text('Checklist Items:', 20, y); y += 6; const t = doc.splitTextToSize(updateChecklistText, 170); doc.text(t, 20, y); y += t.length * 6 + 6; }
                 if (updateNotes) { doc.text('Notes to Employee:', 20, y); y += 6; const n = doc.splitTextToSize(updateNotes, 170); doc.text(n, 20, y); }
                 const dataUrl = doc.output('dataurlstring');
                 const fileName = `Admin_Update_Materials_${new Date().toLocaleDateString().replace(/\//g, '-')}.pdf`;
-                try { const { savePDFToArchive } = await import('@/lib/pdfArchive'); savePDFToArchive('Admin Updates', 'Admin', `materials-update-${Date.now()}`, dataUrl, { fileName, path: 'Admin Updates/' }); } catch {}
-              } catch {}
+                try { const { savePDFToArchive } = await import('@/lib/pdfArchive'); savePDFToArchive('Admin Updates', 'Admin', `materials-update-${Date.now()}`, dataUrl, { fileName, path: 'Admin Updates/' }); } catch { }
+              } catch { }
 
               // Send employee notification
               if (updateEmployee) {
-                pushEmployeeNotification(updateEmployee, `Material update: ${(matName||'')}${matName&&chemName?' & ':''}${chemName||''}. Note: ${updateNotes || '-'}`, { materialId: updateMatId, chemicalId: updateChemId });
+                pushEmployeeNotification(updateEmployee, `Material update: ${(matName || '')}${matName && chemName ? ' & ' : ''}${chemName || ''}. Note: ${updateNotes || '-'}`, { materialId: updateMatId, chemicalId: updateChemId });
               }
 
               setUpdatesModalOpen(false);
@@ -466,7 +536,7 @@ const InventoryControl = () => {
               setUpdateMatId(''); setUpdateMatQtyNote(''); setUpdateChemId(''); setUpdateChemFraction(''); setUpdateChecklistText(''); setUpdateNotes('');
               toast({ title: 'Update Saved', description: 'Usage history updated and employee notified.' });
             }}>Save Update</Button>
-</DialogFooter>
+          </DialogFooter>
         </DialogContent>
       </Dialog>
     </div>

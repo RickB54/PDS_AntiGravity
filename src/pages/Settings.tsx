@@ -23,7 +23,7 @@ import { savePDFToArchive } from '@/lib/pdfArchive';
 import supabase, { isSupabaseConfigured } from '@/lib/supabase';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 
-  const Settings = () => {
+const Settings = () => {
   const { toast } = useToast();
   const navigate = useNavigate();
   const user = getCurrentUser();
@@ -190,7 +190,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/u
       if (data.customServices) localStorage.setItem('customServices', JSON.stringify(data.customServices));
       await postFullSync();
       await postServicesFullSync();
-  try { await fetch(`http://localhost:6061/api/packages/live?v=${Date.now()}`, { headers: { 'Cache-Control': 'no-cache' } }); } catch {}
+      try { await fetch(`http://localhost:6061/api/packages/live?v=${Date.now()}`, { headers: { 'Cache-Control': 'no-cache' } }); } catch { }
       toast({ title: "Pricing restored from backup — live site updated" });
     } catch (error) {
       toast({ title: "Restore Failed", description: "Could not restore pricing.", variant: "destructive" });
@@ -218,10 +218,10 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/u
         const customers: any[] = await localforage.getItem("customers") || [];
         const filtered = hasRange
           ? customers.filter((c: any) => {
-              const dateStr = c.createdAt || c.updatedAt || '';
-              const date = dateStr ? new Date(dateStr) : null;
-              return date && !Number.isNaN(date.getTime()) && date > cutoffDate;
-            })
+            const dateStr = c.createdAt || c.updatedAt || '';
+            const date = dateStr ? new Date(dateStr) : null;
+            return date && !Number.isNaN(date.getTime()) && date > cutoffDate;
+          })
           : [];
         await localforage.setItem("customers", filtered);
         // Supabase — customers + app_users (role=customer)
@@ -238,10 +238,10 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/u
         const invoices: any[] = await localforage.getItem("invoices") || [];
         const filtered = hasRange
           ? invoices.filter((inv: any) => {
-              const dateStr = inv.createdAt || inv.date || inv.updatedAt || '';
-              const date = dateStr ? new Date(dateStr) : null;
-              return date && !Number.isNaN(date.getTime()) && date > cutoffDate;
-            })
+            const dateStr = inv.createdAt || inv.date || inv.updatedAt || '';
+            const date = dateStr ? new Date(dateStr) : null;
+            return date && !Number.isNaN(date.getTime()) && date > cutoffDate;
+          })
           : [];
         await localforage.setItem("invoices", filtered);
         try {
@@ -255,10 +255,10 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/u
         const expenses: any[] = await localforage.getItem("expenses") || [];
         const filtered = hasRange
           ? expenses.filter((exp: any) => {
-              const dateStr = exp.date || exp.createdAt || '';
-              const date = dateStr ? new Date(dateStr) : null;
-              return date && !Number.isNaN(date.getTime()) && date > cutoffDate;
-            })
+            const dateStr = exp.date || exp.createdAt || '';
+            const date = dateStr ? new Date(dateStr) : null;
+            return date && !Number.isNaN(date.getTime()) && date > cutoffDate;
+          })
           : [];
         await localforage.setItem("expenses", filtered);
         try {
@@ -279,10 +279,12 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/u
           await localforage.setItem("chemicalUsage", filtered);
         } else {
           // Delete all local inventory lists when days are blank
-          try { await localforage.removeItem("chemicals"); } catch {}
-          try { await localforage.removeItem("materials"); } catch {}
-          try { await localforage.removeItem("inventory-estimates"); } catch {}
-          try { await localforage.removeItem("chemicalUsage"); } catch {}
+          try { await localforage.removeItem("chemicals"); } catch { }
+          try { await localforage.removeItem("materials"); } catch { }
+          try { await localforage.removeItem("tools"); } catch { }
+          try { await localforage.removeItem("inventory-estimates"); } catch { }
+          try { await localforage.removeItem("chemicalUsage"); } catch { }
+          try { await localforage.removeItem("chemical-usage"); } catch { }
         }
         try {
           await deleteInventoryUsageOlderThan(hasRange ? String(days) : 'all');
@@ -300,20 +302,34 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/u
           console.error('[Settings] delete all error', e);
           throw e;
         }
-        // Local: selectively remove volatile data, preserve training/exam/admin/employee
+        // Local: selectively remove volatile data, preserve training/exam/admin/employee/pricing/website
         const volatileLfKeys = [
-          'customers','invoices','expenses','estimates',
-          'chemicals','materials','chemicalUsage','inventory-estimates',
-          'faqs','contactInfo','aboutSections','aboutFeatures','testimonials',
-          'savedPrices','training-exams'
+          'customers', 'invoices', 'expenses', 'estimates',
+          'chemicals', 'materials', 'tools', 'chemicalUsage', 'chemical-usage', 'tool-usage', 'inventory-estimates',
+          'completed-jobs', 'payroll-history', 'pdfArchive'
         ];
         for (const key of volatileLfKeys) {
-          try { await localforage.removeItem(key); } catch {}
+          try { await localforage.removeItem(key); } catch { }
         }
+        // Preserve all system/default data in localStorage
         const preserveLsKeys = new Set([
-          'training_exam_custom','training_exam_progress','training_exam_schedule',
-          'handbook_progress','handbook_start_at','employee_training_progress','employee_training_certified',
-          'currentUser','packageMeta','addOnMeta','customServicePackages','customAddOns','customServices','savedPrices'
+          // Training & Education
+          'training_exam_custom', 'training_exam_progress', 'training_exam_schedule',
+          'handbook_progress', 'handbook_start_at', 'employee_training_progress', 'employee_training_certified',
+          // Authentication & User
+          'currentUser', 'auth_token', 'user_session',
+          // Pricing & Services (CRITICAL - never delete)
+          'packageMeta', 'addOnMeta', 'customServicePackages', 'customAddOns', 'customServices', 'savedPrices',
+          'servicePackages', 'addOns', 'pricing_config',
+          // Website Content (CRITICAL - never delete)
+          'faqs', 'contactInfo', 'aboutSections', 'aboutFeatures', 'testimonials',
+          'hero_content', 'website_pages', 'website_config', 'seo_settings',
+          // Admin Settings
+          'hiddenMenuItems', 'admin_preferences', 'app_settings',
+          // Company Data
+          'company-employees', 'employee_roles',
+          // Vehicle Database
+          'vehicle_classification_history', 'vehicle_db'
         ]);
         // Remove localStorage items except preserved ones
         try {
@@ -321,17 +337,17 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/u
           for (const k of lsKeys) {
             if (!preserveLsKeys.has(k)) localStorage.removeItem(k);
           }
-        } catch {}
+        } catch { }
         setSummaryData({
           preserved: Array.from(preserveLsKeys),
           deleted: volatileLfKeys,
-          note: 'Admin/employee accounts, exam content, training manual, and pricing metadata preserved.'
+          note: 'Preserved: Admin/employee accounts, exam content, training manual, pricing packages, website content, and all system configurations.'
         });
         setSummaryOpen(true);
         // Revalidate live content endpoints on port 6061
-        try { await fetch(`http://localhost:6061/api/packages/live?v=${Date.now()}`, { headers: { 'Cache-Control': 'no-cache' } }); } catch {}
-        try { await fetch(`http://localhost:6061/api/addons/live?v=${Date.now()}`, { headers: { 'Cache-Control': 'no-cache' } }); } catch {}
-        try { setTimeout(() => window.location.reload(), 300); } catch {}
+        try { await fetch(`http://localhost:6061/api/packages/live?v=${Date.now()}`, { headers: { 'Cache-Control': 'no-cache' } }); } catch { }
+        try { await fetch(`http://localhost:6061/api/addons/live?v=${Date.now()}`, { headers: { 'Cache-Control': 'no-cache' } }); } catch { }
+        try { setTimeout(() => window.location.reload(), 300); } catch { }
       }
 
       const rangeText = type === 'all' ? '' : hasRange ? ` older than ${days} day(s)` : ' (all)';
@@ -351,7 +367,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/u
           hint: err?.hint,
           code: err?.code,
         });
-      } catch {}
+      } catch { }
       toast({ title: "Delete Failed", description: "Could not delete data.", variant: "destructive" });
       console.groupEnd();
     }
@@ -370,10 +386,10 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/u
         window.dispatchEvent(new CustomEvent('content-changed', { detail: { kind: 'faqs' } }));
         window.dispatchEvent(new CustomEvent('content-changed', { detail: { kind: 'contact' } }));
         window.dispatchEvent(new CustomEvent('content-changed', { detail: { kind: 'about' } }));
-      } catch {}
+      } catch { }
       // Revalidate live content endpoints on port 6061 if available
-      try { await fetch(`http://localhost:6061/api/packages/live?v=${Date.now()}`, { headers: { 'Cache-Control': 'no-cache' } }); } catch {}
-      try { await fetch(`http://localhost:6061/api/addons/live?v=${Date.now()}`, { headers: { 'Cache-Control': 'no-cache' } }); } catch {}
+      try { await fetch(`http://localhost:6061/api/packages/live?v=${Date.now()}`, { headers: { 'Cache-Control': 'no-cache' } }); } catch { }
+      try { await fetch(`http://localhost:6061/api/addons/live?v=${Date.now()}`, { headers: { 'Cache-Control': 'no-cache' } }); } catch { }
       toast({ title: 'Defaults Restored', description: 'Website content and pricing reset. Live site updated.' });
     } catch (err: any) {
       toast({ title: 'Restore Failed', description: err?.message || String(err), variant: 'destructive' });
@@ -399,7 +415,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/u
   return (
     <div className="min-h-screen bg-background">
       <PageHeader title="Settings" />
-      
+
       <main className="container mx-auto px-4 py-6 max-w-4xl">
         <div className="space-y-6 animate-fade-in">
           {/* Supabase Diagnostics */}
@@ -489,7 +505,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/u
                     setReportData({ progress: ['Starting mock data insertion…'] });
                     setReportOpen(true);
                     const push = (msg: string) => {
-                      setReportData((prev: any) => ({ ...(prev||{}), progress: [ ...((prev?.progress)||[]), `${new Date().toLocaleTimeString()} — ${msg}` ] }));
+                      setReportData((prev: any) => ({ ...(prev || {}), progress: [...((prev?.progress) || []), `${new Date().toLocaleTimeString()} — ${msg}`] }));
                     };
                     const tracker = await insertMockData(push);
                     // Trigger UI refresh events so other pages pick up changes
@@ -500,7 +516,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/u
                       window.dispatchEvent(new CustomEvent('content-changed', { detail: { kind: 'invoices' } }));
                       window.dispatchEvent(new CustomEvent('content-changed', { detail: { kind: 'jobs' } }));
                       window.dispatchEvent(new CustomEvent('inventory-changed'));
-                    } catch {}
+                    } catch { }
                     // Build full report with local + supabase verification
                     const errors: Array<{ step: string; message: string; fallback?: string; suggestion?: string }> = [];
                     const usersLF = (await localforage.getItem<any[]>('users')) || [];
@@ -509,7 +525,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/u
                     const invoicesLF = (await localforage.getItem<any[]>('invoices')) || [];
                     const checklistsLF = (await localforage.getItem<any[]>('generic-checklists')) || [];
                     let pdfCount = 0;
-                    try { const pdfRaw = JSON.parse(localStorage.getItem('pdfArchive') || '[]'); pdfCount = Array.isArray(pdfRaw) ? pdfRaw.length : 0; } catch {}
+                    try { const pdfRaw = JSON.parse(localStorage.getItem('pdfArchive') || '[]'); pdfCount = Array.isArray(pdfRaw) ? pdfRaw.length : 0; } catch { }
                     let appUsersSB: any[] = [];
                     let customersSB: any[] = [];
                     let supabaseNote = 'Supabase not configured';
@@ -606,11 +622,11 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/u
                       pdf_archive_count: pdfCount,
                       note: isSupabaseConfigured() ? supabaseNote : 'Local-only mode',
                     };
-                    setReportData((prev: any) => ({ ...(prev||{}), customers: custSection, employees: empSection, jobs: jobsSection, inventory: inventorySection, summary, errors }));
+                    setReportData((prev: any) => ({ ...(prev || {}), customers: custSection, employees: empSection, jobs: jobsSection, inventory: inventorySection, summary, errors }));
                     toast({ title: 'Mock Data Inserted', description: `Users: ${tracker.users.length}, Jobs: ${tracker.jobs.length}, Invoices: ${tracker.invoices.length}` });
                     // Revalidate content endpoints on 6061 if available
-                    try { await fetch(`http://localhost:6061/api/packages/live?v=${Date.now()}`, { headers: { 'Cache-Control': 'no-cache' } }); } catch {}
-                    try { await fetch(`http://localhost:6061/api/addons/live?v=${Date.now()}`, { headers: { 'Cache-Control': 'no-cache' } }); } catch {}
+                    try { await fetch(`http://localhost:6061/api/packages/live?v=${Date.now()}`, { headers: { 'Cache-Control': 'no-cache' } }); } catch { }
+                    try { await fetch(`http://localhost:6061/api/addons/live?v=${Date.now()}`, { headers: { 'Cache-Control': 'no-cache' } }); } catch { }
                   } catch (e) {
                     toast({ title: 'Insert Failed', description: 'Could not insert mock data.', variant: 'destructive' });
                   }
@@ -621,7 +637,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/u
                 onClick={async () => {
                   try {
                     await removeMockData();
-                    try { window.dispatchEvent(new CustomEvent('content-changed', { detail: { kind: 'users' } })); } catch {}
+                    try { window.dispatchEvent(new CustomEvent('content-changed', { detail: { kind: 'users' } })); } catch { }
                     toast({ title: 'Mock Data Removed', description: 'Local caches and counts refreshed.' });
                   } catch (e) {
                     toast({ title: 'Remove Failed', description: 'Could not remove mock data.', variant: 'destructive' });
@@ -644,90 +660,90 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/u
               </div>
             )}
             {dangerUnlocked && (
-            <div className="space-y-4">
-              <div className="flex items-center justify-between flex-wrap gap-4">
-                <div>
-                  <h3 className="font-semibold text-foreground">Restore Default Website Content & Pricing</h3>
-                  <p className="text-sm text-muted-foreground">Overwrite current content with defaults (packages, FAQs, contact, about)</p>
-                </div>
-                <Button variant="outline" onClick={handleRestoreDefaults} className="border-amber-500 text-amber-400">
-                  <RotateCcw className="h-4 w-4 mr-2" />
-                  Restore Defaults
-                </Button>
-              </div>
-
-              <div className="flex items-center justify-between flex-wrap gap-4">
-                <div>
-                  <h3 className="font-semibold text-foreground">Delete Customer Records</h3>
-                  <p className="text-sm text-muted-foreground">Remove customer records older than specified days</p>
-                </div>
-                <Button variant="destructive" onClick={() => setDeleteDialog("customers")}>
-                  <Trash2 className="h-4 w-4 mr-2" />
-                  Delete Customers
-                </Button>
-              </div>
-
-              <div className="flex items-center justify-between flex-wrap gap-4">
-                <div>
-                  <h3 className="font-semibold text-foreground">Delete Accounting Records</h3>
-                  <p className="text-sm text-muted-foreground">Remove expense records older than specified days</p>
-                </div>
-                <Button variant="destructive" onClick={() => setDeleteDialog("accounting")}>
-                  <Trash2 className="h-4 w-4 mr-2" />
-                  Delete Accounting
-                </Button>
-              </div>
-
-              <div className="flex items-center justify-between flex-wrap gap-4">
-                <div>
-                  <h3 className="font-semibold text-foreground">Delete Invoices</h3>
-                  <p className="text-sm text-muted-foreground">Remove invoices older than specified days</p>
-                </div>
-                <Button variant="destructive" onClick={() => setDeleteDialog("invoices")}>
-                  <Trash2 className="h-4 w-4 mr-2" />
-                  Delete Invoices
-                </Button>
-              </div>
-
-              <div className="flex items-center justify-between flex-wrap gap-4">
-                <div>
-                  <h3 className="font-semibold text-foreground">Delete Inventory Data</h3>
-                  <p className="text-sm text-muted-foreground">Remove inventory usage older than specified days</p>
-                </div>
-                <Button variant="destructive" onClick={() => setDeleteDialog("inventory")}>
-                  <Trash2 className="h-4 w-4 mr-2" />
-                  Delete Inventory
-                </Button>
-              </div>
-
-              <div className="flex items-center justify-between flex-wrap gap-4">
-                <div>
-                  <h3 className="font-semibold text-foreground">Delete Employee Records</h3>
-                  <p className="text-sm text-muted-foreground">Remove employee records (admins preserved) for selected period</p>
-                </div>
-                <Button variant="destructive" onClick={() => setDeleteDialog("employees")}>
-                  <Trash2 className="h-4 w-4 mr-2" />
-                  Delete Employees
-                </Button>
-              </div>
-
-              <div className="border-t border-destructive/50 pt-4 mt-6">
+              <div className="space-y-4">
                 <div className="flex items-center justify-between flex-wrap gap-4">
                   <div>
-                    <h3 className="font-bold text-destructive text-lg">DELETE ALL DATA</h3>
-                    <p className="text-sm text-muted-foreground">Permanently remove ALL application data</p>
+                    <h3 className="font-semibold text-foreground">Restore Default Website Content & Pricing</h3>
+                    <p className="text-sm text-muted-foreground">Overwrite current content with defaults (packages, FAQs, contact, about)</p>
                   </div>
-                  <Button 
-                    variant="destructive" 
-                    className="bg-destructive text-destructive-foreground font-bold"
-                    onClick={() => setDeleteDialog("all")}
-                  >
-                    <Trash2 className="h-4 w-4 mr-2" />
-                    DELETE EVERYTHING
+                  <Button variant="outline" onClick={handleRestoreDefaults} className="border-amber-500 text-amber-400">
+                    <RotateCcw className="h-4 w-4 mr-2" />
+                    Restore Defaults
                   </Button>
                 </div>
+
+                <div className="flex items-center justify-between flex-wrap gap-4">
+                  <div>
+                    <h3 className="font-semibold text-foreground">Delete Customer Records</h3>
+                    <p className="text-sm text-muted-foreground">Remove customer records older than specified days</p>
+                  </div>
+                  <Button variant="destructive" onClick={() => setDeleteDialog("customers")}>
+                    <Trash2 className="h-4 w-4 mr-2" />
+                    Delete Customers
+                  </Button>
+                </div>
+
+                <div className="flex items-center justify-between flex-wrap gap-4">
+                  <div>
+                    <h3 className="font-semibold text-foreground">Delete Accounting Records</h3>
+                    <p className="text-sm text-muted-foreground">Remove expense records older than specified days</p>
+                  </div>
+                  <Button variant="destructive" onClick={() => setDeleteDialog("accounting")}>
+                    <Trash2 className="h-4 w-4 mr-2" />
+                    Delete Accounting
+                  </Button>
+                </div>
+
+                <div className="flex items-center justify-between flex-wrap gap-4">
+                  <div>
+                    <h3 className="font-semibold text-foreground">Delete Invoices</h3>
+                    <p className="text-sm text-muted-foreground">Remove invoices older than specified days</p>
+                  </div>
+                  <Button variant="destructive" onClick={() => setDeleteDialog("invoices")}>
+                    <Trash2 className="h-4 w-4 mr-2" />
+                    Delete Invoices
+                  </Button>
+                </div>
+
+                <div className="flex items-center justify-between flex-wrap gap-4">
+                  <div>
+                    <h3 className="font-semibold text-foreground">Delete Inventory Data</h3>
+                    <p className="text-sm text-muted-foreground">Remove inventory usage older than specified days</p>
+                  </div>
+                  <Button variant="destructive" onClick={() => setDeleteDialog("inventory")}>
+                    <Trash2 className="h-4 w-4 mr-2" />
+                    Delete Inventory
+                  </Button>
+                </div>
+
+                <div className="flex items-center justify-between flex-wrap gap-4">
+                  <div>
+                    <h3 className="font-semibold text-foreground">Delete Employee Records</h3>
+                    <p className="text-sm text-muted-foreground">Remove employee records (admins preserved) for selected period</p>
+                  </div>
+                  <Button variant="destructive" onClick={() => setDeleteDialog("employees")}>
+                    <Trash2 className="h-4 w-4 mr-2" />
+                    Delete Employees
+                  </Button>
+                </div>
+
+                <div className="border-t border-destructive/50 pt-4 mt-6">
+                  <div className="flex items-center justify-between flex-wrap gap-4">
+                    <div>
+                      <h3 className="font-bold text-destructive text-lg">DELETE ALL DATA</h3>
+                      <p className="text-sm text-muted-foreground">Permanently remove ALL application data</p>
+                    </div>
+                    <Button
+                      variant="destructive"
+                      className="bg-destructive text-destructive-foreground font-bold"
+                      onClick={() => setDeleteDialog("all")}
+                    >
+                      <Trash2 className="h-4 w-4 mr-2" />
+                      DELETE EVERYTHING
+                    </Button>
+                  </div>
+                </div>
               </div>
-            </div>
             )}
           </Card>
         </div>
@@ -748,7 +764,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/u
                 type="password"
                 placeholder="••••"
                 value={pinInput}
-                onChange={(e) => setPinInput(e.target.value.replace(/\D/g, '').slice(0,4))}
+                onChange={(e) => setPinInput(e.target.value.replace(/\D/g, '').slice(0, 4))}
                 className="w-32 mt-1"
               />
               {pinError && <p className="text-xs text-destructive mt-1">{pinError}</p>}
@@ -777,7 +793,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/u
                   type="password"
                   placeholder="New PIN"
                   value={newPin}
-                  onChange={(e) => setNewPin(e.target.value.replace(/\D/g, '').slice(0,4))}
+                  onChange={(e) => setNewPin(e.target.value.replace(/\D/g, '').slice(0, 4))}
                   className="w-32"
                 />
                 <Button
@@ -788,7 +804,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/u
                       return;
                     }
                     setDangerPin(newPin);
-                    try { localStorage.setItem('danger-pin', newPin); } catch {}
+                    try { localStorage.setItem('danger-pin', newPin); } catch { }
                     setNewPin('');
                     setPinError('');
                     toast?.({ title: 'PIN changed', description: 'New PIN saved.' });
@@ -798,7 +814,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/u
                   variant="destructive"
                   onClick={() => {
                     setNewPin('');
-                    try { localStorage.setItem('danger-pin', '1234'); } catch {}
+                    try { localStorage.setItem('danger-pin', '1234'); } catch { }
                     setDangerPin('1234');
                     toast?.({ title: 'PIN reset', description: 'Default set to 1234.' });
                   }}
@@ -814,9 +830,9 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/u
           <AlertDialogHeader>
             <AlertDialogTitle>Confirm Delete</AlertDialogTitle>
             <AlertDialogDescription>
-              {deleteDialog === 'all' 
+              {deleteDialog === 'all'
                 ? 'This will delete ALL volatile data. Admin/employee accounts, exam questions, training manual, and pricing metadata are preserved.'
-                : `This will delete ${deleteDialog} data ${timeRange ? `older than ${timeRange} day(s)` : '(all)' }.`
+                : `This will delete ${deleteDialog} data ${timeRange ? `older than ${timeRange} day(s)` : '(all)'}.`
               }
               {preview && (
                 <div className="mt-3 text-sm">
@@ -863,7 +879,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/u
               <p className="text-xs text-destructive mt-1">PIN does not match.</p>
             )}
           </div>
-<AlertDialogFooter className="button-group-responsive">
+          <AlertDialogFooter className="button-group-responsive">
             <AlertDialogCancel>Cancel</AlertDialogCancel>
             <AlertDialogAction
               onClick={() => deleteData(deleteDialog!)}
@@ -872,7 +888,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/u
             >
               Yes, Delete {deleteDialog === "all" ? "Everything" : "Data"}
             </AlertDialogAction>
-</AlertDialogFooter>
+          </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
       {/* Delete Everything Summary Modal */}
@@ -896,7 +912,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/u
         </AlertDialogContent>
       </AlertDialog>
 
-  <EnvironmentHealthModal open={healthOpen} onOpenChange={setHealthOpen} />
+      <EnvironmentHealthModal open={healthOpen} onOpenChange={setHealthOpen} />
       {/* Mock Data System Popup — local-only users/employees/inventory */}
       <Dialog open={mockDataOpen} onOpenChange={setMockDataOpen}>
         <DialogContent className="max-w-3xl">
@@ -910,7 +926,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/u
                 onClick={async () => {
                   try {
                     setMockReport({ progress: ['Starting local-only insertion…'], createdAt: new Date().toISOString() });
-                    const push = (msg: string) => setMockReport((prev: any) => ({ ...(prev||{}), progress: [ ...((prev?.progress)||[]), `${new Date().toLocaleTimeString()} — ${msg}` ] }));
+                    const push = (msg: string) => setMockReport((prev: any) => ({ ...(prev || {}), progress: [...((prev?.progress) || []), `${new Date().toLocaleTimeString()} — ${msg}`] }));
                     const tracker = await insertStaticMockBasic(push, { customers: 5, employees: 5, chemicals: 3, materials: 3 });
                     // Build simple report
                     const usersLF = (await localforage.getItem<any[]>('users')) || [];
@@ -926,17 +942,17 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/u
                       materials_count: materialsLF.length,
                       mode: 'Local only — Not Linked to Supabase',
                     };
-                    setMockReport((prev: any) => ({ ...(prev||{}), customers: tracker.customers, employees: tracker.employees, inventory: tracker.inventory, summary }));
+                    setMockReport((prev: any) => ({ ...(prev || {}), customers: tracker.customers, employees: tracker.employees, inventory: tracker.inventory, summary }));
                     try {
                       window.dispatchEvent(new CustomEvent('content-changed', { detail: { kind: 'users' } }));
                       window.dispatchEvent(new CustomEvent('content-changed', { detail: { kind: 'customers' } }));
                       window.dispatchEvent(new CustomEvent('content-changed', { detail: { kind: 'employees' } }));
                       window.dispatchEvent(new CustomEvent('inventory-changed'));
-                    } catch {}
+                    } catch { }
                     toast?.({ title: 'Static Mock Data Inserted', description: 'Added customers, employees, and inventory locally.' });
                   } catch (e: any) {
                     const errMsg = e?.message || String(e);
-                    setMockReport((prev: any) => ({ ...(prev||{}), errors: [ ...(prev?.errors||[]), errMsg ] }));
+                    setMockReport((prev: any) => ({ ...(prev || {}), errors: [...(prev?.errors || []), errMsg] }));
                   }
                 }}
               >Insert Mock Data</Button>
@@ -945,19 +961,19 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/u
                 className="border-red-700 text-red-700 hover:bg-red-700/10"
                 onClick={async () => {
                   try {
-                    setMockReport((prev:any) => ({ ...(prev||{}), progress: ['Removing local-only mock data…'] }));
-                    await removeStaticMockBasic((msg) => setMockReport((prev: any) => ({ ...(prev||{}), progress: [ ...((prev?.progress)||[]), `${new Date().toLocaleTimeString()} — ${msg}` ] })));
+                    setMockReport((prev: any) => ({ ...(prev || {}), progress: ['Removing local-only mock data…'] }));
+                    await removeStaticMockBasic((msg) => setMockReport((prev: any) => ({ ...(prev || {}), progress: [...((prev?.progress) || []), `${new Date().toLocaleTimeString()} — ${msg}`] })));
                     try {
                       window.dispatchEvent(new CustomEvent('content-changed', { detail: { kind: 'users' } }));
                       window.dispatchEvent(new CustomEvent('content-changed', { detail: { kind: 'customers' } }));
                       window.dispatchEvent(new CustomEvent('content-changed', { detail: { kind: 'employees' } }));
                       window.dispatchEvent(new CustomEvent('inventory-changed'));
-                    } catch {}
-                    setMockReport((prev: any) => ({ ...(prev||{}), removed: true, removedAt: new Date().toISOString() }));
+                    } catch { }
+                    setMockReport((prev: any) => ({ ...(prev || {}), removed: true, removedAt: new Date().toISOString() }));
                     toast?.({ title: 'Static Mock Data Removed', description: 'Local-only mock data was cleared.' });
                   } catch (e: any) {
                     const errMsg = e?.message || String(e);
-                    setMockReport((prev: any) => ({ ...(prev||{}), errors: [ ...(prev?.errors||[]), errMsg ] }));
+                    setMockReport((prev: any) => ({ ...(prev || {}), errors: [...(prev?.errors || []), errMsg] }));
                   }
                 }}
               >Remove Mock Data</Button>
@@ -1007,19 +1023,19 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/u
                     doc.setFontSize(12);
                     addLine('Customers:');
                     doc.setFontSize(11);
-                    (mockReport?.customers || []).forEach((c:any) => addLine(`- ${c.name} — ${c.email}`, 6));
+                    (mockReport?.customers || []).forEach((c: any) => addLine(`- ${c.name} — ${c.email}`, 6));
 
                     // Employees
                     doc.setFontSize(12);
                     addLine('Employees:');
                     doc.setFontSize(11);
-                    (mockReport?.employees || []).forEach((e:any) => addLine(`- ${e.name} — ${e.email}`, 6));
+                    (mockReport?.employees || []).forEach((e: any) => addLine(`- ${e.name} — ${e.email}`, 6));
 
                     // Inventory
                     doc.setFontSize(12);
                     addLine('Inventory:');
                     doc.setFontSize(11);
-                    (mockReport?.inventory || []).forEach((i:any) => addLine(`- ${i.category}: ${i.name}`, 6));
+                    (mockReport?.inventory || []).forEach((i: any) => addLine(`- ${i.category}: ${i.name}`, 6));
 
                     // Removal status
                     if (mockReport?.removed) {
@@ -1042,7 +1058,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/u
                     const fileName = `MockData_Report_${today}.pdf`;
                     savePDFToArchive('Mock Data' as any, 'Admin', `mock-data-${Date.now()}`, dataUrl, { fileName, path: 'Mock Data/' });
                     toast?.({ title: 'Saved to File Manager', description: 'Mock Data Report archived.' });
-                  } catch (e:any) {
+                  } catch (e: any) {
                     toast?.({ title: 'Save Failed', description: e?.message || 'Could not generate PDF', variant: 'destructive' });
                   }
                 }}
@@ -1076,7 +1092,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/u
               <div className="rounded-md border p-3">
                 <div className="font-semibold mb-2">Customers</div>
                 <ul className="list-disc ml-5">
-                  {mockReport.customers.map((c:any, i:number) => (
+                  {mockReport.customers.map((c: any, i: number) => (
                     <li key={`c-${i}`}>{c.name} — {c.email}</li>
                   ))}
                 </ul>
@@ -1086,7 +1102,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/u
               <div className="rounded-md border p-3">
                 <div className="font-semibold mb-2">Employees</div>
                 <ul className="list-disc ml-5">
-                  {mockReport.employees.map((e:any, i:number) => (
+                  {mockReport.employees.map((e: any, i: number) => (
                     <li key={`e-${i}`}>{e.name} — {e.email}</li>
                   ))}
                 </ul>
@@ -1096,7 +1112,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/u
               <div className="rounded-md border p-3">
                 <div className="font-semibold mb-2">Inventory</div>
                 <ul className="list-disc ml-5">
-                  {mockReport.inventory.map((it:any, i:number) => (
+                  {mockReport.inventory.map((it: any, i: number) => (
                     <li key={`i-${i}`}>{it.category}: {it.name}</li>
                   ))}
                 </ul>
@@ -1279,214 +1295,4 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/u
 };
 
 export default Settings;
-          {/* Static Mock Data (Local Only) */}
-          <Card className="p-6 bg-muted border-border">
-            <h2 className="text-2xl font-bold text-foreground mb-2">Static Mock Data (Local Only)</h2>
-            <p className="text-sm text-muted-foreground mb-4">Insert test data entirely in local storage. No Supabase calls or checks are made.</p>
-            <div className="flex flex-wrap gap-4">
-              <Button
-                variant="default"
-                onClick={async () => {
-                  try {
-                    toast({ title: 'Seeding Static Mock Data', description: 'Local-only users, jobs, invoices, inventory…' });
-                    setStaticReportData({ progress: ['Starting static mock data insertion…'] });
-                    setStaticReportOpen(true);
-                    const push = (msg: string) => {
-                      setStaticReportData((prev: any) => ({ ...(prev||{}), progress: [ ...((prev?.progress)||[]), `${new Date().toLocaleTimeString()} — ${msg}` ] }));
-                    };
-                    const tracker = await insertStaticMockData(push);
-                    // Trigger UI refresh
-                    try {
-                      window.dispatchEvent(new CustomEvent('content-changed', { detail: { kind: 'users' } }));
-                      window.dispatchEvent(new CustomEvent('content-changed', { detail: { kind: 'customers' } }));
-                      window.dispatchEvent(new CustomEvent('content-changed', { detail: { kind: 'employees' } }));
-                      window.dispatchEvent(new CustomEvent('content-changed', { detail: { kind: 'invoices' } }));
-                      window.dispatchEvent(new CustomEvent('content-changed', { detail: { kind: 'jobs' } }));
-                      window.dispatchEvent(new CustomEvent('inventory-changed'));
-                    } catch {}
-                    // Build local-only report
-                    const usersLF = (await localforage.getItem<any[]>('users')) || [];
-                    const customersLF = (await localforage.getItem<any[]>('customers')) || [];
-                    const employeesLF = (await localforage.getItem<any[]>('company-employees')) || [];
-                    const invoicesLF = (await localforage.getItem<any[]>('invoices')) || [];
-                    const checklistsLF = (await localforage.getItem<any[]>('generic-checklists')) || [];
-                    let pdfCount = 0;
-                    try { const pdfRaw = JSON.parse(localStorage.getItem('pdfArchive') || '[]'); pdfCount = Array.isArray(pdfRaw) ? pdfRaw.length : 0; } catch {}
-                    const custSection = tracker.users.filter((u: any) => u.role === 'customer').map((u: any) => ({
-                      name: u.name,
-                      email: u.email,
-                      role: 'customer',
-                      supabase: 'Local only — no Supabase',
-                      local: { users: usersLF.some(x => x.id === u.id), customers: customersLF.some(x => x.id === u.id) },
-                      appears: [
-                        'Appears in Customers list under Admin → Customers',
-                        'Searchable via Customers search and dropdown selectors',
-                        'Local-only; not linked to Supabase',
-                      ],
-                      where: 'Inserted into localforage keys: users, customers',
-                    }));
-                    const empSection = tracker.users.filter((u: any) => u.role === 'employee').map((u: any) => ({
-                      name: u.name,
-                      email: u.email,
-                      role: 'employee',
-                      supabase: 'Local only — no Supabase',
-                      local: { users: usersLF.some(x => x.id === u.id), employees: employeesLF.some(x => x.id === u.id) },
-                      appears: [
-                        'Appears in Employees list under Admin → Company Employees',
-                        'Appears in employee dropdown for job assignment',
-                        'Local-only; not linked to Supabase',
-                      ],
-                      where: 'Inserted into localforage keys: users, company-employees',
-                    }));
-                    const jobsSection = (tracker.jobDetails || []).map((j: any) => {
-                      const inChecklist = checklistsLF.some(x => x.id === j.id);
-                      const invObj = invoicesLF.find(x => x.id === j?.invoice?.id);
-                      const invInfo = invObj ? { total: invObj.total, paidAmount: invObj.paidAmount, paymentStatus: invObj.paymentStatus } : j.invoice;
-                      return {
-                        id: j.id,
-                        customer: j.customerName,
-                        employee: j.employeeName,
-                        package: j.packageName,
-                        invoice: invInfo,
-                        appears: [
-                          'Appears in Jobs Completed; enable grouping if helpful',
-                          'Shows totals in Invoicing; filter by customer',
-                          'PDF archived (placeholder) in Job PDF Archive',
-                        ],
-                        where: 'Inserted into localforage: generic-checklists; PDF record in localStorage: pdfArchive',
-                        mode: 'Local only',
-                      };
-                    });
-                    const inventorySection = (tracker.inventory || []).map((i: any) => ({
-                      name: i.name,
-                      category: i.category,
-                      appears: [
-                        i.category === 'Chemical' ? 'In Inventory Control under Chemicals' : 'In Inventory Control under Materials',
-                        'Shows in Inventory Report',
-                      ],
-                      where: 'Inserted into localforage keys: chemicals/materials',
-                      mode: 'Local only',
-                    }));
-                    const summary = {
-                      mode: 'Local only — Not Linked to Supabase',
-                      local_users: usersLF.length,
-                      local_customers: customersLF.length,
-                      local_employees: employeesLF.length,
-                      local_invoices: invoicesLF.length,
-                      local_checklists: checklistsLF.length,
-                      pdf_archive_count: pdfCount,
-                    };
-                    setStaticReportData((prev: any) => ({ ...(prev||{}), customers: custSection, employees: empSection, jobs: jobsSection, inventory: inventorySection, summary }));
-                    toast({ title: 'Static Mock Data Inserted', description: `Users: ${tracker.users.length}, Jobs: ${tracker.jobs.length}, Invoices: ${tracker.invoices.length}` });
-                  } catch (e) {
-                    toast({ title: 'Insert Failed', description: 'Could not insert static mock data.', variant: 'destructive' });
-                  }
-                }}
-              >Insert Static Mock Data (local only — no Supabase)</Button>
-              <Button
-                variant="destructive"
-                onClick={async () => {
-                  try {
-                    await removeStaticMockData();
-                    setStaticReportData({});
-                    setStaticReportOpen(true);
-                    toast({ title: 'Static Mock Data Removed', description: 'Local-only mock data was cleared.' });
-                  } catch {
-                    toast({ title: 'Remove Failed', description: 'Could not remove static mock data.', variant: 'destructive' });
-                  }
-                }}
-              >Remove Static Mock Data (local only — no Supabase)</Button>
-            </div>
-          </Card>
-    const deleteData = async (kind: string) => {
-      try {
-        const daysNum = parseInt(timeRange || '');
-        const hasRange = Number.isFinite(daysNum) && daysNum > 0;
-        const daysArg = hasRange ? String(daysNum) : 'all';
-        if (kind === 'customers') {
-          await deleteCustomersOlderThan(daysArg);
-          const customersLF = (await localforage.getItem<any[]>('customers')) || [];
-          const cutoffDate = hasRange ? new Date(Date.now() - daysNum * 24 * 60 * 60 * 1000) : null;
-          const filtered = cutoffDate ? customersLF.filter((c:any) => {
-            const d = new Date(c?.created_at || c?.createdAt || c?.updated_at || c?.updatedAt || 0);
-            return !c || !d || d >= cutoffDate;
-          }) : [];
-          if (cutoffDate) {
-            await localforage.setItem('customers', filtered);
-          } else {
-            await localforage.removeItem('customers');
-          }
-          toast?.({ title: 'Customers deleted', description: `Scope: ${daysArg}` });
-        } else if (kind === 'invoices') {
-          await deleteInvoicesOlderThan(daysArg);
-          const invoicesLF = (await localforage.getItem<any[]>('invoices')) || [];
-          const cutoffDate = hasRange ? new Date(Date.now() - daysNum * 24 * 60 * 60 * 1000) : null;
-          const filtered = cutoffDate ? invoicesLF.filter((inv:any) => {
-            const d = new Date(inv?.created_at || inv?.date || inv?.updated_at || 0);
-            return !inv || !d || d >= cutoffDate;
-          }) : [];
-          if (cutoffDate) {
-            await localforage.setItem('invoices', filtered);
-          } else {
-            await localforage.removeItem('invoices');
-          }
-          toast?.({ title: 'Invoices deleted', description: `Scope: ${daysArg}` });
-        } else if (kind === 'accounting') {
-          await deleteExpensesOlderThan(daysArg);
-          const expensesLF = (await localforage.getItem<any[]>('expenses')) || [];
-          const cutoffDate = hasRange ? new Date(Date.now() - daysNum * 24 * 60 * 60 * 1000) : null;
-          const filtered = cutoffDate ? expensesLF.filter((e:any) => {
-            const d = new Date(e?.date || e?.created_at || e?.updated_at || 0);
-            return !e || !d || d >= cutoffDate;
-          }) : [];
-          if (cutoffDate) {
-            await localforage.setItem('expenses', filtered);
-          } else {
-            await localforage.removeItem('expenses');
-          }
-          toast?.({ title: 'Accounting records deleted', description: `Scope: ${daysArg}` });
-        } else if (kind === 'inventory') {
-          await deleteInventoryUsageOlderThan(daysArg);
-          const usageLF = (await localforage.getItem<any[]>('usage')) || [];
-          const cutoffDate = hasRange ? new Date(Date.now() - daysNum * 24 * 60 * 60 * 1000) : null;
-          const filtered = cutoffDate ? usageLF.filter((u:any) => {
-            const d = new Date(u?.date || u?.created_at || u?.updated_at || 0);
-            return !u || !d || d >= cutoffDate;
-          }) : [];
-          if (cutoffDate) {
-            await localforage.setItem('usage', filtered);
-          } else {
-            await localforage.removeItem('usage');
-          }
-          toast?.({ title: 'Inventory usage deleted', description: `Scope: ${daysArg}` });
-        } else if (kind === 'employees') {
-          await deleteEmployeesOlderThan(daysArg);
-          const empsLF = (await localforage.getItem<any[]>('company-employees')) || [];
-          const cutoffDate = hasRange ? new Date(Date.now() - daysNum * 24 * 60 * 60 * 1000) : null;
-          const filtered = cutoffDate ? empsLF.filter((e:any) => {
-            const d = new Date(e?.created_at || e?.updated_at || 0);
-            return !e || !d || d >= cutoffDate;
-          }) : [];
-          if (cutoffDate) {
-            await localforage.setItem('company-employees', filtered);
-          } else {
-            await localforage.removeItem('company-employees');
-          }
-          window.dispatchEvent(new CustomEvent('content-changed', { detail: { kind: 'employees' } }));
-          toast?.({ title: 'Employees deleted', description: `Scope: ${daysArg} (admins preserved)` });
-        } else if (kind === 'all') {
-          await deleteAllSupabase();
-          const preservedKeys = ['training_exam_progress','training_exam_schedule','employee_training_certified','handbook_progress','handbook_start_at','user','company-settings','packages','add-ons','services-meta'];
-          const deletedKeys = [ 'users','customers','invoices','expenses','usage','inventory_records','bookings','company-employees','pdf-archive','checklists','jobs-completed' ];
-          for (const k of deletedKeys) { try { await localforage.removeItem(k); } catch {} }
-          setSummaryData({ preserved: preservedKeys, deleted: deletedKeys, note: 'Supabase configuration and schema preserved; employees removed except admins.' });
-          setSummaryOpen(true);
-        }
-      } catch (e:any) {
-        console.error('[Settings] deleteData failed', e);
-        toast?.({ title: 'Delete failed', description: e?.message || 'Error during deletion', variant: 'destructive' });
-      } finally {
-        setDeleteDialog(null);
-        setTimeRange('');
-      }
-    };
+

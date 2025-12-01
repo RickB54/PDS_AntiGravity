@@ -93,14 +93,23 @@ export function AppSidebar() {
       return list.filter(a => a.type === 'todo_overdue' && !a.read).length;
     } catch { return 0; }
   })();
+  // Payroll badge: count pending/unpaid entries from localforage
   const [payrollDueCount, setPayrollDueCount] = useState(0);
   useEffect(() => {
     (async () => {
       try {
-        const res = await api('/api/payroll/due-count', { method: 'GET' });
-        const count = Number(res?.count || 0);
-        setPayrollDueCount(count);
-      } catch { setPayrollDueCount(0); }
+        const payrollHistory = (await import('localforage')).default.getItem<any[]>('payroll-history');
+        const entries = (await payrollHistory) || [];
+        // Count only entries that are pending or unpaid
+        const pendingCount = entries.filter((entry: any) => {
+          const status = String(entry.status || '').toLowerCase();
+          return status === 'pending' || status === 'unpaid' || !entry.status;
+        }).length;
+        setPayrollDueCount(pendingCount);
+      } catch (error) {
+        console.error('Error loading payroll count:', error);
+        setPayrollDueCount(0);
+      }
     })();
   }, [tick]);
 

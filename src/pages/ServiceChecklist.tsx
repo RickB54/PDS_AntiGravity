@@ -74,7 +74,7 @@ const ServiceChecklist = () => {
     truck: "Truck/Van/Large SUV",
     luxury: "Luxury/High-End",
   });
-  const [vehicleOptions, setVehicleOptions] = useState<string[]>(['compact','midsize','truck','luxury']);
+  const [vehicleOptions, setVehicleOptions] = useState<string[]>(['compact', 'midsize', 'truck', 'luxury']);
   const [selectedServices, setSelectedServices] = useState<string[]>([]);
   const [addOnsExpanded, setAddOnsExpanded] = useState(false);
   const [discountType, setDiscountType] = useState<"percent" | "dollar">("percent");
@@ -94,14 +94,14 @@ const ServiceChecklist = () => {
   const [customerSearch, setCustomerSearch] = useState<string>("");
   const [customerSearchResults, setCustomerSearchResults] = useState<CustomerType[]>([]);
   const [vehicleTypeOther, setVehicleTypeOther] = useState<string>("");
-  const [savedPricesLive, setSavedPricesLive] = useState<Record<string,string>>({});
+  const [savedPricesLive, setSavedPricesLive] = useState<Record<string, string>>({});
 
-  const getKey = (type: 'package'|'addon', id: string, size: string) => `${type}:${id}:${size}`;
+  const getKey = (type: 'package' | 'addon', id: string, size: string) => `${type}:${id}:${size}`;
 
   // Resolve a vehicle "key" from either an existing key slug or a human label.
   // Always return one of the built-in keys for legacy pricing helpers.
   const toVehKey = (value: string): VehKey => {
-    const builtIns: VehKey[] = ['compact','midsize','truck','luxury'];
+    const builtIns: VehKey[] = ['compact', 'midsize', 'truck', 'luxury'];
     const v = String(value || '').trim();
     if ((builtIns as string[]).includes(v)) return v as VehKey;
     const fromLabel = Object.keys(vehicleLabels).find(k => (vehicleLabels[k] || '').toLowerCase() === v.toLowerCase());
@@ -125,11 +125,11 @@ const ServiceChecklist = () => {
               if (id && name) { map[id] = name; opts.push(id); }
             });
             setVehicleLabels(map);
-            setVehicleOptions(opts.length ? opts : ['compact','midsize','truck','luxury']);
+            setVehicleOptions(opts.length ? opts : ['compact', 'midsize', 'truck', 'luxury']);
             if (!opts.includes(vehicleType)) setVehicleType(opts[0] || 'midsize');
           }
         }
-      } catch {}
+      } catch { }
     };
     loadVehicleTypes();
     const onChanged = (e: any) => {
@@ -145,7 +145,7 @@ const ServiceChecklist = () => {
       try {
         const snapshot = await buildFullSyncPayload();
         setSavedPricesLive(snapshot.savedPrices || {});
-      } catch {}
+      } catch { }
     };
     loadSavedPrices();
     const onChanged = (e: any) => {
@@ -172,15 +172,19 @@ const ServiceChecklist = () => {
   // Materials Used state
   type ChemItem = { id: string; name: string; threshold?: number; currentStock?: number };
   type MatItem = { id: string; name: string; lowThreshold?: number; quantity?: number };
+  type ToolItem = { id: string; name: string; };
   const [chemicalsList, setChemicalsList] = useState<ChemItem[]>([]);
   const [materialsList, setMaterialsList] = useState<MatItem[]>([]);
-  type ChemRow = { chemicalId: string; fraction: '1/8'|'1/4'|'3/8'|'1/2'|'5/8'|'3/4'|'7/8'|'1'|''; notes?: string };
+  const [toolsList, setToolsList] = useState<ToolItem[]>([]);
+  type ChemRow = { chemicalId: string; fraction: '1/8' | '1/4' | '3/8' | '1/2' | '5/8' | '3/4' | '7/8' | '1' | ''; notes?: string };
   type MatRow = { materialId: string; quantityNote: string };
+  type ToolRow = { toolId: string; notes: string };
   const [chemRows, setChemRows] = useState<ChemRow[]>([]);
   const [matRows, setMatRows] = useState<MatRow[]>([]);
+  const [toolRows, setToolRows] = useState<ToolRow[]>([]);
   const [materialsModalOpen, setMaterialsModalOpen] = useState(false);
 
-const [params] = useSearchParams();
+  const [params] = useSearchParams();
 
   useEffect(() => {
     (async () => {
@@ -266,19 +270,24 @@ const [params] = useSearchParams();
           setMaterialsList([]);
         }
       }
+      const tls = await localforage.getItem<ToolItem[]>('tools') || [];
+      setToolsList(tls);
     })();
   }, []);
 
   // Materials helpers
-  const FRACTIONS: ChemRow['fraction'][] = ['1/8','1/4','3/8','1/2','5/8','3/4','7/8','1'];
+  const FRACTIONS: ChemRow['fraction'][] = ['1/8', '1/4', '3/8', '1/2', '5/8', '3/4', '7/8', '1'];
   const [chemSearch, setChemSearch] = useState<string>('');
   const [matSearch, setMatSearch] = useState<string>('');
   const addChemicalRow = () => setChemRows(prev => ([...prev, { chemicalId: '', fraction: '', notes: '' }]));
-  const updateChemicalRow = (idx: number, patch: Partial<ChemRow>) => setChemRows(prev => prev.map((r,i) => i===idx ? { ...r, ...patch } : r));
-  const removeChemicalRow = (idx: number) => setChemRows(prev => prev.filter((_,i) => i!==idx));
+  const updateChemicalRow = (idx: number, patch: Partial<ChemRow>) => setChemRows(prev => prev.map((r, i) => i === idx ? { ...r, ...patch } : r));
+  const removeChemicalRow = (idx: number) => setChemRows(prev => prev.filter((_, i) => i !== idx));
   const addMaterialRow = () => setMatRows(prev => ([...prev, { materialId: '', quantityNote: '' }]));
-  const updateMaterialRow = (idx: number, patch: Partial<MatRow>) => setMatRows(prev => prev.map((r,i) => i===idx ? { ...r, ...patch } : r));
-  const removeMaterialRow = (idx: number) => setMatRows(prev => prev.filter((_,i) => i!==idx));
+  const updateMaterialRow = (idx: number, patch: Partial<MatRow>) => setMatRows(prev => prev.map((r, i) => i === idx ? { ...r, ...patch } : r));
+  const removeMaterialRow = (idx: number) => setMatRows(prev => prev.filter((_, i) => i !== idx));
+  const addToolRow = () => setToolRows(prev => ([...prev, { toolId: '', notes: '' }]));
+  const updateToolRow = (idx: number, patch: Partial<ToolRow>) => setToolRows(prev => prev.map((r, i) => i === idx ? { ...r, ...patch } : r));
+  const removeToolRow = (idx: number) => setToolRows(prev => prev.filter((_, i) => i !== idx));
 
   const postChecklistMaterials = async (jobId: string, finalize = false) => {
     // Map fractional selections to numeric quantities for inventory decrement
@@ -323,7 +332,23 @@ const [params] = useSearchParams();
         };
       })
       .filter(i => i.quantity > 0);
+    const toolItems = toolRows
+      .filter(r => r.toolId)
+      .map(r => ({
+        toolId: r.toolId,
+        toolName: toolsList.find(t => t.id === r.toolId)?.name,
+        notes: r.notes || '',
+        serviceName,
+        date: nowIso,
+        employee: employeeAssigned || '',
+      }));
     const items = [...chemItems, ...matItems];
+
+    // Save tool usage to localforage
+    if (toolItems.length > 0) {
+      const currentUsage = await localforage.getItem<any[]>('tool-usage') || [];
+      await localforage.setItem('tool-usage', [...currentUsage, ...toolItems]);
+    }
     try {
       const res = await api('/api/checklist/materials', { method: 'POST', body: JSON.stringify({ jobId, rows: items }) });
       if ((res as any)?.ok || res === null) {
@@ -353,12 +378,8 @@ const [params] = useSearchParams();
           doc.text(chemText, 20, y);
           y += chemText.length * 6 + 8;
 
-          doc.text('Materials Used:', 20, y);
-          y += 8;
-          const matLines = matItems.map(mi => `• ${String(materialsList.find(m => String(m.id) === String(mi.materialId))?.name || mi.materialId)} — ${mi.quantity}`);
-          const matText = doc.splitTextToSize(matLines.length ? matLines.join('\n') : '(none)', 170);
-          doc.text(matText, 20, y);
-          y += matText.length * 6 + 8;
+          doc.text(toolText, 20, y);
+          y += toolText.length * 6 + 8;
 
           const pdfDataUrl = doc.output('datauristring');
           const fileName = `Admin_Update_Materials_${new Date().toLocaleDateString().replace(/\//g, '-')}.pdf`;
@@ -553,7 +574,7 @@ const [params] = useSearchParams();
       doc.setFontSize(11);
       doc.text(`Progress: ${progressPercent}%`, 20, y); y += 7;
       // Group tasks by category and list all with checkmarks
-      const categories = ['preparation','exterior','interior','final'] as const;
+      const categories = ['preparation', 'exterior', 'interior', 'final'] as const;
       categories.forEach(cat => {
         const tasks = checklistSteps.filter(t => t.category === cat);
         if (tasks.length === 0) return;
@@ -609,17 +630,26 @@ const [params] = useSearchParams();
       }).filter(Boolean);
       const matText = doc.splitTextToSize(matLines.length ? matLines.join('\n') : '(none)', 170);
       doc.text(matText, 28, y); y += matText.length * 5 + 4;
+      // Tools
+      doc.text('Tools:', 20, y); y += 6;
+      const toolLines = (toolRows || []).map(row => {
+        const name = String(toolsList.find(t => String(t.id) === String(row.toolId))?.name || row.toolId || '');
+        const note = row.notes ? ` — ${row.notes}` : '';
+        return name ? `• ${name}${note}` : '';
+      }).filter(Boolean);
+      const toolText = doc.splitTextToSize(toolLines.length ? toolLines.join('\n') : '(none)', 170);
+      doc.text(toolText, 28, y); y += toolText.length * 5 + 4;
 
       const dataUrl = doc.output('dataurlstring');
       const recordType = finalize ? 'Job' : 'Checklist';
       const fileName = finalize ? `Job_Completion_${customerName}_${new Date().toISOString().split('T')[0]}.pdf`
-                                : `Checklist_Progress_${customerName}_${new Date().toISOString().split('T')[0]}.pdf`;
+        : `Checklist_Progress_${customerName}_${new Date().toISOString().split('T')[0]}.pdf`;
       const idToArchive = String(recordId || checklistId || 'pending');
       savePDFToArchive(recordType, customerName, idToArchive, dataUrl, { fileName });
-    } catch {}
+    } catch { }
   };
 
-const handleSave = async () => {
+  const handleSave = async () => {
     const customer = customers.find(c => c.id === selectedCustomer);
     const vkey = toVehKey(vehicleType);
     const allServices = [...coreServicesDisplay, ...addOnServicesDisplay, destinationFeeDisplay];
@@ -716,15 +746,15 @@ const handleSave = async () => {
       doc.setFontSize(11);
       invoice.services.forEach((s: any) => {
         doc.text(`${s.name}: $${s.price.toFixed(2)}`, 25, y); y += 6;
-        if (s.chemicals?.length) { doc.setFontSize(9); doc.text(`Chemicals: ${s.chemicals.join(", ")}`, 28, y); y += 5; doc.setFontSize(11);}  
+        if (s.chemicals?.length) { doc.setFontSize(9); doc.text(`Chemicals: ${s.chemicals.join(", ")}`, 28, y); y += 5; doc.setFontSize(11); }
       });
       if (invoice.discount.amount > 0) { y += 4; doc.text(`Discount: -$${invoice.discount.amount.toFixed(2)} (${invoice.discount.type === 'percent' ? invoice.discount.value + '%' : '$' + invoice.discount.value})`, 25, y); y += 6; }
       y += 4; doc.setFontSize(12); doc.text(`Total: $${invoice.total.toFixed(2)}`, 20, y);
       if (notes) { y += 10; doc.setFontSize(12); doc.text("Notes:", 20, y); y += 6; doc.setFontSize(10); const split = doc.splitTextToSize(notes, 170); doc.text(split, 20, y); }
       doc.save(`invoice-${now.getTime()}.pdf`);
-    } catch {}
+    } catch { }
 
-  toast({ title: "Invoice Created", description: "Invoice saved and PDF downloaded." });
+    toast({ title: "Invoice Created", description: "Invoice saved and PDF downloaded." });
   };
 
   // Orchestrate finish job: ensure saved, post materials, alert and archive
@@ -789,13 +819,13 @@ const handleSave = async () => {
       doc.setFontSize(11);
       invoice.services.forEach((s: any) => {
         doc.text(`${s.name}: $${s.price.toFixed(2)}`, 25, y); y += 6;
-        if (s.chemicals?.length) { doc.setFontSize(9); doc.text(`Chemicals: ${s.chemicals.join(", ")}`, 28, y); y += 5; doc.setFontSize(11);}  
+        if (s.chemicals?.length) { doc.setFontSize(9); doc.text(`Chemicals: ${s.chemicals.join(", ")}`, 28, y); y += 5; doc.setFontSize(11); }
       });
       if (invoice.discount.amount > 0) { y += 4; doc.text(`Discount: -$${invoice.discount.amount.toFixed(2)} (${invoice.discount.type === 'percent' ? invoice.discount.value + '%' : '$' + invoice.discount.value})`, 25, y); y += 6; }
       y += 4; doc.setFontSize(12); doc.text(`Total: $${invoice.total.toFixed(2)}`, 20, y);
       if (notes) { y += 10; doc.setFontSize(12); doc.text("Notes:", 20, y); y += 6; doc.setFontSize(10); const split = doc.splitTextToSize(notes, 170); doc.text(split, 20, y); }
       doc.save(`invoice-${now.getTime()}.pdf`);
-    } catch {}
+    } catch { }
 
     toast({ title: "Invoice Created", description: "Invoice saved and PDF downloaded." });
   };
@@ -825,7 +855,7 @@ const handleSave = async () => {
   const generatePDF = () => {
     const doc = new jsPDF();
     const customer = customers.find(c => c.id === selectedCustomer);
-    
+
     doc.setFontSize(18);
     doc.text("Prime Detail Solutions - Service Estimate", 20, 20);
     doc.setFontSize(12);
@@ -837,7 +867,7 @@ const handleSave = async () => {
     doc.setFontSize(14);
     doc.text("Selected Services:", 20, y);
     y += 8;
-    
+
     const allServices = [...coreServicesDisplay, ...addOnServicesDisplay, destinationFeeDisplay];
     selectedServices.forEach(id => {
       const service = allServices.find(s => s.id === id);
@@ -982,7 +1012,7 @@ const handleSave = async () => {
             )}
             {selectedPackage && (
               <div className="space-y-6 max-h-[50vh] overflow-auto pr-2">
-                {(['preparation','exterior','interior','final'] as const).map(section => (
+                {(['preparation', 'exterior', 'interior', 'final'] as const).map(section => (
                   <div key={section}>
                     <button
                       className="w-full text-left text-xl font-semibold mb-2 flex items-center justify-between"
@@ -1051,6 +1081,9 @@ const handleSave = async () => {
                       setChemRows(prev => ([...prev, { chemicalId: String(chem.id), fraction: '', notes: '' }]));
                     } else if (mat) {
                       setMatRows(prev => ([...prev, { materialId: String(mat.id), quantityNote: '' }]));
+                    } else {
+                      const tool = toolsList.find(t => String(t.id) === String(val));
+                      if (tool) setToolRows(prev => ([...prev, { toolId: String(tool.id), notes: '' }]));
                     }
                     // reset select
                     e.currentTarget.selectedIndex = 0;
@@ -1063,6 +1096,9 @@ const handleSave = async () => {
                   </optgroup>
                   <optgroup label="Materials">
                     {materialsList.map(it => (<option key={`mat-${it.id}`} value={it.id}>{it.name}</option>))}
+                  </optgroup>
+                  <optgroup label="Tools">
+                    {toolsList.map(it => (<option key={`tool-${it.id}`} value={it.id}>{it.name}</option>))}
                   </optgroup>
                 </select>
               </div>
@@ -1160,6 +1196,43 @@ const handleSave = async () => {
                 ))}
               </div>
             </div>
+
+            {/* Tools subsection */}
+            <div className="mt-6">
+              <div className="flex items-center justify-between mb-2">
+                <h3 className="text-lg font-semibold text-white">Tools Used</h3>
+                <Button onClick={addToolRow} className="bg-red-600 text-white h-9"><Plus className="h-4 w-4 mr-2" />Add Tool Row</Button>
+              </div>
+              {toolRows.length === 0 && (
+                <p className="text-sm text-muted-foreground">Add tools used (e.g., Polisher, Vacuum).</p>
+              )}
+              <div className="space-y-3">
+                {toolRows.map((row, idx) => (
+                  <div key={`tool-${idx}`} className="grid grid-cols-1 md:grid-cols-12 gap-2 items-end">
+                    <div className="md:col-span-5">
+                      <Label>Tool</Label>
+                      <select
+                        value={row.toolId}
+                        onChange={(e) => updateToolRow(idx, { toolId: e.target.value })}
+                        className="flex h-10 w-full rounded-md border border-red-600 bg-black text-white px-3 py-2 text-sm"
+                      >
+                        <option value="">Select a tool...</option>
+                        {toolsList.map(it => (<option key={it.id} value={it.id}>{it.name}</option>))}
+                      </select>
+                    </div>
+                    <div className="md:col-span-6">
+                      <Label>Notes</Label>
+                      <Input type="text" value={row.notes} onChange={(e) => updateToolRow(idx, { notes: e.target.value })} placeholder="e.g., Used for 2 hours" />
+                    </div>
+                    <div className="md:col-span-1 flex items-end">
+                      <Button variant="destructive" className="h-10 w-full" onClick={() => removeToolRow(idx)}>
+                        <Trash2 className="h-4 w-4" />
+                      </Button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
           </Card>
 
           {/* Materials Used Modal */}
@@ -1185,7 +1258,7 @@ const handleSave = async () => {
           {/* Discount & Total */}
           <Card className="p-6 bg-gradient-card border-border">
             <h2 className="text-2xl font-bold text-foreground mb-4">Discount & Total</h2>
-            
+
             <div className="space-y-4">
               <div className="flex gap-4 items-end">
                 <div className="flex-1">
@@ -1291,17 +1364,17 @@ const handleSave = async () => {
             </Card>
           )}
 
-      <CustomerModal
-        open={customerModalOpen}
-        onOpenChange={setCustomerModalOpen}
-        initial={customers.find(c => c.id === selectedCustomer) as any}
-        onSave={async (data) => {
-          const saved = await upsertCustomer(data as any);
-          const list = await getUnifiedCustomers();
-          setCustomers(list as CustomerType[]);
-          setSelectedCustomer((saved as any).id);
-        }}
-      />
+          <CustomerModal
+            open={customerModalOpen}
+            onOpenChange={setCustomerModalOpen}
+            initial={customers.find(c => c.id === selectedCustomer) as any}
+            onSave={async (data) => {
+              const saved = await upsertCustomer(data as any);
+              const list = await getUnifiedCustomers();
+              setCustomers(list as CustomerType[]);
+              setSelectedCustomer((saved as any).id);
+            }}
+          />
         </div>
       </main>
     </div>

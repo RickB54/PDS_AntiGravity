@@ -47,7 +47,7 @@ import { savePDFToArchive } from "@/lib/pdfArchive";
 interface PDFRecord {
   id: string;
   fileName: string;
-  recordType: "Invoice" | "Estimate" | "Job" | "Checklist" | "Customer" | "Employee Training" | "Bookings" | "Admin Updates" | "Payroll" | "Employee Contact" | "add-Ons" | "Mock Data" | "Sub Contractors" | "Sub-Contractors" | "Package Comparisons" | "Upsell Scripts" | "Client Evaluation" | "Detailing Vendors" | "Vehicle Classification" | "Vehicle History";
+  recordType: "Invoice" | "Estimate" | "Job" | "Checklist" | "Customer" | "Employee Training" | "Bookings" | "Admin Updates" | "Payroll" | "Employee Contact" | "add-Ons" | "Mock Data" | "Sub Contractors" | "Sub-Contractors" | "Package Comparisons" | "Upsell Scripts" | "Client Evaluation" | "Detailing Vendors" | "Vehicle Classification" | "Vehicle History" | "Inventory Report";
   customerName: string;
   date: string;
   timestamp: string;
@@ -93,7 +93,7 @@ const FileManager = () => {
   }, [adminModalOpen, refreshAlerts]);
 
   // Normalize category values coming from URL (handle plurals/synonyms)
-  const normalizeCategory = (val: string | null): "all" | "Invoice" | "Estimate" | "Job" | "Checklist" | "Customer" | "Employee Training" | "Bookings" | "Admin Updates" | "Payroll" | "Employee Contact" | "add-Ons" | "Vehicle History" => {
+  const normalizeCategory = (val: string | null): "all" | "Invoice" | "Estimate" | "Job" | "Checklist" | "Customer" | "Employee Training" | "Bookings" | "Admin Updates" | "Payroll" | "Employee Contact" | "add-Ons" | "Vehicle History" | "Inventory Report" => {
     const s = String(val || '').trim().toLowerCase();
     if (!s) return "all";
     if (s === "all") return "all";
@@ -109,6 +109,7 @@ const FileManager = () => {
     if (s.includes("employee") && s.includes("contact")) return "Employee Contact";
     if (s.includes("add-ons") || s.includes("addons") || s.includes("add-on")) return "add-Ons";
     if (s.includes("vehicle") && s.includes("history")) return "Vehicle History";
+    if (s.includes("inventory") && s.includes("report")) return "Inventory Report";
     return "all";
   };
 
@@ -246,7 +247,20 @@ const FileManager = () => {
               {filteredRecords.length} of {records.length} files
             </div>
           </div>
-          <div className="flex justify-end">
+          <div className="flex justify-end gap-2">
+            <Button
+              variant="destructive"
+              onClick={() => {
+                if (confirm("Are you sure you want to DELETE ALL files? This cannot be undone.")) {
+                  localStorage.removeItem('pdfArchive');
+                  setRecords([]);
+                  toast({ title: "All Files Deleted", description: "The archive has been cleared." });
+                }
+              }}
+            >
+              <Trash2 className="h-4 w-4 mr-2" />
+              Delete All Files
+            </Button>
             <Button className="bg-red-700 hover:bg-red-800" onClick={() => setAdminModalOpen(true)}>
               Create Admin Update PDF
             </Button>
@@ -283,6 +297,7 @@ const FileManager = () => {
                   <SelectItem value="Employee Contact">Employee Contact</SelectItem>
                   <SelectItem value="add-Ons">Add-Ons</SelectItem>
                   <SelectItem value="Vehicle History">Vehicle History</SelectItem>
+                  <SelectItem value="Inventory Report">Inventory Report</SelectItem>
                 </SelectContent>
               </Select>
 

@@ -7,7 +7,7 @@ import { toast } from "sonner";
 import api from "@/lib/api";
 import localforage from "localforage";
 
-type Mode = 'chemical' | 'material';
+type Mode = 'chemical' | 'material' | 'tool';
 
 interface ChemicalForm {
   id?: string;
@@ -29,6 +29,16 @@ interface MaterialForm {
   threshold: string; // maps to lowThreshold
 }
 
+interface ToolForm {
+  id?: string;
+  name: string;
+  warranty: string;
+  purchaseDate: string;
+  price: string;
+  lifeExpectancy: string;
+  notes: string;
+}
+
 type Props = {
   mode: Mode;
   open: boolean;
@@ -38,7 +48,7 @@ type Props = {
 };
 
 export default function UnifiedInventoryModal({ mode, open, onOpenChange, initial, onSaved }: Props) {
-  const [form, setForm] = useState<ChemicalForm & MaterialForm>({
+  const [form, setForm] = useState<ChemicalForm & MaterialForm & ToolForm>({
     id: undefined,
     name: "",
     bottleSize: "",
@@ -50,6 +60,10 @@ export default function UnifiedInventoryModal({ mode, open, onOpenChange, initia
     quantity: "0",
     costPerItem: "",
     notes: "",
+    warranty: "",
+    purchaseDate: "",
+    price: "",
+    lifeExpectancy: "",
   });
 
   useEffect(() => {
@@ -67,6 +81,10 @@ export default function UnifiedInventoryModal({ mode, open, onOpenChange, initia
         quantity: initial?.quantity ? String(initial.quantity) : ((initial as any).quantity || f.quantity),
         costPerItem: initial?.costPerItem ? String(initial.costPerItem) : ((initial as any).costPerItem || ""),
         notes: (initial as any).notes || "",
+        warranty: (initial as any).warranty || "",
+        purchaseDate: (initial as any).purchaseDate || "",
+        price: (initial as any).price ? String((initial as any).price) : "",
+        lifeExpectancy: (initial as any).lifeExpectancy || "",
       }));
     } else {
       setForm({
@@ -81,6 +99,10 @@ export default function UnifiedInventoryModal({ mode, open, onOpenChange, initia
         quantity: "0",
         costPerItem: "",
         notes: "",
+        warranty: "",
+        purchaseDate: "",
+        price: "",
+        lifeExpectancy: "",
       });
     }
   }, [initial, open, mode]);
@@ -114,6 +136,22 @@ export default function UnifiedInventoryModal({ mode, open, onOpenChange, initia
           if (existsIdx >= 0) list[existsIdx] = payload; else list.push(payload);
           await localforage.setItem("chemicals", list);
         }
+      } else if (mode === 'tool') {
+        const payload = {
+          id,
+          name: form.name.trim(),
+          warranty: form.warranty || "",
+          purchaseDate: form.purchaseDate || "",
+          price: numeric(form.price),
+          lifeExpectancy: form.lifeExpectancy || "",
+          notes: form.notes || "",
+          createdAt: new Date().toISOString(),
+        };
+        // Save to localforage only for now as no API endpoint specified for tools
+        const list = (await localforage.getItem<any[]>("tools")) || [];
+        const existsIdx = list.findIndex((c) => c.id === id);
+        if (existsIdx >= 0) list[existsIdx] = payload; else list.push(payload);
+        await localforage.setItem("tools", list);
       } else {
         const payload = {
           id,
@@ -147,7 +185,11 @@ export default function UnifiedInventoryModal({ mode, open, onOpenChange, initia
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent>
         <DialogHeader>
-          <DialogTitle>{mode === 'chemical' ? (form.id ? 'Edit Chemical' : 'Add Chemical') : (form.id ? 'Edit Material' : 'Add Material')}</DialogTitle>
+          <DialogTitle>
+            {mode === 'chemical' ? (form.id ? 'Edit Chemical' : 'Add Chemical') :
+              mode === 'tool' ? (form.id ? 'Edit Tool' : 'Add Tool') :
+                (form.id ? 'Edit Material' : 'Add Material')}
+          </DialogTitle>
         </DialogHeader>
         <div className="space-y-3 py-2">
           <div className="space-y-1">
@@ -169,6 +211,33 @@ export default function UnifiedInventoryModal({ mode, open, onOpenChange, initia
                   <Label>Current Stock</Label>
                   <Input type="number" value={form.currentStock} onChange={(e) => setForm({ ...form, currentStock: e.target.value })} />
                 </div>
+              </div>
+            </>
+          ) : mode === 'tool' ? (
+            <>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                <div className="space-y-1">
+                  <Label>Warranty Info</Label>
+                  <Input value={form.warranty} onChange={(e) => setForm({ ...form, warranty: e.target.value })} placeholder="e.g. 2 Years" />
+                </div>
+                <div className="space-y-1">
+                  <Label>Date Purchased</Label>
+                  <Input type="date" value={form.purchaseDate} onChange={(e) => setForm({ ...form, purchaseDate: e.target.value })} />
+                </div>
+              </div>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                <div className="space-y-1">
+                  <Label>Price</Label>
+                  <Input type="number" step="0.01" value={form.price} onChange={(e) => setForm({ ...form, price: e.target.value })} />
+                </div>
+                <div className="space-y-1">
+                  <Label>Life Expectancy</Label>
+                  <Input value={form.lifeExpectancy} onChange={(e) => setForm({ ...form, lifeExpectancy: e.target.value })} placeholder="e.g. 5 Years" />
+                </div>
+              </div>
+              <div className="space-y-1">
+                <Label>Notes</Label>
+                <Input value={form.notes} onChange={(e) => setForm({ ...form, notes: e.target.value })} />
               </div>
             </>
           ) : (
@@ -212,7 +281,7 @@ export default function UnifiedInventoryModal({ mode, open, onOpenChange, initia
           </div>
         </div>
         <DialogFooter className="flex items-center gap-2">
-          <Button variant="outline" onClick={() => { try { window.location.href = '/reports?tab=inventory'; } catch {} }}>View Inventory Report</Button>
+          <Button variant="outline" onClick={() => { try { window.location.href = '/reports?tab=inventory'; } catch { } }}>View Inventory Report</Button>
           <Button onClick={save} className="bg-gradient-hero">Save</Button>
         </DialogFooter>
       </DialogContent>
