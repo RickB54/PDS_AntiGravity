@@ -4,7 +4,7 @@ import { pushAdminAlert } from "@/lib/adminAlerts";
 interface PDFRecord {
   id: string;
   fileName: string;
-  recordType: "Invoice" | "Estimate" | "Job" | "Checklist" | "Customer" | "Employee Training" | "Bookings" | "Admin Updates" | "Payroll" | "Employee Contact" | "add-Ons" | "Mock Data";
+  recordType: "Invoice" | "Estimate" | "Job" | "Checklist" | "Customer" | "Employee Training" | "Bookings" | "Admin Updates" | "Payroll" | "Employee Contact" | "add-Ons" | "Mock Data" | "Sub Contractors" | "Sub-Contractors" | "Package Comparisons" | "Upsell Scripts" | "Client Evaluation" | "Detailing Vendors" | "Vehicle Classification" | "Vehicle History";
   customerName: string;
   date: string;
   timestamp: string;
@@ -72,10 +72,32 @@ export function savePDFToArchive(
     case "Mock Data":
       defaultPath = `Mock Data/`;
       break;
+    case "Sub Contractors":
+    case "Sub-Contractors":
+      defaultPath = `Sub-Contractors/`;
+      break;
+    case "Package Comparisons":
+      defaultPath = `Package Comparisons/`;
+      break;
+    case "Upsell Scripts":
+      defaultPath = `Upsell Scripts/`;
+      break;
+    case "Client Evaluation":
+      defaultPath = `Client Evaluation/`;
+      break;
+    case "Detailing Vendors":
+      defaultPath = `Detailing Vendors/`;
+      break;
+    case "Vehicle Classification":
+      defaultPath = `Vehicle Classification/`;
+      break;
+    case "Vehicle History":
+      defaultPath = `Vehicle History/`;
+      break;
     default:
       defaultPath = '';
   }
-  
+
   const record: PDFRecord = {
     id: `${recordType}_${recordId}_${Date.now()}`,
     fileName: opts?.fileName || `${recordType}_${customerName.replace(/\s/g, '_')}_${date}_${time}.pdf`,
@@ -90,17 +112,17 @@ export function savePDFToArchive(
 
   // Get existing records
   const existing = JSON.parse(localStorage.getItem('pdfArchive') || '[]');
-  
+
   // Add new record
   existing.push(record);
-  
+
   // Save back to localStorage
   localStorage.setItem('pdfArchive', JSON.stringify(existing));
 
   // Proactively notify current tab so sidebar badges refresh immediately
   try {
     window.dispatchEvent(new CustomEvent('pdf_archive_updated'));
-  } catch {}
+  } catch { }
 
   // Push persistent admin alert about the new PDF
   pushAdminAlert(

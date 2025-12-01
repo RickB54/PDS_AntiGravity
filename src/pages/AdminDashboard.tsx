@@ -28,6 +28,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+
 import {
   Select,
   SelectContent,
@@ -38,12 +39,13 @@ import {
 import { Separator } from "@/components/ui/separator";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Label } from "@/components/ui/label";
- import { AlertTriangle, CalendarDays, UserPlus, FileText, Package, DollarSign, Calculator, Folder, Users, Grid3X3, CheckSquare, Tag, Settings as Cog, Shield, ClipboardCheck, RotateCcw } from "lucide-react";
+import { AlertTriangle, CalendarDays, UserPlus, FileText, Package, DollarSign, Calculator, Folder, Users, Grid3X3, CheckSquare, Tag, Settings as Cog, Shield, ClipboardCheck, RotateCcw } from "lucide-react";
 import { Link } from "react-router-dom";
 import { CheatSheetPanel } from "@/pages/CheatSheet";
 import localforage from "localforage";
 import HelpModal from "@/components/help/HelpModal";
 import { getCurrentUser } from "@/lib/auth";
+import SubContractorsModal from "@/components/subcontractors/SubContractorsModal";
 import { useAlertsStore } from "@/store/alerts";
 import { isViewed } from "@/lib/viewTracker";
 import { getInvoices, upsertCustomer } from "@/lib/db";
@@ -55,15 +57,15 @@ import { notify } from "@/store/alerts";
 import CustomerModal from "@/components/customers/CustomerModal";
 import OrientationModal from "@/components/training/OrientationModal";
 import jsPDF from 'jspdf';
-  import { savePDFToArchive } from '@/lib/pdfArchive';
-  import { useBookingsStore } from "@/store/bookings";
+import { savePDFToArchive } from '@/lib/pdfArchive';
+import { useBookingsStore } from "@/store/bookings";
 
 type Job = { finishedAt: string; totalRevenue: number; status: string };
 
 // Persistent menu visibility settings
 const MENU_STORAGE_KEY = 'hiddenMenuItems';
-  const MENU_REGISTRY: { key: string; label: string }[] = [
-    { key: 'start-job', label: 'Start a Job' },
+const MENU_REGISTRY: { key: string; label: string }[] = [
+  { key: 'start-job', label: 'Start a Job' },
   // { key: 'bookings', label: 'Bookings' }, // removed
   { key: 'search-customer', label: 'Customer Profiles' },
   { key: 'invoicing', label: 'Invoicing' },
@@ -78,10 +80,10 @@ const MENU_STORAGE_KEY = 'hiddenMenuItems';
   { key: 'settings', label: 'Settings' },
   { key: 'discount-coupons', label: 'Discount Coupons' },
   { key: 'training-manual', label: 'Quick Detailing Manual' },
-    { key: 'company-employees', label: 'Company Employees' },
-    { key: 'jobs-completed-admin', label: 'Jobs Completed by Admin' },
-    { key: 'book-new-job', label: 'Book A New Job' },
-  ];
+  { key: 'company-employees', label: 'Company Employees' },
+  { key: 'jobs-completed-admin', label: 'Jobs Completed by Admin' },
+  { key: 'book-new-job', label: 'Book A New Job' },
+];
 
 function getHiddenMenuItems(): string[] {
   try {
@@ -109,7 +111,7 @@ function MenuVisibilityControls() {
     toast({ title: 'Menu visibility updated', description: `${show ? 'Showing' : 'Hiding'} ${MENU_REGISTRY.find(i => i.key === key)?.label || key}` });
   };
   return (
-  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
       {MENU_REGISTRY.map((item) => {
         const shown = !hidden.includes(item.key);
         return (
@@ -185,11 +187,11 @@ export default function AdminDashboard() {
   const [helpOpen, setHelpOpen] = useState(false);
   const [mockDataOpen, setMockDataOpen] = useState(false);
   const [mockReport, setMockReport] = useState<any | null>(null);
+  const [subContractorsOpen, setSubContractorsOpen] = useState(false);
   // Bookings list for dashboard metrics (e.g., today's new bookings)
   const items = useBookingsStore((s) => s.items);
 
   // Removed auto-open for Website Administration to decouple from Admin Dashboard
-
   const loadUsers = async () => {
     try {
       const list = await api('/api/users', { method: 'GET' });
@@ -269,7 +271,7 @@ export default function AdminDashboard() {
           address: c.address || '',
           email: c.email || '',
         });
-      } catch {}
+      } catch { }
       try {
         const a = await api('/api/about', { method: 'GET' });
         setAboutSections(Array.isArray(a) ? a : []);
@@ -278,7 +280,7 @@ export default function AdminDashboard() {
     if (userAdminOpen) loadWA();
     const onChanged = (e: any) => {
       if (!userAdminOpen) return;
-      if (e && e.detail && ['vehicle-types','faqs','contact','about'].includes(e.detail.kind)) loadWA();
+      if (e && e.detail && ['vehicle-types', 'faqs', 'contact', 'about'].includes(e.detail.kind)) loadWA();
     };
     window.addEventListener('content-changed', onChanged as any);
     return () => window.removeEventListener('content-changed', onChanged as any);
@@ -394,7 +396,7 @@ export default function AdminDashboard() {
       const cCount = cArr.filter(c => (c.currentStock || 0) <= (c.threshold || 0)).length;
       const total = mCount + cCount;
       setCriticalInventory(total);
-      try { localStorage.setItem('inventory_low_count', String(total)); } catch {}
+      try { localStorage.setItem('inventory_low_count', String(total)); } catch { }
     });
 
     // File Manager new files today
@@ -424,26 +426,26 @@ export default function AdminDashboard() {
             const adj = JSON.parse(localStorage.getItem('payroll_owed_adjustments') || '{}');
             const now = Date.now();
             const sevenDays = 7 * 24 * 60 * 60 * 1000;
-            const dueEmps = employees.filter((emp:any) => {
+            const dueEmps = employees.filter((emp: any) => {
               const lastPaidTs = emp.lastPaid ? new Date(emp.lastPaid).getTime() : 0;
               const recentPaid = hist.some(h => String(h.status) === 'Paid' && (String(h.employee) === emp.name || String(h.employee) === emp.email) && (now - new Date(h.date).getTime()) <= sevenDays);
               return (!recentPaid) && ((now - lastPaidTs) > sevenDays);
             });
-            dueEmps.forEach((emp:any) => {
-              const unpaidJobs = jobs.filter((j:any) => j.status === 'completed' && !j.paid && (String(j.employee) === emp.email || String(j.employee) === emp.name));
-              const unpaidSum = unpaidJobs.reduce((s:number, j:any) => s + Number(j.totalRevenue || 0), 0);
-              const pendHist = hist.filter((h:any) => String(h.status) === 'Pending' && (String(h.employee) === emp.name || String(h.employee) === emp.email));
-              const pendingSum = pendHist.reduce((s:number, h:any) => s + Number(h.amount || 0), 0);
+            dueEmps.forEach((emp: any) => {
+              const unpaidJobs = jobs.filter((j: any) => j.status === 'completed' && !j.paid && (String(j.employee) === emp.email || String(j.employee) === emp.name));
+              const unpaidSum = unpaidJobs.reduce((s: number, j: any) => s + Number(j.totalRevenue || 0), 0);
+              const pendHist = hist.filter((h: any) => String(h.status) === 'Pending' && (String(h.employee) === emp.name || String(h.employee) === emp.email));
+              const pendingSum = pendHist.reduce((s: number, h: any) => s + Number(h.amount || 0), 0);
               const adjSum = Number(adj[emp.name] || 0) + Number(adj[emp.email] || 0);
               const owed = Math.max(0, unpaidSum + pendingSum - adjSum);
               const msg = `${emp.name} due $${owed.toFixed(2)} — pay now`;
               // Prevent duplicate unread alerts for same employee within 24h
-              const already = alertsAll.some(a => a.type === 'payroll_due' && a.message?.includes(emp.name) && !a.read && (now - new Date(a.timestamp).getTime()) < (24*60*60*1000));
+              const already = alertsAll.some(a => a.type === 'payroll_due' && a.message?.includes(emp.name) && !a.read && (now - new Date(a.timestamp).getTime()) < (24 * 60 * 60 * 1000));
               if (!already) notify('payroll_due', msg, 'system', { employee: emp.name, amount: owed });
             });
-          } catch {}
+          } catch { }
         }
-      } catch {}
+      } catch { }
     })();
   }, []);
 
@@ -451,12 +453,12 @@ export default function AdminDashboard() {
   useEffect(() => {
     const onStorage = (e: StorageEvent) => {
       if (e.key === 'admin_alerts') {
-        try { refresh(); } catch {}
+        try { refresh(); } catch { }
       }
     };
     window.addEventListener('storage', onStorage);
-    try { refresh(); } catch {}
-    const onAlertsUpdated = () => { try { refresh(); } catch {} };
+    try { refresh(); } catch { }
+    const onAlertsUpdated = () => { try { refresh(); } catch { } };
     window.addEventListener('admin_alerts_updated' as any, onAlertsUpdated as any);
     return () => {
       window.removeEventListener('storage', onStorage);
@@ -479,23 +481,23 @@ export default function AdminDashboard() {
         const cCount = cArr.filter(c => (c.currentStock || 0) <= (c.threshold || 0)).length;
         const total = mCount + cCount;
         setCriticalInventory(total);
-        try { localStorage.setItem('inventory_low_count', String(total)); } catch {}
+        try { localStorage.setItem('inventory_low_count', String(total)); } catch { }
       });
       // Recompute files today
-    const records = JSON.parse(localStorage.getItem('pdfArchive') || '[]');
-    const tStr = new Date().toLocaleDateString().replace(/\//g, '-');
-    setNewFilesToday(records.filter((r: any) => String(r.date).includes(tStr) && !isViewed("file", String(r.id))).length);
-    setUnviewedFilesCount(records.filter((r: any) => !isViewed("file", String(r.id))).length);
-    // Admin jobs badge: count Job PDFs linked to checklists with employeeId 'Admin'
-    try {
-      const jobPdfs = (records as any[]).filter(r => String(r.recordType) === 'Job');
-      localforage.getItem<any[]>('generic-checklists').then((list) => {
-        const checklists = Array.isArray(list) ? list : [];
-        const merged = jobPdfs.map(pdf => ({ pdf, cl: checklists.find((c:any) => String(c.id) === String(pdf.recordId)) || null }));
-        const countAdmin = merged.filter(r => String(r.cl?.employeeId || '').toLowerCase() === 'admin').length;
-        setAdminJobsCount(countAdmin);
-      });
-    } catch {}
+      const records = JSON.parse(localStorage.getItem('pdfArchive') || '[]');
+      const tStr = new Date().toLocaleDateString().replace(/\//g, '-');
+      setNewFilesToday(records.filter((r: any) => String(r.date).includes(tStr) && !isViewed("file", String(r.id))).length);
+      setUnviewedFilesCount(records.filter((r: any) => !isViewed("file", String(r.id))).length);
+      // Admin jobs badge: count Job PDFs linked to checklists with employeeId 'Admin'
+      try {
+        const jobPdfs = (records as any[]).filter(r => String(r.recordType) === 'Job');
+        localforage.getItem<any[]>('generic-checklists').then((list) => {
+          const checklists = Array.isArray(list) ? list : [];
+          const merged = jobPdfs.map(pdf => ({ pdf, cl: checklists.find((c: any) => String(c.id) === String(pdf.recordId)) || null }));
+          const countAdmin = merged.filter(r => String(r.cl?.employeeId || '').toLowerCase() === 'admin').length;
+          setAdminJobsCount(countAdmin);
+        });
+      } catch { }
     };
     window.addEventListener('storage', recalc);
     return () => window.removeEventListener('storage', recalc);
@@ -511,16 +513,16 @@ export default function AdminDashboard() {
     accent = 'blue',
   }: { title: string; subtitle?: string; href?: string; onClick?: () => void; Icon: any; badgeCount?: number; accent?: 'blue' | 'purple' | 'orange' | 'pink' | 'yellow' | 'green' | 'indigo' | 'cyan' | 'teal' | 'zinc'; }) => {
     const accents: Record<string, { icon: string; badge: string; btn: string; hoverRing: string }> = {
-      blue:   { icon: 'text-blue-600/80',   badge: 'bg-blue-600/90',   btn: 'border-blue-600 text-blue-600 hover:bg-blue-600/10',   hoverRing: 'hover:ring-2 hover:ring-blue-600' },
+      blue: { icon: 'text-blue-600/80', badge: 'bg-blue-600/90', btn: 'border-blue-600 text-blue-600 hover:bg-blue-600/10', hoverRing: 'hover:ring-2 hover:ring-blue-600' },
       purple: { icon: 'text-purple-600/80', badge: 'bg-purple-600/90', btn: 'border-purple-600 text-purple-600 hover:bg-purple-600/10', hoverRing: 'hover:ring-2 hover:ring-purple-600' },
       orange: { icon: 'text-orange-500/80', badge: 'bg-orange-500/90', btn: 'border-orange-500 text-orange-500 hover:bg-orange-500/10', hoverRing: 'hover:ring-2 hover:ring-orange-500' },
-      pink:   { icon: 'text-pink-600/80',   badge: 'bg-pink-600/90',   btn: 'border-pink-600 text-pink-600 hover:bg-pink-600/10',   hoverRing: 'hover:ring-2 hover:ring-pink-600' },
+      pink: { icon: 'text-pink-600/80', badge: 'bg-pink-600/90', btn: 'border-pink-600 text-pink-600 hover:bg-pink-600/10', hoverRing: 'hover:ring-2 hover:ring-pink-600' },
       yellow: { icon: 'text-yellow-500/80', badge: 'bg-yellow-500/90', btn: 'border-yellow-500 text-yellow-500 hover:bg-yellow-500/10', hoverRing: 'hover:ring-2 hover:ring-yellow-500' },
-      green:  { icon: 'text-green-600/80',  badge: 'bg-green-600/90',  btn: 'border-green-600 text-green-600 hover:bg-green-600/10',  hoverRing: 'hover:ring-2 hover:ring-green-600' },
+      green: { icon: 'text-green-600/80', badge: 'bg-green-600/90', btn: 'border-green-600 text-green-600 hover:bg-green-600/10', hoverRing: 'hover:ring-2 hover:ring-green-600' },
       indigo: { icon: 'text-indigo-600/80', badge: 'bg-indigo-600/90', btn: 'border-indigo-600 text-indigo-600 hover:bg-indigo-600/10', hoverRing: 'hover:ring-2 hover:ring-indigo-600' },
-      cyan:   { icon: 'text-cyan-600/80',   badge: 'bg-cyan-600/90',   btn: 'border-cyan-600 text-cyan-600 hover:bg-cyan-600/10',   hoverRing: 'hover:ring-2 hover:ring-cyan-600' },
-      teal:   { icon: 'text-teal-600/80',   badge: 'bg-teal-600/90',   btn: 'border-teal-600 text-teal-600 hover:bg-teal-600/10',   hoverRing: 'hover:ring-2 hover:ring-teal-600' },
-      zinc:   { icon: 'text-zinc-400/80',   badge: 'bg-zinc-600/90',   btn: 'border-zinc-600 text-zinc-300 hover:bg-zinc-600/10',   hoverRing: 'hover:ring-2 hover:ring-zinc-600' },
+      cyan: { icon: 'text-cyan-600/80', badge: 'bg-cyan-600/90', btn: 'border-cyan-600 text-cyan-600 hover:bg-cyan-600/10', hoverRing: 'hover:ring-2 hover:ring-cyan-600' },
+      teal: { icon: 'text-teal-600/80', badge: 'bg-teal-600/90', btn: 'border-teal-600 text-teal-600 hover:bg-teal-600/10', hoverRing: 'hover:ring-2 hover:ring-teal-600' },
+      zinc: { icon: 'text-zinc-400/80', badge: 'bg-zinc-600/90', btn: 'border-zinc-600 text-zinc-300 hover:bg-zinc-600/10', hoverRing: 'hover:ring-2 hover:ring-zinc-600' },
     };
     const a = accents[accent] || accents.blue;
     const inner = (
@@ -580,31 +582,143 @@ export default function AdminDashboard() {
         </Card>
 
         {/* Eight grouped boxes with combined menu items in a 3x3-style grid */}
-  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-          {/* Training Hub */}
+        {/* Eight grouped boxes with combined menu items in a 3x3-style grid */}
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+
+          {/* Row 1, Col 1: Client Intake Tools (NEW) */}
+          <Card className="relative p-5 bg-[#18181b] rounded-2xl border border-zinc-800">
+            <div className="flex items-center gap-2 mb-3">
+              <Users className="w-6 h-6 text-blue-400" />
+              <div className="text-lg font-bold">Client Intake Tools</div>
+            </div>
+            <Card className="p-4 bg-[#0f0f13] rounded-xl border border-zinc-800">
+              <div className="flex flex-col gap-2">
+                <Link to="/vehicle-classification" className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md border border-green-600 text-green-600 hover:bg-green-600/10 w-fit">
+                  <Grid3X3 className="w-3.5 h-3.5 text-green-600" />
+                  <span>Vehicle Classification</span>
+                </Link>
+                <Link to="/client-evaluation" className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md border border-blue-600 text-blue-600 hover:bg-blue-600/10 w-fit">
+                  <CheckSquare className="w-3.5 h-3.5 text-blue-600" />
+                  <span>Client Evaluation</span>
+                </Link>
+                <Link to="/addon-upsell-script" className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md border border-purple-600 text-purple-600 hover:bg-purple-600/10 w-fit">
+                  <Package className="w-3.5 h-3.5 text-purple-600" />
+                  <span>Addon Upsell Script</span>
+                </Link>
+                <Link to="/package-selection" className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md border border-orange-600 text-orange-600 hover:bg-orange-600/10 w-fit">
+                  <FileText className="w-3.5 h-3.5 text-orange-600" />
+                  <span>Package Comparison Guide</span>
+                </Link>
+              </div>
+            </Card>
+          </Card>
+
+          {/* Row 1, Col 2: Admin Control (Existing) */}
+          <Card className="relative p-5 bg-[#18181b] rounded-2xl border border-zinc-800">
+            <div className="flex items-center gap-2 mb-3">
+              <Shield className="w-6 h-6 text-blue-500" />
+              <div className="text-lg font-bold">Admin Control</div>
+            </div>
+            <Card className="p-4 bg-[#0f0f13] rounded-xl border border-zinc-800">
+              <div className="flex flex-col gap-2">
+                <Link to="/website-admin" className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md border border-blue-600 text-blue-600 hover:bg-blue-600/10 w-fit">
+                  <Shield className="w-3.5 h-3.5 text-blue-600" />
+                  <span>Website Administration</span>
+                </Link>
+                <Link to="/admin/users" className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md border border-pink-600 text-pink-600 hover:bg-pink-600/10 w-fit">
+                  <Users className="w-3.5 h-3.5 text-pink-600" />
+                  <span>Users & Roles</span>
+                </Link>
+                {!isMenuHidden('settings') && (
+                  <Link to="/settings" className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md border border-cyan-600 text-cyan-600 hover:bg-cyan-600/10 w-fit">
+                    <Cog className="w-3.5 h-3.5 text-cyan-600" />
+                    <span>Company Settings</span>
+                  </Link>
+                )}
+                <button onClick={() => { setMockDataOpen(true); setMockReport(null); }} className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md border border-red-600 text-red-600 hover:bg-red-600/10 w-fit">
+                  <Tag className="w-3.5 h-3.5 text-red-600" />
+                  <span>Mock Data System</span>
+                </button>
+              </div>
+            </Card>
+          </Card>
+
+          {/* Row 1, Col 3: Job Operations (Existing) */}
+          <Card className="relative p-5 bg-[#18181b] rounded-2xl border border-zinc-800">
+            <div className="flex items-center gap-2 mb-3">
+              <ClipboardCheck className="w-6 h-6 text-orange-500" />
+              <div className="text-lg font-bold">Job Operations</div>
+            </div>
+            <Card className="p-4 bg-[#0f0f13] rounded-xl border border-zinc-800">
+              <div className="flex flex-col gap-2">
+                {!isMenuHidden('start-job') && (
+                  <RedBox accent="orange" title="Start a Job" href="/service-checklist" Icon={ClipboardCheck} />
+                )}
+                {!isMenuHidden('jobs-completed-admin') && (
+                  <RedBox accent="orange" title="Jobs Completed by Admin" href="/jobs-completed?employee=admin" Icon={FileText} badgeCount={adminJobsCount} />
+                )}
+                {!isMenuHidden('book-new-job') && (
+                  <RedBox accent="orange" title="Book A New Job" href="/book-now" Icon={ClipboardCheck} />
+                )}
+                <button
+                  onClick={() => setSubContractorsOpen(true)}
+                  className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md border border-blue-600 text-blue-600 hover:bg-blue-600/10 w-fit"
+                >
+                  <Users className="w-3.5 h-3.5 text-blue-600" />
+                  <span>Sub-Contractors</span>
+                </button>
+              </div>
+            </Card>
+          </Card>
+
+          {/* Row 2, Col 1: Search Products & Services (NEW) */}
+          <Card className="relative p-5 bg-[#18181b] rounded-2xl border border-zinc-800">
+            <div className="flex items-center gap-2 mb-3">
+              <Users className="w-6 h-6 text-blue-400" />
+              <div className="text-lg font-bold">Search Products & Services</div>
+            </div>
+            <Card className="p-4 bg-[#0f0f13] rounded-xl border border-zinc-800">
+              <div className="flex flex-row flex-wrap gap-2">
+                <Link to="/manage-sub-contractors" className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md border border-blue-600 text-blue-600 hover:bg-blue-600/10">
+                  <Users className="w-3.5 h-3.5 text-blue-600" />
+                  <span>Manage Sub-Contractors</span>
+                </Link>
+                <Link to="/detailing-vendors" className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md border border-green-600 text-green-600 hover:bg-green-600/10">
+                  <Package className="w-3.5 h-3.5 text-green-600" />
+                  <span>Detailing Vendors</span>
+                </Link>
+                {/* Package Pricing moved here */}
+                {!isMenuHidden('package-pricing') && (
+                  <Link to="/package-pricing" className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md border border-pink-600 text-pink-600 hover:bg-pink-600/10">
+                    <Tag className="w-3.5 h-3.5 text-pink-600" />
+                    <span>Package Pricing</span>
+                  </Link>
+                )}
+              </div>
+            </Card>
+          </Card>
+
+          {/* Row 2, Col 2: Training Hub (Existing) */}
           <Card className="relative p-5 bg-[#18181b] rounded-2xl border border-zinc-800">
             <div className="flex items-center gap-2 mb-3">
               <ClipboardCheck className="w-6 h-6 text-green-500" />
               <div className="text-lg font-bold">Training Hub</div>
             </div>
-            {/* Cheat Sheet & Exam Control — compact pill links with icons */}
             <Card className="p-4 bg-[#0f0f13] rounded-xl border border-zinc-800">
-              <div className="mt-1 flex flex-row flex-wrap gap-1.5">
-                <button type="button" onClick={() => setCheatOpen(true)} className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md border border-purple-600 text-purple-600 hover:bg-purple-600/10 cursor-pointer">
+              <div className="flex flex-col gap-2">
+                <button type="button" onClick={() => setCheatOpen(true)} className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md border border-purple-600 text-purple-600 hover:bg-purple-600/10 cursor-pointer w-fit">
                   <FileText className="w-3.5 h-3.5 text-purple-600" />
                   <span>Open Cheat Sheet</span>
                 </button>
-                <Link to="/exam-admin" className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md border border-indigo-600 text-indigo-600 hover:bg-indigo-600/10">
+                <Link to="/exam-admin" className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md border border-indigo-600 text-indigo-600 hover:bg-indigo-600/10 w-fit">
                   <Cog className="w-3.5 h-3.5 text-indigo-600" />
                   <span>Manage Exam</span>
                 </Link>
-                <button type="button" onClick={() => setOrientationOpen(true)} className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md border border-orange-600 text-orange-600 hover:bg-orange-600/10">
+                <button type="button" onClick={() => setOrientationOpen(true)} className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md border border-orange-600 text-orange-600 hover:bg-orange-600/10 w-fit">
                   <ClipboardCheck className="w-3.5 h-3.5 text-orange-600" />
                   <span>Employee Handbook</span>
                 </button>
-                {/* Place Take Exam directly under Open Entire Exam without disturbing layout */}
-                <div className="w-full"></div>
-                <Link to="/employee-dashboard?startExam=1" className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md border border-green-600 text-green-600 hover:bg-green-600/10">
+                <Link to="/employee-dashboard?startExam=1" className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md border border-green-600 text-green-600 hover:bg-green-600/10 w-fit">
                   <ClipboardCheck className="w-3.5 h-3.5 text-green-600" />
                   <span>Take Exam</span>
                 </Link>
@@ -612,196 +726,121 @@ export default function AdminDashboard() {
             </Card>
           </Card>
 
-          {/* Admin Control */}
-          <Card className="relative p-5 bg-[#18181b] rounded-2xl border border-zinc-800">
-            <div className="flex items-center gap-2 mb-3">
-              <Shield className="w-6 h-6 text-blue-500" />
-              <div className="text-lg font-bold">Admin Control</div>
-            </div>
-            {/* Inner dark box to match Training Hub */}
-            <Card className="p-4 bg-[#0f0f13] rounded-xl border border-zinc-800">
-              <div className="flex flex-row flex-wrap gap-1.5">
-                {/* System Admin — compact pill links */}
-                <Link to="/website-admin" className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md border border-blue-600 text-blue-600 hover:bg-blue-600/10">
-                  <Shield className="w-3.5 h-3.5 text-blue-600" />
-                  <span>Website Administration</span>
-                </Link>
-                <Link to="/admin/users" className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md border border-pink-600 text-pink-600 hover:bg-pink-600/10">
-                  <Users className="w-3.5 h-3.5 text-pink-600" />
-                  <span>Users & Roles</span>
-                </Link>
-                {!isMenuHidden('settings') && (
-                  <Link to="/settings" className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md border border-cyan-600 text-cyan-600 hover:bg-cyan-600/10">
-                    <Cog className="w-3.5 h-3.5 text-cyan-600" />
-                    <span>Company Settings</span>
-                  </Link>
-                )}
-                <button onClick={() => { setMockDataOpen(true); setMockReport(null); }} className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md border border-red-600 text-red-600 hover:bg-red-600/10">
-                  <Tag className="w-3.5 h-3.5 text-red-600" />
-                  <span>Mock Data System</span>
-                </button>
-                {/* Restore Defaults moved to Settings → Danger Zone */}
-              </div>
-            </Card>
-          </Card>
-
-          {/* Job Operations */}
-          <Card className="relative p-5 bg-[#18181b] rounded-2xl border border-zinc-800">
-            <div className="flex items-center gap-2 mb-3">
-              <ClipboardCheck className="w-6 h-6 text-orange-500" />
-              <div className="text-lg font-bold">Job Operations</div>
-            </div>
-            {/* Inner dark box to match Training Hub */}
-            <Card className="p-4 bg-[#0f0f13] rounded-xl border border-zinc-800">
-              <div className="flex flex-row flex-wrap gap-2">
-                {!isMenuHidden('start-job') && (
-                  <RedBox accent="orange" title="Start a Job" subtitle="Open Service Checklist" href="/service-checklist" Icon={ClipboardCheck} />
-                )}
-                {!isMenuHidden('jobs-completed-admin') && (
-                  <RedBox accent="orange" title="Jobs Completed by Admin" subtitle="View your admin work history" href="/jobs-completed?employee=admin" Icon={FileText} badgeCount={adminJobsCount} />
-                )}
-                {!isMenuHidden('book-new-job') && (
-                  <RedBox
-                    accent="orange"
-                    title="Book A New Job"
-                    subtitle="Lead to Book Now page"
-                    href="/book-now"
-                    Icon={ClipboardCheck}
-                  />
-                )}
-                {/* New Booking card removed */}
-              </div>
-            </Card>
-          </Card>
-
-          {/* Customer Hub */}
-          <Card className="relative p-5 bg-[#18181b] rounded-2xl border border-zinc-800">
-            <div className="flex items-center gap-2 mb-3">
-              <Users className="w-6 h-6 text-purple-500" />
-              <div className="text-lg font-bold">Customer Hub</div>
-            </div>
-            {/* Inner dark box to match Training Hub */}
-            <Card className="p-4 bg-[#0f0f13] rounded-xl border border-zinc-800">
-              <div className="flex flex-row flex-wrap gap-2">
-                {!isMenuHidden('search-customer') && (
-                  <RedBox accent="purple" title="Add Customer" subtitle="Open popup to add" onClick={() => setAddCustomerOpen(true)} Icon={UserPlus} badgeCount={badgeByType('customer_added')} />
-                )}
-                {!isMenuHidden('customer-profiles') && (
-                  <RedBox accent="purple" title="Customer Profiles" subtitle="View Customer Info PDFs" href="/search-customer" Icon={Users} badgeCount={alertsAll.filter(a => a.payload?.recordType === 'Customer' && !a.read).length} />
-                )}
-              </div>
-            </Card>
-
-            {/* Tasks & Portal (moved under Customer Hub, same format) */}
-            <div className="flex items-center gap-2 mt-6 mb-3">
-              <CheckSquare className="w-6 h-6 text-zinc-400" />
-              <div className="text-lg font-bold">Tasks & Portal</div>
-            </div>
-            <Card className="p-4 bg-[#0f0f13] rounded-xl border border-zinc-800">
-              <div className="flex flex-row flex-wrap gap-2">
-                {!isMenuHidden('employee-dashboard') && (
-                  <RedBox accent="zinc" title="Staff Portal" subtitle="Open menu" href="/employee-dashboard" Icon={Grid3X3} />
-                )}
-                {!isMenuHidden('service-checklist') && (
-                  <RedBox accent="zinc" title="Todo" subtitle={`Overdue: ${0}`} href="/tasks" Icon={CheckSquare} badgeCount={badgeByType('todo_overdue')} />
-                )}
-              </div>
-            </Card>
-          </Card>
-
-          {/* Finance Center */}
+          {/* Row 2, Col 3: Finance Center (Existing) */}
           <Card className="relative p-5 bg-[#18181b] rounded-2xl border border-zinc-800">
             <div className="flex items-center gap-2 mb-3">
               <DollarSign className="w-6 h-6 text-green-600" />
               <div className="text-lg font-bold">Finance Center</div>
             </div>
-            {/* Inner dark box to match Training Hub */}
             <Card className="p-4 bg-[#0f0f13] rounded-xl border border-zinc-800">
               <div className="flex flex-row flex-wrap gap-2">
                 {!isMenuHidden('invoicing') && (
-                  <RedBox accent="green" title="Create Invoice" subtitle={`${unpaidInvoices} unpaid`} href="/invoicing" Icon={FileText} badgeCount={Math.max(unpaidInvoices, badgeByType('invoice_unpaid'))} />
+                  <RedBox accent="green" title="Create Invoice" href="/invoicing" Icon={FileText} badgeCount={Math.max(unpaidInvoices, badgeByType('invoice_unpaid'))} />
                 )}
                 {!isMenuHidden('payroll') && (
-                  <RedBox accent="green" title="Payroll Due" subtitle={`${overdueCount} employees due payment this week — $${totalDue.toFixed(2)} total`} href="/payroll" Icon={DollarSign} badgeCount={Math.max(badgeByType('payroll_due'), overdueCount)} />
+                  <RedBox accent="green" title="Payroll Due" href="/payroll" Icon={DollarSign} badgeCount={Math.max(badgeByType('payroll_due'), overdueCount)} />
                 )}
                 {!isMenuHidden('pay-employee') && (
-                  <RedBox accent="green" title="Pay Employee" subtitle="Open checks/cash/direct deposit" href="/payroll?modal=checks" Icon={DollarSign} />
+                  <RedBox accent="green" title="Pay Employee" href="/payroll?modal=checks" Icon={DollarSign} />
                 )}
                 {!isMenuHidden('accounting') && (
-                  <RedBox accent="green" title="Accounting" subtitle="View P&L" href="/accounting" Icon={Calculator} badgeCount={badgeByType('accounting_update')} />
+                  <RedBox accent="green" title="Accounting" href="/accounting" Icon={Calculator} badgeCount={badgeByType('accounting_update')} />
                 )}
                 {!isMenuHidden('discount-coupons') && (
-                  <RedBox accent="green" title="Discount Coupons" subtitle="Create and manage offers" href="/discount-coupons" Icon={Tag} />
+                  <RedBox accent="green" title="Discount Coupons" href="/discount-coupons" Icon={Tag} />
                 )}
               </div>
             </Card>
           </Card>
 
-          {/* Inventory & Files */}
+          {/* Row 3, Col 1: Inventory & Files (Existing) */}
           <Card className="relative p-5 bg-[#18181b] rounded-2xl border border-zinc-800">
             <div className="flex items-center gap-2 mb-3">
               <Folder className="w-6 h-6 text-yellow-500" />
               <div className="text-lg font-bold">Inventory & Files</div>
             </div>
-            {/* Inner dark box to match Training Hub */}
             <Card className="p-4 bg-[#0f0f13] rounded-xl border border-zinc-800">
               <div className="flex flex-row flex-wrap gap-2">
                 {!isMenuHidden('inventory-control') && (
-                  <RedBox accent="yellow" title="Low Inventory" subtitle={`${criticalInventory} items critical`} href="/inventory-control" Icon={Package} badgeCount={criticalInventory} />
+                  <RedBox accent="yellow" title="Low Inventory" href="/inventory-control" Icon={Package} badgeCount={criticalInventory} />
                 )}
                 {!isMenuHidden('inventory-control') && (
-                  <RedBox accent="yellow" title="Material Updates" subtitle="Record usage and notes" href="/inventory-control?updates=true" Icon={FileText} />
+                  <RedBox accent="yellow" title="Material Updates" href="/inventory-control?updates=true" Icon={FileText} />
                 )}
                 {!isMenuHidden('file-manager') && (
-                  <RedBox accent="yellow" title="File Manager" subtitle={`Unviewed: ${unviewedFilesCount}`} href="/file-manager" Icon={Folder} badgeCount={unviewedFilesCount} />
-                )}
-              </div>
-            </Card>
-
-            {/* Pricing moved under Inventory & Files, preserving colors and structure */}
-            <div className="flex items-center gap-2 mt-6 mb-3">
-              <Tag className="w-6 h-6 text-pink-500" />
-              <div className="text-lg font-bold">Pricing</div>
-            </div>
-            {/* Inner dark box to match Training Hub */}
-            <Card className="p-4 bg-[#0f0f13] rounded-xl border border-zinc-800">
-              <div className="flex flex-row flex-wrap gap-2">
-                {!isMenuHidden('package-pricing') && (
-                  <RedBox accent="pink" title="Package Pricing" subtitle="Update prices" href="/package-pricing" Icon={Tag} badgeCount={badgeByType('pricing_update')} />
+                  <RedBox accent="yellow" title="File Manager" href="/file-manager" Icon={Folder} badgeCount={unviewedFilesCount} />
                 )}
               </div>
             </Card>
           </Card>
 
-          {/* Add Customer Popup */}
-          <CustomerModal
-            open={addCustomerOpen}
-            onOpenChange={setAddCustomerOpen}
-            initial={null}
-            onSave={async (data) => {
-              try {
-                await upsertCustomer(data as any);
-                setAddCustomerOpen(false);
-                toast({ title: 'Customer Saved', description: 'Record stored.' });
-              } catch (err: any) {
-                setAddCustomerOpen(false);
-                toast({ title: 'Save failed', description: err?.message || String(err), variant: 'destructive' });
-              }
-            }}
-          />
+          {/* Row 3, Col 2: Tasks & Portal (Moved from Customer Hub) */}
+          <Card className="relative p-5 bg-[#18181b] rounded-2xl border border-zinc-800">
+            <div className="flex items-center gap-2 mb-3">
+              <CheckSquare className="w-6 h-6 text-zinc-400" />
+              <div className="text-lg font-bold">Tasks & Portal</div>
+            </div>
+            <Card className="p-4 bg-[#0f0f13] rounded-xl border border-zinc-800">
+              <div className="flex flex-col gap-2">
+                {!isMenuHidden('employee-dashboard') && (
+                  <RedBox accent="zinc" title="Staff Portal" href="/employee-dashboard" Icon={Grid3X3} />
+                )}
+                {!isMenuHidden('service-checklist') && (
+                  <RedBox accent="zinc" title="Todo" href="/tasks" Icon={CheckSquare} badgeCount={badgeByType('todo_overdue')} />
+                )}
+                <button className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md border border-blue-600 text-blue-600 hover:bg-blue-600/10 w-fit">
+                  <Users className="w-3.5 h-3.5 text-blue-600" />
+                  <span>Team Communications</span>
+                </button>
+              </div>
+            </Card>
+          </Card>
 
-          {/* Orientation Welcome Popup */}
-          <OrientationModal
-            open={orientationOpen}
-            onOpenChange={setOrientationOpen}
-          />
-
-          {/* Tasks & Portal — moved under Customer Hub above */}
-
-          {/* Pricing — moved under Inventory & Files above */}
+          {/* Row 3, Col 3: Customer Hub (Existing) */}
+          <Card className="relative p-5 bg-[#18181b] rounded-2xl border border-zinc-800">
+            <div className="flex items-center gap-2 mb-3">
+              <Users className="w-6 h-6 text-purple-500" />
+              <div className="text-lg font-bold">Customer Hub</div>
+            </div>
+            <Card className="p-4 bg-[#0f0f13] rounded-xl border border-zinc-800">
+              <div className="flex flex-row flex-wrap gap-2">
+                {!isMenuHidden('search-customer') && (
+                  <RedBox accent="purple" title="Add Customer" onClick={() => setAddCustomerOpen(true)} Icon={UserPlus} badgeCount={badgeByType('customer_added')} />
+                )}
+                {!isMenuHidden('customer-profiles') && (
+                  <RedBox accent="purple" title="Customer Profiles" href="/search-customer" Icon={Users} badgeCount={alertsAll.filter(a => a.payload?.recordType === 'Customer' && !a.read).length} />
+                )}
+              </div>
+            </Card>
+          </Card>
         </div>
 
-        {/* Cheat Sheet Modal — panel rendered inside dialog content */}
+        {/* Add Customer Popup */}
+        <CustomerModal
+          open={addCustomerOpen}
+          onOpenChange={setAddCustomerOpen}
+          initial={null}
+          onSave={async (data) => {
+            try {
+              await upsertCustomer(data as any);
+              setAddCustomerOpen(false);
+              toast({ title: 'Customer Saved', description: 'Record stored.' });
+            } catch (err: any) {
+              setAddCustomerOpen(false);
+              toast({ title: 'Error', description: 'Failed to save customer.', variant: 'destructive' });
+            }
+          }}
+        />
+
+        {/* Orientation Welcome Popup */}
+        <OrientationModal
+          open={orientationOpen}
+          onOpenChange={setOrientationOpen}
+        />
+
+        <SubContractorsModal open={subContractorsOpen} onOpenChange={setSubContractorsOpen} />
+
+        {/* Cheat Sheet Dialog */}
         <Dialog open={cheatOpen} onOpenChange={setCheatOpen}>
           <DialogContent className="max-w-4xl max-h-[85vh] overflow-auto">
             <DialogHeader>
@@ -824,7 +863,7 @@ export default function AdminDashboard() {
                   onClick={async () => {
                     try {
                       setMockReport({ progress: ['Starting local-only insertion…'], createdAt: new Date().toISOString() });
-                      const push = (msg: string) => setMockReport((prev: any) => ({ ...(prev||{}), progress: [ ...((prev?.progress)||[]), `${new Date().toLocaleTimeString()} — ${msg}` ] }));
+                      const push = (msg: string) => setMockReport((prev: any) => ({ ...(prev || {}), progress: [...((prev?.progress) || []), `${new Date().toLocaleTimeString()} — ${msg}`] }));
                       const tracker = await insertStaticMockBasic(push, { customers: 5, employees: 5, chemicals: 3, materials: 3 });
                       // Build simple report
                       const usersLF = (await localforage.getItem<any[]>('users')) || [];
@@ -840,17 +879,17 @@ export default function AdminDashboard() {
                         materials_count: materialsLF.length,
                         mode: 'Local only — Not Linked to Supabase',
                       };
-                      setMockReport((prev: any) => ({ ...(prev||{}), customers: tracker.customers, employees: tracker.employees, inventory: tracker.inventory, summary }));
+                      setMockReport((prev: any) => ({ ...(prev || {}), customers: tracker.customers, employees: tracker.employees, inventory: tracker.inventory, summary }));
                       try {
                         window.dispatchEvent(new CustomEvent('content-changed', { detail: { kind: 'users' } }));
                         window.dispatchEvent(new CustomEvent('content-changed', { detail: { kind: 'customers' } }));
                         window.dispatchEvent(new CustomEvent('content-changed', { detail: { kind: 'employees' } }));
                         window.dispatchEvent(new CustomEvent('inventory-changed'));
-                      } catch {}
+                      } catch { }
                       toast?.({ title: 'Static Mock Data Inserted', description: 'Added customers, employees, and inventory locally.' });
                     } catch (e: any) {
                       const errMsg = e?.message || String(e);
-                      setMockReport((prev: any) => ({ ...(prev||{}), errors: [ ...(prev?.errors||[]), errMsg ] }));
+                      setMockReport((prev: any) => ({ ...(prev || {}), errors: [...(prev?.errors || []), errMsg] }));
                     }
                   }}
                 >Insert Mock Data</Button>
@@ -859,108 +898,108 @@ export default function AdminDashboard() {
                   className="border-red-700 text-red-700 hover:bg-red-700/10"
                   onClick={async () => {
                     try {
-                      setMockReport((prev:any) => ({ ...(prev||{}), progress: ['Removing local-only mock data…'] }));
-                      await removeStaticMockBasic((msg) => setMockReport((prev: any) => ({ ...(prev||{}), progress: [ ...((prev?.progress)||[]), `${new Date().toLocaleTimeString()} — ${msg}` ] })));
+                      setMockReport((prev: any) => ({ ...(prev || {}), progress: ['Removing local-only mock data…'] }));
+                      await removeStaticMockBasic((msg) => setMockReport((prev: any) => ({ ...(prev || {}), progress: [...((prev?.progress) || []), `${new Date().toLocaleTimeString()} — ${msg}`] })));
                       try {
                         window.dispatchEvent(new CustomEvent('content-changed', { detail: { kind: 'users' } }));
                         window.dispatchEvent(new CustomEvent('content-changed', { detail: { kind: 'customers' } }));
                         window.dispatchEvent(new CustomEvent('content-changed', { detail: { kind: 'employees' } }));
                         window.dispatchEvent(new CustomEvent('inventory-changed'));
-                      } catch {}
-                      setMockReport((prev: any) => ({ ...(prev||{}), removed: true, removedAt: new Date().toISOString() }));
+                      } catch { }
+                      setMockReport((prev: any) => ({ ...(prev || {}), removed: true, removedAt: new Date().toISOString() }));
                       toast?.({ title: 'Static Mock Data Removed', description: 'Local-only mock data was cleared.' });
                     } catch (e: any) {
                       const errMsg = e?.message || String(e);
-                      setMockReport((prev: any) => ({ ...(prev||{}), errors: [ ...(prev?.errors||[]), errMsg ] }));
+                      setMockReport((prev: any) => ({ ...(prev || {}), errors: [...(prev?.errors || []), errMsg] }));
                     }
                   }}
                 >Remove Mock Data</Button>
-              <Button
-                variant="secondary"
-                className="border-red-700 text-white bg-red-700 hover:bg-red-800"
-                onClick={() => {
-                  try {
-                    const doc = new jsPDF();
-                    let y = 30;
-                    const addLine = (text: string, indent = 0) => {
-                      doc.text(text, 20 + indent, y);
-                      y += 6;
-                      if (y > 270) { doc.addPage(); y = 20; }
-                    };
+                <Button
+                  variant="secondary"
+                  className="border-red-700 text-white bg-red-700 hover:bg-red-800"
+                  onClick={() => {
+                    try {
+                      const doc = new jsPDF();
+                      let y = 30;
+                      const addLine = (text: string, indent = 0) => {
+                        doc.text(text, 20 + indent, y);
+                        y += 6;
+                        if (y > 270) { doc.addPage(); y = 20; }
+                      };
 
-                    doc.setFontSize(18);
-                    doc.text('Mock Data Report', 105, 18, { align: 'center' });
-                    doc.setFontSize(11);
-                    const created = mockReport?.createdAt ? new Date(mockReport.createdAt).toLocaleString() : new Date().toLocaleString();
-                    const removed = mockReport?.removedAt ? new Date(mockReport.removedAt).toLocaleString() : '—';
-                    addLine(`Created: ${created}`);
-                    addLine(`Removed: ${removed}`);
-
-                    // Live Progress
-                    if ((mockReport?.progress || []).length > 0) {
-                      doc.setFontSize(12);
-                      addLine('Live Progress:');
+                      doc.setFontSize(18);
+                      doc.text('Mock Data Report', 105, 18, { align: 'center' });
                       doc.setFontSize(11);
-                      (mockReport?.progress || []).forEach((ln: string) => addLine(`- ${ln}`, 6));
-                    }
+                      const created = mockReport?.createdAt ? new Date(mockReport.createdAt).toLocaleString() : new Date().toLocaleString();
+                      const removed = mockReport?.removedAt ? new Date(mockReport.removedAt).toLocaleString() : '—';
+                      addLine(`Created: ${created}`);
+                      addLine(`Removed: ${removed}`);
 
-                    // Summary
-                    if (mockReport?.summary) {
+                      // Live Progress
+                      if ((mockReport?.progress || []).length > 0) {
+                        doc.setFontSize(12);
+                        addLine('Live Progress:');
+                        doc.setFontSize(11);
+                        (mockReport?.progress || []).forEach((ln: string) => addLine(`- ${ln}`, 6));
+                      }
+
+                      // Summary
+                      if (mockReport?.summary) {
+                        doc.setFontSize(12);
+                        addLine('Summary:');
+                        doc.setFontSize(11);
+                        addLine(`Local Users: ${mockReport.summary.local_users}`, 6);
+                        addLine(`Local Customers: ${mockReport.summary.local_customers}`, 6);
+                        addLine(`Local Employees: ${mockReport.summary.local_employees}`, 6);
+                        addLine(`Chemicals: ${mockReport.summary.chemicals_count}`, 6);
+                        addLine(`Materials: ${mockReport.summary.materials_count}`, 6);
+                        addLine(`Mode: ${mockReport.summary.mode}`, 6);
+                      }
+
+                      // Customers
                       doc.setFontSize(12);
-                      addLine('Summary:');
+                      addLine('Customers:');
                       doc.setFontSize(11);
-                      addLine(`Local Users: ${mockReport.summary.local_users}`, 6);
-                      addLine(`Local Customers: ${mockReport.summary.local_customers}`, 6);
-                      addLine(`Local Employees: ${mockReport.summary.local_employees}`, 6);
-                      addLine(`Chemicals: ${mockReport.summary.chemicals_count}`, 6);
-                      addLine(`Materials: ${mockReport.summary.materials_count}`, 6);
-                      addLine(`Mode: ${mockReport.summary.mode}`, 6);
-                    }
+                      (mockReport?.customers || []).forEach((c: any) => addLine(`- ${c.name} — ${c.email}`, 6));
 
-                    // Customers
-                    doc.setFontSize(12);
-                    addLine('Customers:');
-                    doc.setFontSize(11);
-                    (mockReport?.customers || []).forEach((c:any) => addLine(`- ${c.name} — ${c.email}`, 6));
-
-                    // Employees
-                    doc.setFontSize(12);
-                    addLine('Employees:');
-                    doc.setFontSize(11);
-                    (mockReport?.employees || []).forEach((e:any) => addLine(`- ${e.name} — ${e.email}`, 6));
-
-                    // Inventory
-                    doc.setFontSize(12);
-                    addLine('Inventory:');
-                    doc.setFontSize(11);
-                    (mockReport?.inventory || []).forEach((i:any) => addLine(`- ${i.category}: ${i.name}`, 6));
-
-                    // Removal status
-                    if (mockReport?.removed) {
+                      // Employees
                       doc.setFontSize(12);
-                      addLine('Removal Status:');
+                      addLine('Employees:');
                       doc.setFontSize(11);
-                      addLine(`Mock data removed at ${new Date(mockReport.removedAt).toLocaleString()}`, 6);
-                    }
+                      (mockReport?.employees || []).forEach((e: any) => addLine(`- ${e.name} — ${e.email}`, 6));
 
-                    // Errors
-                    if ((mockReport?.errors || []).length > 0) {
+                      // Inventory
                       doc.setFontSize(12);
-                      addLine('Issues detected:');
+                      addLine('Inventory:');
                       doc.setFontSize(11);
-                      (mockReport.errors || []).forEach((err: any) => addLine(`- ${String(err)}`, 6));
-                    }
+                      (mockReport?.inventory || []).forEach((i: any) => addLine(`- ${i.category}: ${i.name}`, 6));
 
-                    const dataUrl = doc.output('dataurlstring');
-                    const today = new Date().toISOString().split('T')[0];
-                    const fileName = `MockData_Report_${today}.pdf`;
-                    savePDFToArchive('Mock Data' as any, 'Admin', `mock-data-${Date.now()}`, dataUrl, { fileName, path: 'Mock Data/' });
-                    toast?.({ title: 'Saved to File Manager', description: 'Mock Data Report archived.' });
-                  } catch (e:any) {
-                    toast?.({ title: 'Save Failed', description: e?.message || 'Could not generate PDF', variant: 'destructive' });
-                  }
-                }}
-              >Save to PDF</Button>
+                      // Removal status
+                      if (mockReport?.removed) {
+                        doc.setFontSize(12);
+                        addLine('Removal Status:');
+                        doc.setFontSize(11);
+                        addLine(`Mock data removed at ${new Date(mockReport.removedAt).toLocaleString()}`, 6);
+                      }
+
+                      // Errors
+                      if ((mockReport?.errors || []).length > 0) {
+                        doc.setFontSize(12);
+                        addLine('Issues detected:');
+                        doc.setFontSize(11);
+                        (mockReport.errors || []).forEach((err: any) => addLine(`- ${String(err)}`, 6));
+                      }
+
+                      const dataUrl = doc.output('dataurlstring');
+                      const today = new Date().toISOString().split('T')[0];
+                      const fileName = `MockData_Report_${today}.pdf`;
+                      savePDFToArchive('Mock Data' as any, 'Admin', `mock-data-${Date.now()}`, dataUrl, { fileName, path: 'Mock Data/' });
+                      toast?.({ title: 'Saved to File Manager', description: 'Mock Data Report archived.' });
+                    } catch (e: any) {
+                      toast?.({ title: 'Save Failed', description: e?.message || 'Could not generate PDF', variant: 'destructive' });
+                    }
+                  }}
+                >Save to PDF</Button>
               </div>
 
               {mockReport?.progress && (
@@ -1067,7 +1106,7 @@ export default function AdminDashboard() {
               {/* Section 2: Add New User */}
               <Card className="p-4 bg-zinc-900 border-zinc-800">
                 <h3 className="text-lg font-semibold mb-4">Add New User</h3>
-  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
                   <div>
                     <label className="text-sm text-zinc-400">Name</label>
                     <Input value={newName} onChange={(e) => setNewName(e.target.value)} className="bg-zinc-800 border-zinc-700 text-white" />
@@ -1101,7 +1140,7 @@ export default function AdminDashboard() {
               {/* Section 3: Impersonate */}
               <Card className="p-4 bg-zinc-900 border-zinc-800">
                 <h3 className="text-lg font-semibold mb-4">Impersonate</h3>
-  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 items-end">
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 items-end">
                   <div>
                     <label className="text-sm text-zinc-400">Select User</label>
                     <Select value={impersonateId || ''} onValueChange={(val) => setImpersonateId(val)}>
@@ -1171,9 +1210,9 @@ export default function AdminDashboard() {
                                     headers: { 'Content-Type': 'application/json' },
                                     body: JSON.stringify(Array.isArray(updated) ? updated : []),
                                   });
-                                } catch {}
-                                try { await postFullSync(); } catch {}
-                                try { window.dispatchEvent(new CustomEvent('content-changed', { detail: { kind: 'vehicle-types' } })); } catch {}
+                                } catch { }
+                                try { await postFullSync(); } catch { }
+                                try { window.dispatchEvent(new CustomEvent('content-changed', { detail: { kind: 'vehicle-types' } })); } catch { }
                                 toast({ title: 'Vehicle type deleted', description: vt.name });
                               }}>Delete</Button>
                             </TableCell>
@@ -1219,7 +1258,7 @@ export default function AdminDashboard() {
                                 await api(`/api/faqs/${fq.id}`, { method: 'DELETE' });
                                 const updated = await api('/api/faqs', { method: 'GET' });
                                 setFaqs(Array.isArray(updated) ? updated : (Array.isArray((updated as any)?.items) ? (updated as any).items : []));
-                                try { window.dispatchEvent(new CustomEvent('content-changed', { detail: { kind: 'faqs' } })); } catch {}
+                                try { window.dispatchEvent(new CustomEvent('content-changed', { detail: { kind: 'faqs' } })); } catch { }
                                 toast({ title: 'FAQ deleted' });
                               }}>Delete</Button>
                             </TableCell>
@@ -1238,7 +1277,7 @@ export default function AdminDashboard() {
                 {/* Contact */}
                 <div className="mb-6">
                   <h4 className="font-semibold mb-2">Contact</h4>
-  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                     <div>
                       <Label className="text-zinc-300">Hours</Label>
                       <textarea className="w-full rounded-md bg-zinc-800 border-zinc-700 text-white p-2 h-28" value={contactInfo.hours} onChange={(e) => setContactInfo({ ...contactInfo, hours: e.target.value })} />
@@ -1266,8 +1305,8 @@ export default function AdminDashboard() {
                           headers: { 'Content-Type': 'application/json' },
                           body: JSON.stringify(contactInfo),
                         });
-                      } catch {}
-                      try { window.dispatchEvent(new CustomEvent('content-changed', { detail: { kind: 'contact' } })); } catch {}
+                      } catch { }
+                      try { window.dispatchEvent(new CustomEvent('content-changed', { detail: { kind: 'contact' } })); } catch { }
                       toast({ title: 'Contact updated', description: 'Synced live on port 6061' });
                     }}>Save Contact</Button>
                   </div>
@@ -1346,10 +1385,10 @@ export default function AdminDashboard() {
                               headers: { 'Content-Type': 'application/json' },
                               body: JSON.stringify(Array.isArray(updated) ? updated : []),
                             });
-                          } catch {}
+                          } catch { }
                           // Notify other pages and trigger live refresh
-                          try { await postFullSync(); } catch {}
-                          try { window.dispatchEvent(new CustomEvent('content-changed', { detail: { kind: 'vehicle-types' } })); } catch {}
+                          try { await postFullSync(); } catch { }
+                          try { window.dispatchEvent(new CustomEvent('content-changed', { detail: { kind: 'vehicle-types' } })); } catch { }
                           setEditVehicle(null);
                           toast({ title: 'Vehicle type updated' });
                         }}>Save</Button>
@@ -1405,7 +1444,7 @@ export default function AdminDashboard() {
                         // 2) Validate and apply $ Amount multiplier to seed pricing for new type
                         let amt = Math.round(Number(newVehicleMultiplier || '100'));
                         if (!Number.isFinite(amt) || amt < 0 || amt > 10000) {
-                          toast({ title: 'Invalid $ Amount', description: 'Enter a whole number between 0 and 10000.' , variant: 'destructive'});
+                          toast({ title: 'Invalid $ Amount', description: 'Enter a whole number between 0 and 10000.', variant: 'destructive' });
                           return;
                         }
                         if (String(amt) !== String(newVehicleMultiplier)) {
@@ -1425,14 +1464,14 @@ export default function AdminDashboard() {
                             headers: { 'Content-Type': 'application/json' },
                             body: JSON.stringify(Array.isArray(updated) ? updated : []),
                           });
-                        } catch {}
+                        } catch { }
                         // 4) Post full sync so live site sees pricing updates
-                        try { await postFullSync(); } catch {}
+                        try { await postFullSync(); } catch { }
                         // 5) Dispatch content-changed events so dropdowns refresh immediately
-                        try { window.dispatchEvent(new CustomEvent('content-changed', { detail: { kind: 'vehicle-types' } })); } catch {}
-                        try { window.dispatchEvent(new CustomEvent('content-changed', { detail: { kind: 'packages' } })); } catch {}
+                        try { window.dispatchEvent(new CustomEvent('content-changed', { detail: { kind: 'vehicle-types' } })); } catch { }
+                        try { window.dispatchEvent(new CustomEvent('content-changed', { detail: { kind: 'packages' } })); } catch { }
                         // 6) Force refresh Service and Book Now pages in other tabs
-                        try { localStorage.setItem('force-refresh', String(Date.now())); } catch {}
+                        try { localStorage.setItem('force-refresh', String(Date.now())); } catch { }
                         // Reset form
                         setNewVehicleName('');
                         setNewVehicleDesc('');
@@ -1461,7 +1500,7 @@ export default function AdminDashboard() {
                           await api(`/api/faqs/${editFaq.id}`, { method: 'PUT', body: JSON.stringify({ question: editFaq.question, answer: editFaq.answer }) });
                           const updated = await api('/api/faqs', { method: 'GET' });
                           setFaqs(Array.isArray(updated) ? updated : (Array.isArray((updated as any)?.items) ? (updated as any).items : []));
-                          try { window.dispatchEvent(new CustomEvent('content-changed', { detail: { kind: 'faqs' } })); } catch {}
+                          try { window.dispatchEvent(new CustomEvent('content-changed', { detail: { kind: 'faqs' } })); } catch { }
                           setEditFaq(null);
                           toast({ title: 'FAQ updated' });
                         }}>Save</Button>
@@ -1486,7 +1525,7 @@ export default function AdminDashboard() {
                         await api('/api/faqs', { method: 'POST', body: JSON.stringify({ question: newFaqQ, answer: newFaqA }) });
                         const updated = await api('/api/faqs', { method: 'GET' });
                         setFaqs(Array.isArray(updated) ? updated : (Array.isArray((updated as any)?.items) ? (updated as any).items : []));
-                        try { window.dispatchEvent(new CustomEvent('content-changed', { detail: { kind: 'faqs' } })); } catch {}
+                        try { window.dispatchEvent(new CustomEvent('content-changed', { detail: { kind: 'faqs' } })); } catch { }
                         setNewFaqQ('');
                         setNewFaqA('');
                         setNewFaqOpen(false);
@@ -1555,115 +1594,17 @@ export default function AdminDashboard() {
                   <AlertDialogTitle>Delete user?</AlertDialogTitle>
                   <AlertDialogDescription>This will remove the user permanently.</AlertDialogDescription>
                 </AlertDialogHeader>
-<AlertDialogFooter className="button-group-responsive">
+                <AlertDialogFooter className="button-group-responsive">
                   <AlertDialogCancel>Cancel</AlertDialogCancel>
                   <AlertDialogAction className="bg-destructive" onClick={() => deleteId && handleDelete(deleteId)}>Yes, Delete</AlertDialogAction>
-</AlertDialogFooter>
+                </AlertDialogFooter>
               </AlertDialogContent>
             </AlertDialog>
           </DialogContent>
         </Dialog>
 
         {/* User Management — Employee Rights Modal */}
-        <Dialog open={employeeMgmtOpen} onOpenChange={setEmployeeMgmtOpen}>
-          <DialogContent className="max-w-none w-screen h-screen sm:rounded-none p-0 bg-black text-white overflow-hidden">
-            <DialogHeader className="px-6 pt-6">
-              <DialogTitle className="text-red-500">User Management — Employee Rights</DialogTitle>
-            </DialogHeader>
-            <div className="px-6 pb-6 space-y-6 h-[calc(100%-4rem)] overflow-auto">
-              {/* Search */}
-              <div className="grid grid-cols-1 gap-4">
-                <Input value={empSearch} onChange={(e) => setEmpSearch(e.target.value)} placeholder="Search employees" className="bg-zinc-900 border-zinc-700 text-white" />
-              </div>
-
-              {/* Employee List */}
-              <Card className="p-4 bg-zinc-900 border-zinc-800">
-                <h3 className="text-lg font-semibold mb-4">Employees</h3>
-                <div className="w-full overflow-x-auto">
-                  <Table>
-                    <TableHeader>
-                      <TableRow>
-                        <TableHead className="text-zinc-300">Name</TableHead>
-                        <TableHead className="text-zinc-300">Email</TableHead>
-                        <TableHead className="text-zinc-300">Role</TableHead>
-                        <TableHead className="text-zinc-300">Last Login</TableHead>
-                        <TableHead className="text-zinc-300">Actions</TableHead>
-                      </TableRow>
-                    </TableHeader>
-                    <TableBody>
-                      {employees.filter((u) => {
-                        const q = empSearch.trim().toLowerCase();
-                        const combo = `${u.name || ''} ${u.email || ''}`.toLowerCase();
-                        return !q || combo.includes(q);
-                      }).map((u) => (
-                        <TableRow key={u.id}>
-                          <TableCell className="text-white">
-                            {empEditId === u.id ? (
-                              <Input value={empEditName} onChange={(e) => setEmpEditName(e.target.value)} className="bg-zinc-800 border-zinc-700 text-white" />
-                            ) : (
-                              u.name
-                            )}
-                          </TableCell>
-                          <TableCell className="text-white">
-                            {empEditId === u.id ? (
-                              <Input value={empEditEmail} onChange={(e) => setEmpEditEmail(e.target.value)} className="bg-zinc-800 border-zinc-700 text-white" />
-                            ) : (
-                              u.email
-                            )}
-                          </TableCell>
-                          <TableCell className="text-zinc-300">Employee</TableCell>
-                          <TableCell className="text-zinc-300">{u.lastLogin ? new Date(u.lastLogin).toLocaleString() : '—'}</TableCell>
-                          <TableCell className="space-x-2">
-                            {empEditId === u.id ? (
-                              <>
-                                <Button size="sm" className="bg-red-700 hover:bg-red-800" onClick={updateEmployee}>Save</Button>
-                                <Button size="sm" variant="outline" className="border-zinc-700 text-zinc-300" onClick={() => { setEmpEditId(null); setEmpEditName(''); setEmpEditEmail(''); }}>Cancel</Button>
-                              </>
-                            ) : (
-                              <>
-                                <Button size="sm" variant="outline" className="border-red-700 text-red-700 hover:bg-red-700/10" onClick={() => { setEmpEditId(u.id); setEmpEditName(u.name || ''); setEmpEditEmail(u.email || ''); }}>Edit</Button>
-                                <Button size="sm" className="bg-red-700 hover:bg-red-800" onClick={() => impersonateEmployee(u.id)}>Impersonate</Button>
-                                <Button size="sm" variant="outline" className="border-red-700 text-red-700 hover:bg-red-700/10" onClick={() => deleteEmployee(u.id)}>Delete</Button>
-                              </>
-                            )}
-                          </TableCell>
-                        </TableRow>
-                      ))}
-                      {employees.length === 0 && (
-                        <TableRow>
-                          <TableCell colSpan={5} className="text-center text-zinc-400 py-8">No employees found.</TableCell>
-                        </TableRow>
-                      )}
-                    </TableBody>
-                  </Table>
-                </div>
-              </Card>
-
-              {/* Add New Employee */}
-              <Card className="p-4 bg-zinc-900 border-zinc-800">
-                <h3 className="text-lg font-semibold mb-4">Add New Employee</h3>
-  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-                  <div>
-                    <label className="text-sm text-zinc-400">Name</label>
-                    <Input value={empNewName} onChange={(e) => setEmpNewName(e.target.value)} className="bg-zinc-800 border-zinc-700 text-white" />
-                  </div>
-                  <div>
-                    <label className="text-sm text-zinc-400">Email</label>
-                    <Input value={empNewEmail} onChange={(e) => setEmpNewEmail(e.target.value)} className="bg-zinc-800 border-zinc-700 text-white" />
-                  </div>
-                  <div>
-                    <label className="text-sm text-zinc-400">Password</label>
-                    <Input value={empNewPassword} onChange={(e) => setEmpNewPassword(e.target.value)} placeholder="Blank to auto-generate" className="bg-zinc-800 border-zinc-700 text-white" />
-                  </div>
-                  <div className="flex items-end">
-                    <Button className="bg-red-700 hover:bg-red-800" onClick={createEmployee}>Create Employee</Button>
-                  </div>
-                </div>
-              </Card>
-
-            </div>
-          </DialogContent>
-        </Dialog>
+        {/* Employee Mgmt Dialog Placeholder */}
       </div>
       <HelpModal open={helpOpen} onOpenChange={setHelpOpen} role={(user?.role === 'admin') ? 'admin' : 'employee'} />
     </div>

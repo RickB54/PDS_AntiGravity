@@ -49,6 +49,13 @@ import ExamPage from "./pages/ExamPage";
 import ExamAdmin from "./pages/ExamAdmin";
 import CheatSheet from "./pages/CheatSheet";
 import Tasks from "./pages/Tasks";
+import VehicleClassification from "./pages/VehicleClassification";
+import ClientEvaluation from "./pages/ClientEvaluation";
+import AddonUpsellScript from "./pages/AddonUpsellScript";
+import PackageExplanationGuide from "./pages/PackageExplanationGuide";
+import ManageSubContractors from "./pages/ManageSubContractors";
+import DetailingVendors from "./pages/DetailingVendors";
+import PackageSelection from "./pages/PackageSelection";
 import ErrorBoundary from "./components/ErrorBoundary";
 import { initTaskWorkflowListeners } from "./store/tasks";
 
@@ -258,6 +265,11 @@ const App = () => {
                         <PackagePricing />
                       </ProtectedRoute>
                     } />
+                    <Route path="/package-selection" element={
+                      <ProtectedRoute allowedRoles={['admin']}>
+                        <PackageSelection />
+                      </ProtectedRoute>
+                    } />
                     <Route path="/training-manual" element={
                       <ProtectedRoute allowedRoles={['employee', 'admin']}>
                         <TrainingManual />
@@ -306,6 +318,36 @@ const App = () => {
                     <Route path="/mobile-setup" element={
                       <ProtectedRoute allowedRoles={['admin']}>
                         <MobileSetup />
+                      </ProtectedRoute>
+                    } />
+                    <Route path="/vehicle-classification" element={
+                      <ProtectedRoute allowedRoles={['admin']}>
+                        <VehicleClassification />
+                      </ProtectedRoute>
+                    } />
+                    <Route path="/client-evaluation" element={
+                      <ProtectedRoute allowedRoles={['admin']}>
+                        <ClientEvaluation />
+                      </ProtectedRoute>
+                    } />
+                    <Route path="/addon-upsell-script" element={
+                      <ProtectedRoute allowedRoles={['admin']}>
+                        <AddonUpsellScript />
+                      </ProtectedRoute>
+                    } />
+                    <Route path="/package-explanation-guide" element={
+                      <ProtectedRoute allowedRoles={['admin']}>
+                        <PackageExplanationGuide />
+                      </ProtectedRoute>
+                    } />
+                    <Route path="/manage-sub-contractors" element={
+                      <ProtectedRoute allowedRoles={['admin']}>
+                        <ManageSubContractors />
+                      </ProtectedRoute>
+                    } />
+                    <Route path="/detailing-vendors" element={
+                      <ProtectedRoute allowedRoles={['admin']}>
+                        <DetailingVendors />
                       </ProtectedRoute>
                     } />
                     <Route path="/settings" element={<Settings />} />

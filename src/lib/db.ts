@@ -10,14 +10,18 @@ const KEYS = {
   invoices: "invoices",
   expenses: "expenses",
   meta: "meta",
+  sub_contractors: "sub_contractors",
+  client_upsells: "client_upsells",
+  client_evaluations: "client_evaluations",
+  detailing_vendors: "detailing_vendors",
 } as const;
 
 type GenericWithId = { id: string };
 
 const genId = () =>
-  (typeof crypto !== "undefined" && "randomUUID" in crypto
-    ? (crypto as any).randomUUID()
-    : `id-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`);
+(typeof crypto !== "undefined" && "randomUUID" in crypto
+  ? (crypto as any).randomUUID()
+  : `id-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`);
 
 async function getArray<T>(key: string): Promise<T[]> {
   const arr = (await localforage.getItem<T[]>(key)) || [];
@@ -57,7 +61,7 @@ export async function upsertCustomer<T extends Partial<GenericWithId>>(cust: T):
     if (isNew) {
       pushAdminAlert('customer_added', `New customer added: ${String((saved as any).name || '').trim()}`, 'system', { id: saved.id, recordType: 'Customer' });
     }
-  } catch {}
+  } catch { }
   return saved;
 }
 
@@ -120,7 +124,7 @@ export async function upsertInvoice<T extends Partial<GenericWithId>>(inv: T): P
     }
     // Accounting updates reflect financial changes
     pushAdminAlert('accounting_update', 'Accounting updated: invoices or expenses changed', 'system', { recordType: 'Accounting' });
-  } catch {}
+  } catch { }
   return saved;
 }
 
@@ -152,7 +156,7 @@ export async function upsertExpense<T extends Partial<GenericWithId>>(exp: T): P
     list.push(saved);
   }
   await setArray(KEYS.expenses, list);
-  try { pushAdminAlert('accounting_update', 'Accounting updated: expense recorded', 'system', { recordType: 'Accounting', id: saved.id }); } catch {}
+  try { pushAdminAlert('accounting_update', 'Accounting updated: expense recorded', 'system', { recordType: 'Accounting', id: saved.id }); } catch { }
   return saved;
 }
 
@@ -160,6 +164,124 @@ export async function deleteExpense(id: string): Promise<void> {
   const list = await getArray<any>(KEYS.expenses);
   const next = list.filter((e: any) => e.id !== id);
   await setArray(KEYS.expenses, next);
+}
+
+// Sub-Contractors
+export async function getSubContractors<T extends GenericWithId>(): Promise<T[]> {
+  return getArray<T>(KEYS.sub_contractors);
+}
+
+export async function upsertSubContractor<T extends Partial<GenericWithId>>(sub: T): Promise<GenericWithId & T> {
+  const list = await getArray<any>(KEYS.sub_contractors);
+  const now = new Date().toISOString();
+  let saved: any;
+  if (sub.id) {
+    const idx = list.findIndex((c: any) => c.id === sub.id);
+    if (idx >= 0) {
+      saved = { ...list[idx], ...sub, updatedAt: now }; // Preserve created_at if exists
+      list[idx] = saved;
+    } else {
+      saved = { id: String(sub.id), ...sub, created_at: now, updatedAt: now };
+      list.push(saved);
+    }
+  } else {
+    saved = { id: genId(), ...sub, created_at: now, updatedAt: now };
+    list.push(saved);
+  }
+  await setArray(KEYS.sub_contractors, list);
+  return saved;
+}
+
+export async function deleteSubContractor(id: string) {
+  const list = await getSubContractors();
+  const next = list.filter((x: any) => x.id !== id);
+  await setArray(KEYS.sub_contractors, next);
+}
+
+// ========== Client Upsells ==========
+export async function getClientUpsells<T = any>(): Promise<T[]> {
+  return getArray<T>(KEYS.client_upsells);
+}
+
+export async function upsertClientUpsell(data: any) {
+  const list = await getClientUpsells();
+  const idx = list.findIndex((x: any) => x.id === data.id);
+  if (idx >= 0) {
+    list[idx] = data;
+  } else {
+    list.push(data);
+  }
+  await setArray(KEYS.client_upsells, list);
+}
+
+export async function deleteClientUpsell(id: string) {
+  const list = await getClientUpsells();
+  const next = list.filter((x: any) => x.id !== id);
+  await setArray(KEYS.client_upsells, next);
+}
+
+export async function getClientUpsellHistory(clientId: string) {
+  const all = await getClientUpsells();
+  return all.filter((x: any) => x.client_id === clientId);
+}
+
+// ========== Client Evaluations ==========
+export async function getClientEvaluations<T = any>(): Promise<T[]> {
+  return getArray<T>(KEYS.client_evaluations);
+}
+
+export async function upsertClientEvaluation(data: any) {
+  const list = await getClientEvaluations();
+  const idx = list.findIndex((x: any) => x.id === data.id);
+  if (idx >= 0) {
+    list[idx] = data;
+  } else {
+    list.push(data);
+  }
+  await setArray(KEYS.client_evaluations, list);
+}
+
+export async function deleteClientEvaluation(id: string) {
+  const list = await getClientEvaluations();
+  const next = list.filter((x: any) => x.id !== id);
+  await setArray(KEYS.client_evaluations, next);
+}
+
+export async function getClientEvaluationHistory(clientId: string) {
+  const all = await getClientEvaluations();
+  return all.filter((x: any) => x.client_id === clientId);
+}
+
+// ========== Detailing Vendors ==========
+export async function getDetailingVendors<T extends GenericWithId>(): Promise<T[]> {
+  return getArray<T>(KEYS.detailing_vendors);
+}
+
+export async function upsertDetailingVendor<T extends Partial<GenericWithId>>(vendor: T): Promise<GenericWithId & T> {
+  const list = await getArray<any>(KEYS.detailing_vendors);
+  const now = new Date().toISOString();
+  let saved: any;
+  if (vendor.id) {
+    const idx = list.findIndex((v: any) => v.id === vendor.id);
+    if (idx >= 0) {
+      saved = { ...list[idx], ...vendor, updatedAt: now };
+      list[idx] = saved;
+    } else {
+      saved = { id: String(vendor.id), ...vendor, created_at: now, updatedAt: now };
+      list.push(saved);
+    }
+  } else {
+    saved = { id: genId(), ...vendor, created_at: now, updatedAt: now };
+    list.push(saved);
+  }
+  await setArray(KEYS.detailing_vendors, list);
+  return saved;
+}
+
+export async function deleteDetailingVendor(id: string) {
+  const list = await getDetailingVendors();
+  const next = list.filter((x: any) => x.id !== id);
+  await setArray(KEYS.detailing_vendors, next);
 }
 
 // Backup & Restore

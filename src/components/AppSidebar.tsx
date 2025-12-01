@@ -1,11 +1,11 @@
-import { 
-  Home, 
-  ClipboardCheck, 
-  Search, 
-  FileText, 
-  Calculator, 
-  BookOpen, 
-  Users, 
+import {
+  Home,
+  ClipboardCheck,
+  Search,
+  FileText,
+  Calculator,
+  BookOpen,
+  Users,
   Settings,
   Package,
   FileBarChart,
@@ -244,6 +244,17 @@ export function AppSidebar() {
                 </SidebarMenuItem>
               )}
 
+              {isAdmin && (
+                <SidebarMenuItem>
+                  <SidebarMenuButton asChild onClick={handleNavClick}>
+                    <NavLink to="/package-selection" className={linkClass}>
+                      <Package className="h-4 w-4" />
+                      <span>Package Comparison Guide</span>
+                    </NavLink>
+                  </SidebarMenuButton>
+                </SidebarMenuItem>
+              )}
+
               {!isHidden('training-manual') && (
                 <SidebarMenuItem>
                   <SidebarMenuButton asChild onClick={handleNavClick}>
@@ -291,7 +302,7 @@ export function AppSidebar() {
 
           {isAdmin && (
             <>
-              
+
 
               {!isHidden('invoicing') && (
                 <SidebarMenuItem>

@@ -47,7 +47,7 @@ import { savePDFToArchive } from "@/lib/pdfArchive";
 interface PDFRecord {
   id: string;
   fileName: string;
-  recordType: "Invoice" | "Estimate" | "Job" | "Checklist" | "Customer" | "Employee Training" | "Bookings" | "Admin Updates" | "Payroll" | "Employee Contact" | "add-Ons" | "Mock Data";
+  recordType: "Invoice" | "Estimate" | "Job" | "Checklist" | "Customer" | "Employee Training" | "Bookings" | "Admin Updates" | "Payroll" | "Employee Contact" | "add-Ons" | "Mock Data" | "Sub Contractors" | "Sub-Contractors" | "Package Comparisons" | "Upsell Scripts" | "Client Evaluation" | "Detailing Vendors" | "Vehicle Classification" | "Vehicle History";
   customerName: string;
   date: string;
   timestamp: string;
@@ -56,7 +56,7 @@ interface PDFRecord {
   path?: string; // optional path for static files served under /files
 }
 
-  const FileManager = () => {
+const FileManager = () => {
   const location = useLocation();
   const user = getCurrentUser();
   const { toast } = useToast();
@@ -88,12 +88,12 @@ interface PDFRecord {
   const refreshAlerts = useAlertsStore((s) => s.refresh);
   useEffect(() => {
     if (adminModalOpen) {
-      try { refreshAlerts(); } catch {}
+      try { refreshAlerts(); } catch { }
     }
   }, [adminModalOpen, refreshAlerts]);
 
   // Normalize category values coming from URL (handle plurals/synonyms)
-  const normalizeCategory = (val: string | null): "all" | "Invoice" | "Estimate" | "Job" | "Checklist" | "Customer" | "Employee Training" | "Bookings" | "Admin Updates" | "Payroll" | "Employee Contact" | "add-Ons" => {
+  const normalizeCategory = (val: string | null): "all" | "Invoice" | "Estimate" | "Job" | "Checklist" | "Customer" | "Employee Training" | "Bookings" | "Admin Updates" | "Payroll" | "Employee Contact" | "add-Ons" | "Vehicle History" => {
     const s = String(val || '').trim().toLowerCase();
     if (!s) return "all";
     if (s === "all") return "all";
@@ -108,6 +108,7 @@ interface PDFRecord {
     if (s.includes("payroll")) return "Payroll";
     if (s.includes("employee") && s.includes("contact")) return "Employee Contact";
     if (s.includes("add-ons") || s.includes("addons") || s.includes("add-on")) return "add-Ons";
+    if (s.includes("vehicle") && s.includes("history")) return "Vehicle History";
     return "all";
   };
 
@@ -131,7 +132,7 @@ interface PDFRecord {
         const url = new URL(window.location.href);
         url.search = params.toString();
         window.history.replaceState(null, '', url.toString());
-      } catch {}
+      } catch { }
     }
   }, [user]);
 
@@ -153,9 +154,9 @@ interface PDFRecord {
 
   const filteredRecords = records.filter(record => {
     const matchesSearch = record.fileName.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                         record.customerName.toLowerCase().includes(searchTerm.toLowerCase());
+      record.customerName.toLowerCase().includes(searchTerm.toLowerCase());
     const matchesType = typeFilter === "all" || record.recordType === typeFilter;
-    
+
     let matchesDate = true;
     if (dateFilter !== "all") {
       const recordDate = new Date(record.timestamp);
@@ -166,11 +167,11 @@ interface PDFRecord {
         const weekAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
         matchesDate = recordDate >= weekAgo;
       } else if (dateFilter === "month") {
-        matchesDate = recordDate.getMonth() === now.getMonth() && 
-                     recordDate.getFullYear() === now.getFullYear();
+        matchesDate = recordDate.getMonth() === now.getMonth() &&
+          recordDate.getFullYear() === now.getFullYear();
       }
     }
-    
+
     return matchesSearch && matchesType && matchesDate;
   });
 
@@ -214,9 +215,9 @@ interface PDFRecord {
 
     try {
       const win = window.open(targetUrl, 'pdf-print');
-      setTimeout(() => { try { win?.focus(); win?.print(); } catch {} }, 800);
+      setTimeout(() => { try { win?.focus(); win?.print(); } catch { } }, 800);
       markViewed("file", record.id);
-    } catch {}
+    } catch { }
   };
 
   const handleDelete = (id: string) => {
@@ -253,7 +254,7 @@ interface PDFRecord {
 
           {/* Filters */}
           <Card className="p-4 bg-gradient-card border-border">
-  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
               <div className="relative">
                 <Search className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
                 <Input
@@ -263,26 +264,27 @@ interface PDFRecord {
                   className="pl-10"
                 />
               </div>
-              
+
               <Select value={typeFilter} onValueChange={(val) => { setTypeFilter(val); setUserChangedTypeFilter(true); }}>
                 <SelectTrigger>
                   <SelectValue placeholder="All Types" />
                 </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">All Types</SelectItem>
-                <SelectItem value="Invoice">Invoices</SelectItem>
-                <SelectItem value="Estimate">Estimates</SelectItem>
-                <SelectItem value="Job">Jobs</SelectItem>
-                <SelectItem value="Checklist">Checklists</SelectItem>
-                <SelectItem value="Customer">Customer Records</SelectItem>
-                <SelectItem value="Employee Training">Employee Training</SelectItem>
-                <SelectItem value="Bookings">Bookings</SelectItem>
-                <SelectItem value="Admin Updates">Admin Updates</SelectItem>
-                <SelectItem value="Payroll">Payroll</SelectItem>
-                <SelectItem value="Employee Contact">Employee Contact</SelectItem>
-                <SelectItem value="add-Ons">Add-Ons</SelectItem>
-              </SelectContent>
-            </Select>
+                <SelectContent>
+                  <SelectItem value="all">All Types</SelectItem>
+                  <SelectItem value="Invoice">Invoices</SelectItem>
+                  <SelectItem value="Estimate">Estimates</SelectItem>
+                  <SelectItem value="Job">Jobs</SelectItem>
+                  <SelectItem value="Checklist">Checklists</SelectItem>
+                  <SelectItem value="Customer">Customer Records</SelectItem>
+                  <SelectItem value="Employee Training">Employee Training</SelectItem>
+                  <SelectItem value="Bookings">Bookings</SelectItem>
+                  <SelectItem value="Admin Updates">Admin Updates</SelectItem>
+                  <SelectItem value="Payroll">Payroll</SelectItem>
+                  <SelectItem value="Employee Contact">Employee Contact</SelectItem>
+                  <SelectItem value="add-Ons">Add-Ons</SelectItem>
+                  <SelectItem value="Vehicle History">Vehicle History</SelectItem>
+                </SelectContent>
+              </Select>
 
               <Select value={dateFilter} onValueChange={setDateFilter}>
                 <SelectTrigger>
@@ -321,7 +323,7 @@ interface PDFRecord {
                   </TableRow>
                 ) : (
                   [...filteredRecords]
-                    .sort((a,b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime())
+                    .sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime())
                     .map((record) => (
                       <TableRow key={record.id}>
                         <TableCell className="font-medium flex items-center gap-2">
@@ -330,87 +332,87 @@ interface PDFRecord {
                             <span className="text-xs text-zinc-500">• viewed</span>
                           ) : null}
                         </TableCell>
-                      <TableCell>
-                        <span className="px-2 py-1 bg-primary/20 text-primary text-xs rounded-full">
-                          {record.recordType}
-                        </span>
-                      </TableCell>
-                      <TableCell>{record.customerName}</TableCell>
-                      <TableCell>{record.date}</TableCell>
-                      <TableCell className="text-sm text-muted-foreground">
-                        {new Date(record.timestamp).toLocaleString()}
-                      </TableCell>
-                      <TableCell className="text-right">
-                        <div className="flex gap-2 justify-end">
-                          <Button size="icon" variant="ghost" onClick={async () => {
-                            setSelectedRecord(record);
-                            setViewerLoading(true);
-                            setViewerError(null);
-                            markViewed("file", record.id);
-                            // Prefer local data/blob URL first, then backend URL
-                            const isInline = record.pdfData?.startsWith('data:application/pdf') || record.pdfData?.startsWith('blob:');
-                            if (isInline) {
-                              setViewerSrc(record.pdfData);
-                              setViewerLoading(false);
-                            } else {
-                              const backendUrl = buildBackendUrl(record);
-                              if (backendUrl) {
-                                setViewerSrc(backendUrl);
+                        <TableCell>
+                          <span className="px-2 py-1 bg-primary/20 text-primary text-xs rounded-full">
+                            {record.recordType}
+                          </span>
+                        </TableCell>
+                        <TableCell>{record.customerName}</TableCell>
+                        <TableCell>{record.date}</TableCell>
+                        <TableCell className="text-sm text-muted-foreground">
+                          {new Date(record.timestamp).toLocaleString()}
+                        </TableCell>
+                        <TableCell className="text-right">
+                          <div className="flex gap-2 justify-end">
+                            <Button size="icon" variant="ghost" onClick={async () => {
+                              setSelectedRecord(record);
+                              setViewerLoading(true);
+                              setViewerError(null);
+                              markViewed("file", record.id);
+                              // Prefer local data/blob URL first, then backend URL
+                              const isInline = record.pdfData?.startsWith('data:application/pdf') || record.pdfData?.startsWith('blob:');
+                              if (isInline) {
+                                setViewerSrc(record.pdfData);
                                 setViewerLoading(false);
                               } else {
-                                setViewerSrc(null);
-                                const msg = record.pdfData?.startsWith('blob:')
-                                  ? 'This PDF was saved as a temporary blob URL and cannot be displayed after reload. Please re-generate this document.'
-                                  : 'Unable to display PDF.';
-                                setViewerError(msg);
-                                setViewerLoading(false);
-                              }
-                            }
-                          }}>
-                            <Eye className="h-4 w-4" />
-                          </Button>
-                          <Button size="icon" variant="ghost" onClick={() => { markViewed("file", record.id); downloadPDF(record); }}>
-                            <Download className="h-4 w-4" />
-                          </Button>
-                          <Button size="icon" variant="ghost" onClick={() => { markViewed("file", record.id); openPrintPreview(record); }} title="Print">
-                            <Printer className="h-4 w-4" />
-                          </Button>
-                          <Button 
-                            size="icon"
-                            variant="ghost"
-                            onClick={() => {
-                              try {
-                                // Deterministically map bell state to viewed status
-                                // Bell ON (yellow) means unviewed; Bell OFF (white) means viewed
-                                const viewed = isViewed("file", record.id);
-                                if (viewed) {
-                                  // Turn bell ON → mark as unviewed
-                                  unmarkViewed("file", record.id);
+                                const backendUrl = buildBackendUrl(record);
+                                if (backendUrl) {
+                                  setViewerSrc(backendUrl);
+                                  setViewerLoading(false);
                                 } else {
-                                  // Turn bell OFF → mark as viewed
-                                  markViewed("file", record.id);
+                                  setViewerSrc(null);
+                                  const msg = record.pdfData?.startsWith('blob:')
+                                    ? 'This PDF was saved as a temporary blob URL and cannot be displayed after reload. Please re-generate this document.'
+                                    : 'Unable to display PDF.';
+                                  setViewerError(msg);
+                                  setViewerLoading(false);
                                 }
-                                // Clear any historical admin alerts tied to this exact archive ID
-                                try { dismissAlertsForRecord(record.recordType, record.id); } catch {}
-                                // Force re-render
-                                setRecords(prev => [...prev]);
-                              } catch {}
-                            }}
-                            title="Toggle alert flag for this file"
-                          >
-                            {!isViewed("file", record.id) ? (
-                              <Bell className="h-4 w-4 text-yellow-400" />
-                            ) : (
-                              <Bell className="h-4 w-4 text-white" />
-                            )}
-                          </Button>
-                          <Button size="icon" variant="ghost" onClick={() => setDeleteId(record.id)}>
-                            <Trash2 className="h-4 w-4 text-destructive" />
-                          </Button>
-                        </div>
-                      </TableCell>
-                    </TableRow>
-                  ))
+                              }
+                            }}>
+                              <Eye className="h-4 w-4" />
+                            </Button>
+                            <Button size="icon" variant="ghost" onClick={() => { markViewed("file", record.id); downloadPDF(record); }}>
+                              <Download className="h-4 w-4" />
+                            </Button>
+                            <Button size="icon" variant="ghost" onClick={() => { markViewed("file", record.id); openPrintPreview(record); }} title="Print">
+                              <Printer className="h-4 w-4" />
+                            </Button>
+                            <Button
+                              size="icon"
+                              variant="ghost"
+                              onClick={() => {
+                                try {
+                                  // Deterministically map bell state to viewed status
+                                  // Bell ON (yellow) means unviewed; Bell OFF (white) means viewed
+                                  const viewed = isViewed("file", record.id);
+                                  if (viewed) {
+                                    // Turn bell ON → mark as unviewed
+                                    unmarkViewed("file", record.id);
+                                  } else {
+                                    // Turn bell OFF → mark as viewed
+                                    markViewed("file", record.id);
+                                  }
+                                  // Clear any historical admin alerts tied to this exact archive ID
+                                  try { dismissAlertsForRecord(record.recordType, record.id); } catch { }
+                                  // Force re-render
+                                  setRecords(prev => [...prev]);
+                                } catch { }
+                              }}
+                              title="Toggle alert flag for this file"
+                            >
+                              {!isViewed("file", record.id) ? (
+                                <Bell className="h-4 w-4 text-yellow-400" />
+                              ) : (
+                                <Bell className="h-4 w-4 text-white" />
+                              )}
+                            </Button>
+                            <Button size="icon" variant="ghost" onClick={() => setDeleteId(record.id)}>
+                              <Trash2 className="h-4 w-4 text-destructive" />
+                            </Button>
+                          </div>
+                        </TableCell>
+                      </TableRow>
+                    ))
                 )}
               </TableBody>
             </Table>
@@ -427,15 +429,15 @@ interface PDFRecord {
               This action cannot be undone. The file will be permanently deleted.
             </AlertDialogDescription>
           </AlertDialogHeader>
-<AlertDialogFooter className="button-group-responsive">
+          <AlertDialogFooter className="button-group-responsive">
             <AlertDialogCancel>Cancel</AlertDialogCancel>
-            <AlertDialogAction 
+            <AlertDialogAction
               onClick={() => deleteId && handleDelete(deleteId)}
               className="bg-destructive"
             >
               Yes, Delete
             </AlertDialogAction>
-</AlertDialogFooter>
+          </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
 
@@ -446,7 +448,7 @@ interface PDFRecord {
             <DialogTitle>Create Admin Update PDF</DialogTitle>
           </DialogHeader>
           <div className="space-y-4 max-h-[70vh] overflow-y-auto">
-  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div>
                 <label className="text-sm text-muted-foreground">Date/Time</label>
                 <Input value={new Date().toLocaleString()} readOnly />
@@ -460,7 +462,7 @@ interface PDFRecord {
               <label className="text-sm text-muted-foreground">Large Notes</label>
               <textarea className="w-full h-48 p-3 rounded-md border border-border bg-background" value={adminNotes} onChange={(e) => setAdminNotes(e.target.value)} placeholder="Write updates, notes, issues…" />
             </div>
-  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div>
                 <label className="text-sm text-muted-foreground">P&L Summary</label>
                 <Input value={adminPnl} onChange={(e) => setAdminPnl(e.target.value)} placeholder="Brief P&L summary" />
@@ -487,17 +489,17 @@ interface PDFRecord {
             </div>
             <div>
               <label className="text-sm text-muted-foreground">Employee Progress</label>
-  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-2 text-sm items-center">
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-2 text-sm items-center">
                 <div className="font-semibold">Name</div>
                 <div className="font-semibold">Training %</div>
                 <div className="font-semibold">Jobs Today</div>
                 <div className="font-semibold">Hours Worked</div>
                 {employeeRows.map((row, idx) => (
                   <Fragment key={idx}>
-                    <Input value={row.name} onChange={(e) => setEmployeeRows(r => { const c=[...r]; c[idx] = { ...c[idx], name: e.target.value }; return c; })} />
-                    <Input value={row.training} onChange={(e) => setEmployeeRows(r => { const c=[...r]; c[idx] = { ...c[idx], training: e.target.value }; return c; })} />
-                    <Input value={row.jobsToday} onChange={(e) => setEmployeeRows(r => { const c=[...r]; c[idx] = { ...c[idx], jobsToday: e.target.value }; return c; })} />
-                    <Input value={row.hours} onChange={(e) => setEmployeeRows(r => { const c=[...r]; c[idx] = { ...c[idx], hours: e.target.value }; return c; })} />
+                    <Input value={row.name} onChange={(e) => setEmployeeRows(r => { const c = [...r]; c[idx] = { ...c[idx], name: e.target.value }; return c; })} />
+                    <Input value={row.training} onChange={(e) => setEmployeeRows(r => { const c = [...r]; c[idx] = { ...c[idx], training: e.target.value }; return c; })} />
+                    <Input value={row.jobsToday} onChange={(e) => setEmployeeRows(r => { const c = [...r]; c[idx] = { ...c[idx], jobsToday: e.target.value }; return c; })} />
+                    <Input value={row.hours} onChange={(e) => setEmployeeRows(r => { const c = [...r]; c[idx] = { ...c[idx], hours: e.target.value }; return c; })} />
                   </Fragment>
                 ))}
               </div>
@@ -507,13 +509,13 @@ interface PDFRecord {
               <Button className="bg-red-700 hover:bg-red-800" onClick={() => {
                 try {
                   // Ensure alerts list is up-to-date
-                  try { refreshAlerts(); } catch {}
+                  try { refreshAlerts(); } catch { }
                   const doc = new jsPDF();
                   // Header
                   doc.setTextColor(200, 0, 0);
                   doc.setFontSize(18);
                   doc.text("Admin Updates", 20, 20);
-                  doc.setTextColor(0,0,0);
+                  doc.setTextColor(0, 0, 0);
                   doc.setFontSize(11);
                   doc.text(`Date/Time: ${new Date().toLocaleString()}`, 20, 30);
                   // Notes
@@ -543,7 +545,7 @@ interface PDFRecord {
                   // Other Info
                   doc.text(`P&L: ${adminPnl || '(n/a)'} | Revenue: ${adminRevenue || '(n/a)'} | Pending Bookings: ${adminPendingCount || '(n/a)'}`, 20, y);
                   const pdfDataUrl = doc.output('dataurlstring');
-                  const fileName = `Admin_Update_${new Date().toLocaleDateString().replace(/\//g,'-')}.pdf`;
+                  const fileName = `Admin_Update_${new Date().toLocaleDateString().replace(/\//g, '-')}.pdf`;
                   savePDFToArchive('Admin Updates', 'Admin', 'admin_updates', pdfDataUrl, { fileName, path: 'Admin Updates/' });
                   toast({ title: 'Saved', description: 'Admin Update PDF created.' });
                   setAdminModalOpen(false);
