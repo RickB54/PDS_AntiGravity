@@ -22,19 +22,25 @@ export const supabase = {
     onAuthStateChange: () => ({ data: { subscription: { unsubscribe: () => { } } } }),
     updateUser: async () => ({ data: null, error: null }),
   },
-  from: (/*table:string*/) => ({
-    select: async () => ({ data: [], error: null }),
-    insert: async () => ({ data: [], error: null }),
-    upsert: async () => ({ data: [], error: null }),
-    update: async () => ({ data: [], error: null }),
-    delete: async () => ({ data: [], error: null }),
-    eq: () => ({
-      select: async () => ({ data: [], error: null }),
-      maybeSingle: async () => ({ data: null, error: null }),
-      eq: () => ({ maybeSingle: async () => ({ data: null, error: null }) })
-    }),
-    match: () => ({ select: async () => ({ data: [], error: null }) }),
-  }),
+  from: (/*table:string*/) => {
+    const createBuilder = (data: any = []) => {
+      const result = { data, error: null };
+      const builder: any = {
+        select: () => builder,
+        order: () => builder,
+        eq: () => builder,
+        single: async () => ({ data: Array.isArray(data) ? data[0] || {} : data, error: null }),
+        maybeSingle: async () => ({ data: Array.isArray(data) ? data[0] || null : data, error: null }),
+        upsert: () => builder,
+        insert: () => builder,
+        update: () => builder,
+        delete: () => builder,
+        then: (resolve: any) => resolve(result)
+      };
+      return builder;
+    };
+    return createBuilder([]);
+  },
   storage: {
     from: () => ({ upload: async () => ({ error: null }), download: async () => ({ data: null, error: null }) })
   },

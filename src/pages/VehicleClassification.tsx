@@ -579,12 +579,12 @@ export default function VehicleClassification() {
                             {/* Customer Field (Optional) */}
                             <div>
                                 <label className="text-sm text-zinc-400 mb-2 block">Link to Customer (Optional)</label>
-                                <Select value={selectedCustomerId} onValueChange={setSelectedCustomerId}>
+                                <Select value={selectedCustomerId || "none"} onValueChange={(val) => setSelectedCustomerId(val === "none" ? "" : val)}>
                                     <SelectTrigger className="bg-zinc-800 border-zinc-700 text-white">
                                         <SelectValue placeholder="Select a customer (optional)..." />
                                     </SelectTrigger>
                                     <SelectContent className="bg-zinc-800 border-zinc-700">
-                                        <SelectItem value="" className="text-white">None</SelectItem>
+                                        <SelectItem value="none" className="text-white">None</SelectItem>
                                         {customers.map(c => (
                                             <SelectItem key={c.id} value={c.id} className="text-white">
                                                 {c.name}{c.email ? ` (${c.email})` : ''}

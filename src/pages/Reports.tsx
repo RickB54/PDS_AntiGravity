@@ -22,6 +22,7 @@ const Reports = () => {
   const [invoices, setInvoices] = useState<any[]>([]);
   const [chemicals, setChemicals] = useState<any[]>([]);
   const [materials, setMaterials] = useState<any[]>([]);
+  const [tools, setTools] = useState<any[]>([]);
   const [jobs, setJobs] = useState<any[]>([]);
   const [estimates, setEstimates] = useState<any[]>([]);
   const [payrollHistory, setPayrollHistory] = useState<any[]>([]);
@@ -35,7 +36,7 @@ const Reports = () => {
   const [customerJobsOpen, setCustomerJobsOpen] = useState<boolean>(false);
   const [customerJobs, setCustomerJobs] = useState<any[]>([]);
   const [customerJobsCustomer, setCustomerJobsCustomer] = useState<any | null>(null);
-  
+
   const currentUser = getCurrentUser();
   const isAdmin = currentUser?.email.includes('admin');
 
@@ -48,6 +49,7 @@ const Reports = () => {
     const inv = (await localforage.getItem<any[]>("invoices")) || [];
     const chems = (await localforage.getItem<any[]>("chemicals")) || [];
     const mats = (await localforage.getItem<any[]>("materials")) || [];
+    const tls = (await localforage.getItem<any[]>("tools")) || [];
     let jobsData = (await localforage.getItem<any[]>("completed-jobs")) || [];
     if (!jobsData || jobsData.length === 0) {
       try {
@@ -65,6 +67,7 @@ const Reports = () => {
     setInvoices(inv);
     setChemicals(chems);
     setMaterials(mats);
+    setTools(tls);
     setJobs(jobsData);
     setEstimates(estimatesData);
     setIncome(incomeData);
@@ -77,15 +80,15 @@ const Reports = () => {
     return items.filter(item => {
       const itemDate = new Date(item[dateField] || item.date || item.createdAt || item.finishedAt);
       if (!itemDate || isNaN(itemDate.getTime())) return false;
-      
+
       let passQuick = true;
       if (dateFilter === "daily") passQuick = itemDate.toDateString() === now.toDateString();
       else if (dateFilter === "weekly") passQuick = itemDate >= new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
       else if (dateFilter === "monthly") passQuick = itemDate.getMonth() === now.getMonth() && itemDate.getFullYear() === now.getFullYear();
 
       let passRange = true;
-      if (dateRange.from) passRange = itemDate >= new Date(dateRange.from.setHours(0,0,0,0));
-      if (passRange && dateRange.to) passRange = itemDate <= new Date(dateRange.to.setHours(23,59,59,999));
+      if (dateRange.from) passRange = itemDate >= new Date(dateRange.from.setHours(0, 0, 0, 0));
+      if (passRange && dateRange.to) passRange = itemDate <= new Date(dateRange.to.setHours(23, 59, 59, 999));
 
       return passQuick && passRange;
     });
@@ -97,10 +100,10 @@ const Reports = () => {
     doc.text("Customer Report", 105, 20, { align: "center" });
     doc.setFontSize(10);
     doc.text(`Generated: ${new Date().toLocaleString()}`, 105, 28, { align: "center" });
-    
+
     let y = 40;
     const filteredCustomers = filterByDate(customers);
-    
+
     filteredCustomers.forEach((cust) => {
       if (y > 270) { doc.addPage(); y = 20; }
       doc.setFontSize(12);
@@ -125,12 +128,12 @@ const Reports = () => {
     doc.text("Inventory Report", 105, 20, { align: "center" });
     doc.setFontSize(10);
     doc.text(`Generated: ${new Date().toLocaleString()}`, 105, 28, { align: "center" });
-    
+
     let y = 40;
     doc.setFontSize(14);
     doc.text("Chemical Inventory", 20, y);
     y += 8;
-    
+
     chemicals.forEach(chem => {
       if (y > 270) { doc.addPage(); y = 20; }
       doc.setFontSize(10);
@@ -138,16 +141,28 @@ const Reports = () => {
       doc.text(`${chem.name} - ${chem.bottleSize} - Stock: ${chem.currentStock} ${lowStock ? '(LOW STOCK)' : ''}`, 20, y);
       y += 6;
     });
-    
+
     y += 5;
     doc.setFontSize(14);
     doc.text("Materials Inventory", 20, y);
     y += 8;
-    
+
     materials.forEach(mat => {
       if (y > 270) { doc.addPage(); y = 20; }
       doc.setFontSize(10);
       doc.text(`${mat.name} - Qty: ${mat.quantity}`, 20, y);
+      y += 6;
+    });
+
+    y += 5;
+    doc.setFontSize(14);
+    doc.text("Tools Inventory", 20, y);
+    y += 8;
+
+    tools.forEach(tool => {
+      if (y > 270) { doc.addPage(); y = 20; }
+      doc.setFontSize(10);
+      doc.text(`${tool.name} - ${tool.warranty ? 'Warranty: ' + tool.warranty : ''} - ${tool.notes || ''}`, 20, y);
       y += 6;
     });
 
@@ -161,14 +176,14 @@ const Reports = () => {
     doc.text("Employee Performance Report", 105, 20, { align: "center" });
     doc.setFontSize(10);
     doc.text(`Generated: ${new Date().toLocaleString()}`, 105, 28, { align: "center" });
-    
+
     let y = 40;
     const filteredJobs = filterByDate(jobs, 'finishedAt');
-    
+
     doc.setFontSize(12);
     doc.text(`Total Jobs Completed: ${filteredJobs.length}`, 20, y);
     y += 10;
-    
+
     filteredJobs.forEach(job => {
       if (y > 270) { doc.addPage(); y = 20; }
       doc.setFontSize(10);
@@ -192,14 +207,14 @@ const Reports = () => {
     doc.text("Estimates & Quotes Report", 105, 20, { align: "center" });
     doc.setFontSize(10);
     doc.text(`Generated: ${new Date().toLocaleString()}`, 105, 28, { align: "center" });
-    
+
     let y = 40;
     const filteredEstimates = filterByDate(estimates);
-    
+
     doc.setFontSize(12);
     doc.text(`Total Estimates: ${filteredEstimates.length}`, 20, y);
     y += 10;
-    
+
     filteredEstimates.forEach(est => {
       if (y > 270) { doc.addPage(); y = 20; }
       doc.setFontSize(10);
@@ -286,14 +301,14 @@ const Reports = () => {
   const lowStockMaterials = materials.filter(m => (m.quantity || 0) <= (m.threshold || m.lowThreshold || 0));
   const totalInventoryValue = chemicals.reduce((sum, c) => sum + ((c.costPerBottle || 0) * (c.currentStock || 0)), 0);
   const totalMaterialsValue = materials.reduce((sum, m) => sum + ((m.costPerItem || 0) * (m.quantity || 0)), 0);
-  const chemicalsSorted = [...chemicals].sort((a,b) => {
+  const chemicalsSorted = [...chemicals].sort((a, b) => {
     const alow = a.currentStock <= a.threshold; const blow = b.currentStock <= b.threshold;
-    if (alow !== blow) return alow ? -1 : 1; return (a.name||'').localeCompare(b.name||'');
+    if (alow !== blow) return alow ? -1 : 1; return (a.name || '').localeCompare(b.name || '');
   });
-  const materialsSorted = [...materials].sort((a,b) => {
-    const alow = (a.quantity||0) <= (a.threshold || a.lowThreshold || 0);
-    const blow = (b.quantity||0) <= (b.threshold || b.lowThreshold || 0);
-    if (alow !== blow) return alow ? -1 : 1; return (a.name||'').localeCompare(b.name||'');
+  const materialsSorted = [...materials].sort((a, b) => {
+    const alow = (a.quantity || 0) <= (a.threshold || a.lowThreshold || 0);
+    const blow = (b.quantity || 0) <= (b.threshold || b.lowThreshold || 0);
+    if (alow !== blow) return alow ? -1 : 1; return (a.name || '').localeCompare(b.name || '');
   });
 
   const [params] = useSearchParams();
@@ -305,7 +320,7 @@ const Reports = () => {
       const url = new URL(window.location.href);
       url.searchParams.set('tab', tab);
       window.history.replaceState({}, '', url.toString());
-    } catch {}
+    } catch { }
   }, [tab]);
 
   return (
@@ -331,7 +346,7 @@ const Reports = () => {
             </div>
           </Card>
 
-          <Tabs value={tab} onValueChange={(v)=>setTab(v as any)} className="space-y-4">
+          <Tabs value={tab} onValueChange={(v) => setTab(v as any)} className="space-y-4">
             <TabsList className="grid w-full grid-cols-1 sm:grid-cols-2 md:grid-cols-6 bg-muted">
               <TabsTrigger value="customers">Customers</TabsTrigger>
               <TabsTrigger value="invoices">Invoices</TabsTrigger>
@@ -359,7 +374,7 @@ const Reports = () => {
                   <p className="text-sm text-muted-foreground">
                     Total Customers: <span className="font-semibold text-foreground">{filterByDate(customers).length}</span>
                   </p>
-                  
+
                   {/* Customer-Specific Report */}
                   <div className="pt-4 border-t border-border">
                     <label className="block text-sm font-medium mb-2">Select Customer for Detailed Report</label>
@@ -376,13 +391,13 @@ const Reports = () => {
                       </SelectContent>
                     </Select>
                   </div>
-                  
+
                   {selectedCustomer && (() => {
                     const cust = customers.find(c => c.id === selectedCustomer);
                     const custInvoices = invoices.filter(inv => inv.customerId === selectedCustomer);
                     const totalSpent = custInvoices.reduce((sum, inv) => sum + (inv.total || 0), 0);
                     const totalOwed = custInvoices.reduce((sum, inv) => sum + ((inv.total || 0) - (inv.paidAmount || 0)), 0);
-                    
+
                     return (
                       <div className="mt-4 p-4 bg-muted/20 rounded-lg">
                         <button
@@ -394,7 +409,7 @@ const Reports = () => {
                             setCustomerJobsOpen(true);
                           }}
                         >{cust?.name}</button>
-<div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-3">
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-3">
                           <div>
                             <p className="text-xs text-muted-foreground">Total Spent</p>
                             <p className="text-xl font-bold text-primary">${totalSpent.toFixed(2)}</p>
@@ -427,7 +442,7 @@ const Reports = () => {
                     </Button>
                   </div>
                 </div>
-<div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
                   <div>
                     <p className="text-xs text-muted-foreground">Total Invoices</p>
                     <p className="text-2xl font-bold text-foreground">{filterByDate(invoices).length}</p>
@@ -447,8 +462,8 @@ const Reports = () => {
                   <div>
                     <p className="text-xs text-muted-foreground">Outstanding</p>
                     <p className="text-2xl font-bold text-destructive">
-                      ${(filterByDate(invoices).reduce((sum, inv) => sum + (inv.total || 0), 0) - 
-                         filterByDate(invoices).reduce((sum, inv) => sum + (inv.paidAmount || 0), 0)).toFixed(2)}
+                      ${(filterByDate(invoices).reduce((sum, inv) => sum + (inv.total || 0), 0) -
+                        filterByDate(invoices).reduce((sum, inv) => sum + (inv.paidAmount || 0), 0)).toFixed(2)}
                     </p>
                   </div>
                 </div>
@@ -469,7 +484,7 @@ const Reports = () => {
                     </Button>
                   </div>
                 </div>
-                
+
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 mb-6">
                   <div>
                     <p className="text-xs text-muted-foreground">Total Chemicals</p>
@@ -530,11 +545,11 @@ const Reports = () => {
                         <TableRow key={mat.id}>
                           <TableCell className="font-medium">{mat.name}</TableCell>
                           <TableCell>{mat.subtype || mat.type || '—'}</TableCell>
-                          <TableCell className={(mat.quantity||0) <= (mat.threshold || mat.lowThreshold || 0) ? 'text-destructive font-bold' : ''}>
+                          <TableCell className={(mat.quantity || 0) <= (mat.threshold || mat.lowThreshold || 0) ? 'text-destructive font-bold' : ''}>
                             {mat.quantity || 0}
                           </TableCell>
                           <TableCell>
-                            {(mat.quantity||0) <= (mat.threshold || mat.lowThreshold || 0) ? (
+                            {(mat.quantity || 0) <= (mat.threshold || mat.lowThreshold || 0) ? (
                               <span className="text-destructive font-semibold">⚠️ LOW STOCK</span>
                             ) : (
                               <span className="text-success">✓ OK</span>
@@ -570,13 +585,13 @@ const Reports = () => {
                 {(() => {
                   const filteredJobs = filterByDate(jobs, 'finishedAt');
                   const filteredPayments = filterByDate(payrollHistory, 'date');
-                  const totalPaid = filteredPayments.reduce((s,p)=> s + (p.amount||0), 0);
+                  const totalPaid = filteredPayments.reduce((s, p) => s + (p.amount || 0), 0);
                   const hoursRegex = /([0-9]+(?:\.[0-9]+)?)\s*hrs/i;
-                  const totalHours = filteredPayments.reduce((s,p)=>{
-                    const d = String(p.description||'');
+                  const totalHours = filteredPayments.reduce((s, p) => {
+                    const d = String(p.description || '');
                     const m = d.match(hoursRegex); return s + (m ? Number(m[1]) : 0);
                   }, 0);
-                  const employeesPaid = Array.from(new Set(filteredPayments.map(p=>p.employee).filter(Boolean))).length;
+                  const employeesPaid = Array.from(new Set(filteredPayments.map(p => p.employee).filter(Boolean))).length;
                   return (
                     <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
                       <div>
@@ -655,7 +670,7 @@ const Reports = () => {
                           <TableCell className="font-medium">{p.employee || 'N/A'}</TableCell>
                           <TableCell>{p.type || 'N/A'}</TableCell>
                           <TableCell>{p.description || '—'}</TableCell>
-                          <TableCell className="text-primary font-semibold">${Number(p.amount||0).toFixed(2)}</TableCell>
+                          <TableCell className="text-primary font-semibold">${Number(p.amount || 0).toFixed(2)}</TableCell>
                         </TableRow>
                       ))}
                       {filterByDate(payrollHistory, 'date').length === 0 && (
@@ -685,7 +700,7 @@ const Reports = () => {
                     </Button>
                   </div>
                 </div>
-                
+
                 <div className="mb-6">
                   <p className="text-sm text-muted-foreground">
                     Total Estimates: <span className="font-semibold text-foreground">{filterByDate(estimates).length}</span>
@@ -712,9 +727,9 @@ const Reports = () => {
                         <TableCell className="text-primary font-semibold">${est.total || 0}</TableCell>
                         <TableCell>
                           <span className={`px-2 py-1 rounded text-xs font-semibold 
-                            ${est.status === 'Accepted' ? 'bg-success/20 text-success' : 
-                              est.status === 'Sent' ? 'bg-primary/20 text-primary' : 
-                              'bg-muted text-muted-foreground'}`}>
+                            ${est.status === 'Accepted' ? 'bg-success/20 text-success' :
+                              est.status === 'Sent' ? 'bg-primary/20 text-primary' :
+                                'bg-muted text-muted-foreground'}`}>
                             {est.status || 'Draft'}
                           </span>
                         </TableCell>
@@ -746,25 +761,25 @@ const Reports = () => {
                         let okQuick = true;
                         const now = new Date();
                         if (dateFilter === 'daily') okQuick = dt.toDateString() === now.toDateString();
-                        else if (dateFilter === 'weekly') okQuick = dt >= new Date(now.getTime() - 7*24*60*60*1000);
+                        else if (dateFilter === 'weekly') okQuick = dt >= new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
                         else if (dateFilter === 'monthly') okQuick = dt.getMonth() === now.getMonth() && dt.getFullYear() === now.getFullYear();
                         let okRange = true;
-                        if (dateRange.from) okRange = dt >= new Date(dateRange.from.setHours(0,0,0,0));
-                        if (okRange && dateRange.to) okRange = dt <= new Date(dateRange.to.setHours(23,59,59,999));
+                        if (dateRange.from) okRange = dt >= new Date(dateRange.from.setHours(0, 0, 0, 0));
+                        if (okRange && dateRange.to) okRange = dt <= new Date(dateRange.to.setHours(23, 59, 59, 999));
                         return okQuick && okRange;
                       };
                       const lines: string[] = ['Type,Date,Amount,Category,Description,Customer,Method'];
                       income.filter(i => within(i.date || i.createdAt)).forEach(i => {
-                        lines.push(`Income,${(i.date || i.createdAt || '').slice(0,10)},${i.amount||0},${i.category||''},${String(i.description||'').replace(/,/g,';')},${i.customerName||''},${i.paymentMethod||''}`);
+                        lines.push(`Income,${(i.date || i.createdAt || '').slice(0, 10)},${i.amount || 0},${i.category || ''},${String(i.description || '').replace(/,/g, ';')},${i.customerName || ''},${i.paymentMethod || ''}`);
                       });
                       expenses.filter(e => within(e.createdAt)).forEach(e => {
-                        lines.push(`Expense,${(e.createdAt||'').slice(0,10)},${e.amount||0},${e.category||''},${String(e.description||'').replace(/,/g,';')},,`);
+                        lines.push(`Expense,${(e.createdAt || '').slice(0, 10)},${e.amount || 0},${e.category || ''},${String(e.description || '').replace(/,/g, ';')},,`);
                       });
                       const blob = new Blob([lines.join('\n')], { type: 'text/csv' });
                       const url = URL.createObjectURL(blob);
                       const a = document.createElement('a');
-                      a.href = url; a.download = `accounting_${new Date().toISOString().slice(0,10)}.csv`;
-                      a.click(); setTimeout(()=>URL.revokeObjectURL(url), 1000);
+                      a.href = url; a.download = `accounting_${new Date().toISOString().slice(0, 10)}.csv`;
+                      a.click(); setTimeout(() => URL.revokeObjectURL(url), 1000);
                     }}>
                       Export CSV
                     </Button>
@@ -774,21 +789,21 @@ const Reports = () => {
                   <div>
                     <p className="text-xs text-muted-foreground">Income</p>
                     <p className="text-2xl font-bold text-success">
-                      ${income.filter(i => filterByDate([i], i.date ? 'date' : 'createdAt').length).reduce((s,i)=> s + (i.amount||0), 0).toFixed(2)}
+                      ${income.filter(i => filterByDate([i], i.date ? 'date' : 'createdAt').length).reduce((s, i) => s + (i.amount || 0), 0).toFixed(2)}
                     </p>
                   </div>
                   <div>
                     <p className="text-xs text-muted-foreground">Expenses</p>
                     <p className="text-2xl font-bold text-destructive">
-                      ${expenses.filter(e => filterByDate([e]).length).reduce((s,e)=> s + (e.amount||0), 0).toFixed(2)}
+                      ${expenses.filter(e => filterByDate([e]).length).reduce((s, e) => s + (e.amount || 0), 0).toFixed(2)}
                     </p>
                   </div>
                   <div>
                     <p className="text-xs text-muted-foreground">Profit / Loss</p>
                     <p className="text-2xl font-bold text-foreground">
                       {(() => {
-                        const inc = income.filter(i => filterByDate([i], i.date ? 'date' : 'createdAt').length).reduce((s,i)=> s + (i.amount||0), 0);
-                        const exp = expenses.filter(e => filterByDate([e]).length).reduce((s,e)=> s + (e.amount||0), 0);
+                        const inc = income.filter(i => filterByDate([i], i.date ? 'date' : 'createdAt').length).reduce((s, i) => s + (i.amount || 0), 0);
+                        const exp = expenses.filter(e => filterByDate([e]).length).reduce((s, e) => s + (e.amount || 0), 0);
                         const p = inc - exp; return `${p < 0 ? '-' : ''}$${Math.abs(p).toFixed(2)}`;
                       })()}
                     </p>
@@ -812,8 +827,8 @@ const Reports = () => {
                     <TableBody>
                       {income.filter(i => filterByDate([i], i.date ? 'date' : 'createdAt').length).map((i, idx) => (
                         <TableRow key={idx}>
-                          <TableCell>{(i.date || i.createdAt || '').slice(0,10)}</TableCell>
-                          <TableCell>${(i.amount||0).toFixed(2)}</TableCell>
+                          <TableCell>{(i.date || i.createdAt || '').slice(0, 10)}</TableCell>
+                          <TableCell>${(i.amount || 0).toFixed(2)}</TableCell>
                           <TableCell>{i.category || 'General'}</TableCell>
                           <TableCell>{i.description || ''}</TableCell>
                           <TableCell>{i.customerName || ''}</TableCell>
@@ -844,8 +859,8 @@ const Reports = () => {
                     <TableBody>
                       {expenses.filter(e => filterByDate([e]).length).map((e, idx) => (
                         <TableRow key={idx}>
-                          <TableCell>{(e.createdAt || '').slice(0,10)}</TableCell>
-                          <TableCell>${(e.amount||0).toFixed(2)}</TableCell>
+                          <TableCell>{(e.createdAt || '').slice(0, 10)}</TableCell>
+                          <TableCell>${(e.amount || 0).toFixed(2)}</TableCell>
                           <TableCell>{e.category || 'General'}</TableCell>
                           <TableCell>{e.description || ''}</TableCell>
                         </TableRow>
@@ -955,16 +970,16 @@ const Reports = () => {
                       try {
                         const url = buildCustomerJobsPDF(customerJobsCustomer, customerJobs, false);
                         window.open(url, '_blank');
-                      } catch {}
+                      } catch { }
                     }}>
                       <Printer className="h-4 w-4 mr-2" />Print
                     </Button>
                     <Button variant="outline" size="sm" onClick={() => {
                       try {
                         const dataUrl = buildCustomerJobsPDF(customerJobsCustomer, customerJobs, true);
-                        const fileName = `CustomerJobs_${String(customerJobsCustomer.name||'Customer').replace(/\s/g,'_')}_${new Date().toISOString().slice(0,10)}.pdf`;
+                        const fileName = `CustomerJobs_${String(customerJobsCustomer.name || 'Customer').replace(/\s/g, '_')}_${new Date().toISOString().slice(0, 10)}.pdf`;
                         savePDFToArchive('Customer', customerJobsCustomer.name || 'Customer', customerJobsCustomer.id || String(Date.now()), dataUrl, { fileName });
-                      } catch {}
+                      } catch { }
                     }}>
                       <Save className="h-4 w-4 mr-2" />Save to File Manager
                     </Button>

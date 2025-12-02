@@ -112,9 +112,15 @@ export default function AddonUpsellScript() {
     };
 
     const loadHistory = async () => {
-        if (selectedClient) {
+        if (selectedClient && selectedClient !== 'none') {
+            // Load history for specific customer
             const hist = await getClientUpsellHistory(selectedClient);
             setHistory(hist);
+        } else {
+            // Load all generic scripts (client_id === 'generic')
+            const allHistory = await getClientUpsells<ClientUpsell>();
+            const genericHistory = allHistory.filter(item => item.client_id === 'generic');
+            setHistory(genericHistory);
         }
     };
 
@@ -143,18 +149,15 @@ export default function AddonUpsellScript() {
     };
 
     const handleSave = async () => {
-        if (!selectedClient) {
-            toast({ title: "Cannot Save", description: "Generic scripts cannot be saved. Please select a client to save.", variant: "destructive" });
-            return;
-        }
-
-        const client = customers.find(c => c.id === selectedClient);
-        if (!client) return;
+        // Allow saving with or without a customer
+        const clientId = selectedClient || 'generic';
+        const client = selectedClient ? customers.find(c => c.id === selectedClient) : null;
+        const clientName = client ? client.name : 'Generic Customer';
 
         const data: ClientUpsell = {
             id: editingId || Date.now().toString(),
-            client_id: selectedClient,
-            client_name: client.name,
+            client_id: clientId,
+            client_name: clientName,
             vehicle_type: vehicleType,
             condition,
             complaints,
@@ -170,7 +173,73 @@ export default function AddonUpsellScript() {
         };
 
         await upsertClientUpsell(data);
-        toast({ title: "Saved", description: "Upsell record saved successfully" });
+
+        // Also save PDF to File Manager
+        if (script) {
+            const doc = new jsPDF();
+            let y = 20;
+
+            const addText = (text: string, fontSize = 11, isBold = false) => {
+                doc.setFontSize(fontSize);
+                if (isBold) doc.setFont("helvetica", "bold");
+                else doc.setFont("helvetica", "normal");
+
+                const lines = doc.splitTextToSize(text, 170);
+                lines.forEach((line: string) => {
+                    if (y > 270) {
+                        doc.addPage();
+                        y = 20;
+                    }
+                    doc.text(line, 20, y);
+                    y += 6;
+                });
+                y += 2;
+            };
+
+            addText("Client Upsell Script", 18, true);
+            addText(`Client: ${clientName}`, 12);
+            addText(`Date: ${new Date().toLocaleDateString()}`, 12);
+            addText(`Vehicle: ${vehicleType} (Condition: ${condition}/5)`, 12);
+            y += 5;
+
+            if (complaints.length > 0 || customComplaint) {
+                addText("Complaints:", 12, true);
+                complaints.forEach(c => addText(`• ${c}`));
+                if (customComplaint) addText(`• ${customComplaint}`);
+                y += 3;
+            }
+
+            if (goals.length > 0 || customGoal) {
+                addText("Goals:", 12, true);
+                goals.forEach(g => addText(`• ${g}`));
+                if (customGoal) addText(`• ${customGoal}`);
+                y += 3;
+            }
+
+            const services = UPSELL_SERVICES.filter(s => selectedUpsells.includes(s.id));
+            if (services.length > 0) {
+                addText("Recommended Services:", 12, true);
+                services.forEach(s => {
+                    addText(`• ${s.name} - $${s.price}`);
+                });
+                const total = services.reduce((sum, s) => sum + s.price, 0);
+                addText(`Total: $${total}`, 12, true);
+                y += 3;
+            }
+
+            addText("Sales Script:", 12, true);
+            addText(script);
+
+            const dataUrl = doc.output("dataurlstring");
+            const fileName = `Upsell_Script_${clientName.replace(/\s+/g, "_")}_${new Date().toISOString().split("T")[0]}.pdf`;
+
+            savePDFToArchive("Upsell Scripts", clientName, `upsell-${Date.now()}`, dataUrl, {
+                fileName,
+                path: "Upsell Scripts/"
+            });
+        }
+
+        toast({ title: "Saved", description: selectedClient ? "Upsell record saved successfully (PDF saved to File Manager)" : "Generic script saved successfully (PDF saved to File Manager)" });
         loadHistory();
         handleReset();
     };
@@ -307,11 +376,12 @@ export default function AddonUpsellScript() {
                                 💡 You can create a generic script without selecting a client, or choose a specific client to save the script.
                             </div>
 
-                            <Select value={selectedClient} onValueChange={setSelectedClient}>
+                            <Select value={selectedClient || "none"} onValueChange={(val) => setSelectedClient(val === "none" ? "" : val)}>
                                 <SelectTrigger className="bg-zinc-800 border-zinc-700 text-white">
                                     <SelectValue placeholder="Choose a client or leave blank for generic..." />
                                 </SelectTrigger>
                                 <SelectContent className="bg-zinc-800 border-zinc-700">
+                                    <SelectItem value="none" className="text-white font-semibold">🔓 No Customer / Generic Mode</SelectItem>
                                     {customers.map(c => (
                                         <SelectItem key={c.id} value={c.id} className="text-white">
                                             {c.name} {c.email && `(${c.email})`}
@@ -339,106 +409,100 @@ export default function AddonUpsellScript() {
                         </Card>
 
                         {/* Vehicle Info */}
-                        {(selectedClient || complaints.length > 0 || goals.length > 0) && (
-                            <Card className="p-6 bg-zinc-900 border-zinc-800">
-                                <h3 className="text-lg font-bold text-white mb-4">Vehicle Information</h3>
-                                <div className="grid grid-cols-2 gap-4">
-                                    <div>
-                                        <Label className="text-zinc-400">Vehicle Type</Label>
-                                        <Select value={vehicleType} onValueChange={setVehicleType}>
-                                            <SelectTrigger className="bg-zinc-800 border-zinc-700 text-white">
-                                                <SelectValue />
-                                            </SelectTrigger>
-                                            <SelectContent className="bg-zinc-800 border-zinc-700">
-                                                <SelectItem value="Compact" className="text-white">Compact</SelectItem>
-                                                <SelectItem value="Mid-Size/SUV" className="text-white">Mid-Size/SUV</SelectItem>
-                                                <SelectItem value="Truck" className="text-white">Truck</SelectItem>
-                                                <SelectItem value="Luxury" className="text-white">Luxury</SelectItem>
-                                            </SelectContent>
-                                        </Select>
-                                    </div>
-                                    <div>
-                                        <Label className="text-zinc-400">Condition (1-5)</Label>
-                                        <Input
-                                            type="number"
-                                            min="1"
-                                            max="5"
-                                            value={condition}
-                                            onChange={(e) => setCondition(Number(e.target.value))}
-                                            className="bg-zinc-800 border-zinc-700 text-white"
-                                        />
-                                    </div>
+                        <Card className="p-6 bg-zinc-900 border-zinc-800">
+                            <h3 className="text-lg font-bold text-white mb-4">Vehicle Information</h3>
+                            <div className="grid grid-cols-2 gap-4">
+                                <div>
+                                    <Label className="text-zinc-400">Vehicle Type</Label>
+                                    <Select value={vehicleType} onValueChange={setVehicleType}>
+                                        <SelectTrigger className="bg-zinc-800 border-zinc-700 text-white">
+                                            <SelectValue />
+                                        </SelectTrigger>
+                                        <SelectContent className="bg-zinc-800 border-zinc-700">
+                                            <SelectItem value="Compact" className="text-white">Compact</SelectItem>
+                                            <SelectItem value="Mid-Size/SUV" className="text-white">Mid-Size/SUV</SelectItem>
+                                            <SelectItem value="Truck" className="text-white">Truck</SelectItem>
+                                            <SelectItem value="Luxury" className="text-white">Luxury</SelectItem>
+                                        </SelectContent>
+                                    </Select>
                                 </div>
-                            </Card>
-                        )}
+                                <div>
+                                    <Label className="text-zinc-400">Condition (1-5)</Label>
+                                    <Input
+                                        type="number"
+                                        min="1"
+                                        max="5"
+                                        value={condition}
+                                        onChange={(e) => setCondition(Number(e.target.value))}
+                                        className="bg-zinc-800 border-zinc-700 text-white"
+                                    />
+                                </div>
+                            </div>
+                        </Card>
 
                         {/* Complaints */}
-                        {(selectedClient || complaints.length > 0 || goals.length > 0) && (
-                            <Card className="p-6 bg-zinc-900 border-zinc-800">
-                                <h3 className="text-lg font-bold text-white mb-4">Customer Complaints</h3>
-                                <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
-                                    {COMPLAINT_OPTIONS.map(complaint => (
-                                        <div key={complaint} className="flex items-center space-x-2">
-                                            <Checkbox
-                                                id={`complaint-${complaint}`}
-                                                checked={complaints.includes(complaint)}
-                                                onCheckedChange={() => handleComplaintToggle(complaint)}
-                                                className="border-zinc-700"
-                                            />
-                                            <label
-                                                htmlFor={`complaint-${complaint}`}
-                                                className="text-sm text-white cursor-pointer"
-                                            >
-                                                {complaint}
-                                            </label>
-                                        </div>
-                                    ))}
-                                </div>
-                                <div className="mt-4">
-                                    <Label className="text-zinc-400">Custom Complaint</Label>
-                                    <Input
-                                        placeholder="Any other issues..."
-                                        value={customComplaint}
-                                        onChange={(e) => setCustomComplaint(e.target.value)}
-                                        className="bg-zinc-800 border-zinc-700 text-white"
-                                    />
-                                </div>
-                            </Card>
-                        )}
+                        <Card className="p-6 bg-zinc-900 border-zinc-800">
+                            <h3 className="text-lg font-bold text-white mb-4">Customer Complaints</h3>
+                            <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
+                                {COMPLAINT_OPTIONS.map(complaint => (
+                                    <div key={complaint} className="flex items-center space-x-2">
+                                        <Checkbox
+                                            id={`complaint-${complaint}`}
+                                            checked={complaints.includes(complaint)}
+                                            onCheckedChange={() => handleComplaintToggle(complaint)}
+                                            className="border-zinc-700"
+                                        />
+                                        <label
+                                            htmlFor={`complaint-${complaint}`}
+                                            className="text-sm text-white cursor-pointer"
+                                        >
+                                            {complaint}
+                                        </label>
+                                    </div>
+                                ))}
+                            </div>
+                            <div className="mt-4">
+                                <Label className="text-zinc-400">Custom Complaint</Label>
+                                <Input
+                                    placeholder="Any other issues..."
+                                    value={customComplaint}
+                                    onChange={(e) => setCustomComplaint(e.target.value)}
+                                    className="bg-zinc-800 border-zinc-700 text-white"
+                                />
+                            </div>
+                        </Card>
 
                         {/* Goals */}
-                        {(selectedClient || complaints.length > 0 || goals.length > 0) && (
-                            <Card className="p-6 bg-zinc-900 border-zinc-800">
-                                <h3 className="text-lg font-bold text-white mb-4">Customer Goals</h3>
-                                <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
-                                    {GOAL_OPTIONS.map(goal => (
-                                        <div key={goal} className="flex items-center space-x-2">
-                                            <Checkbox
-                                                id={`goal-${goal}`}
-                                                checked={goals.includes(goal)}
-                                                onCheckedChange={() => handleGoalToggle(goal)}
-                                                className="border-zinc-700"
-                                            />
-                                            <label
-                                                htmlFor={`goal-${goal}`}
-                                                className="text-sm text-white cursor-pointer"
-                                            >
-                                                {goal}
-                                            </label>
-                                        </div>
-                                    ))}
-                                </div>
-                                <div className="mt-4">
-                                    <Label className="text-zinc-400">Custom Goal</Label>
-                                    <Input
-                                        placeholder="Any other priorities..."
-                                        value={customGoal}
-                                        onChange={(e) => setCustomGoal(e.target.value)}
-                                        className="bg-zinc-800 border-zinc-700 text-white"
-                                    />
-                                </div>
-                            </Card>
-                        )}
+                        <Card className="p-6 bg-zinc-900 border-zinc-800">
+                            <h3 className="text-lg font-bold text-white mb-4">Customer Goals</h3>
+                            <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
+                                {GOAL_OPTIONS.map(goal => (
+                                    <div key={goal} className="flex items-center space-x-2">
+                                        <Checkbox
+                                            id={`goal-${goal}`}
+                                            checked={goals.includes(goal)}
+                                            onCheckedChange={() => handleGoalToggle(goal)}
+                                            className="border-zinc-700"
+                                        />
+                                        <label
+                                            htmlFor={`goal-${goal}`}
+                                            className="text-sm text-white cursor-pointer"
+                                        >
+                                            {goal}
+                                        </label>
+                                    </div>
+                                ))}
+                            </div>
+                            <div className="mt-4">
+                                <Label className="text-zinc-400">Custom Goal</Label>
+                                <Input
+                                    placeholder="Any other priorities..."
+                                    value={customGoal}
+                                    onChange={(e) => setCustomGoal(e.target.value)}
+                                    className="bg-zinc-800 border-zinc-700 text-white"
+                                />
+                            </div>
+                        </Card>
 
                         {/* Recommended Upsells */}
                         {recommendedUpsells.length > 0 && (
@@ -476,17 +540,15 @@ export default function AddonUpsellScript() {
                         )}
 
                         {/* Additional Notes */}
-                        {(selectedClient || complaints.length > 0 || goals.length > 0) && (
-                            <Card className="p-6 bg-zinc-900 border-zinc-800">
-                                <h3 className="text-lg font-bold text-white mb-4">Additional Notes</h3>
-                                <Textarea
-                                    placeholder="Any extra preferences or constraints..."
-                                    value={additionalNotes}
-                                    onChange={(e) => setAdditionalNotes(e.target.value)}
-                                    className="bg-zinc-800 border-zinc-700 text-white min-h-[80px]"
-                                />
-                            </Card>
-                        )}
+                        <Card className="p-6 bg-zinc-900 border-zinc-800">
+                            <h3 className="text-lg font-bold text-white mb-4">Additional Notes</h3>
+                            <Textarea
+                                placeholder="Any extra preferences or constraints..."
+                                value={additionalNotes}
+                                onChange={(e) => setAdditionalNotes(e.target.value)}
+                                className="bg-zinc-800 border-zinc-700 text-white min-h-[80px]"
+                            />
+                        </Card>
 
                         {/* Script */}
                         {script && (
@@ -516,23 +578,15 @@ export default function AddonUpsellScript() {
                                 </div>
                             </Card>
                         )}
-
-                        {!selectedClient && (
-                            <Card className="p-12 bg-zinc-900 border-zinc-800 text-center">
-                                <TrendingUp className="w-16 h-16 text-zinc-700 mx-auto mb-4" />
-                                <h3 className="text-xl font-semibold text-zinc-500">Select a client to begin</h3>
-                                <p className="text-zinc-600 mt-2">Choose a customer to create a personalized upsell script</p>
-                            </Card>
-                        )}
                     </div>
 
                     {/* History Sidebar */}
                     <div className="lg:col-span-1">
-                        {selectedClient && history.length > 0 && (
+                        {history.length > 0 && (
                             <Card className="p-6 bg-zinc-900 border-zinc-800 sticky top-4">
                                 <div className="flex items-center gap-3 mb-4">
                                     <HistoryIcon className="w-6 h-6 text-orange-500" />
-                                    <h3 className="text-lg font-bold text-white">History</h3>
+                                    <h3 className="text-lg font-bold text-white">{selectedClient && selectedClient !== 'none' ? 'Client History' : 'Generic Scripts'}</h3>
                                     <span className="text-sm text-zinc-500">({history.length})</span>
                                 </div>
                                 <div className="space-y-3 max-h-[600px] overflow-y-auto">

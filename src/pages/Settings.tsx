@@ -15,7 +15,7 @@ import { isDriveEnabled, uploadJSONToDrive, pickDriveFileAndDownload } from '@/l
 import { deleteCustomersOlderThan, deleteInvoicesOlderThan, deleteExpensesOlderThan, deleteInventoryUsageOlderThan, deleteBookingsOlderThan, deleteEmployeesOlderThan, deleteEverything as deleteAllSupabase } from '@/services/supabase/adminOps';
 import localforage from "localforage";
 import EnvironmentHealthModal from '@/components/admin/EnvironmentHealthModal';
-import { restoreDefaults } from '@/lib/restoreDefaults';
+import { restoreDefaults, restorePackages, restoreAddons } from '@/lib/restoreDefaults';
 import { insertMockData, removeMockData } from '@/lib/mockData';
 import { insertStaticMockData, removeStaticMockData, insertStaticMockBasic, removeStaticMockBasic } from '@/lib/staticMock';
 import jsPDF from 'jspdf';
@@ -39,6 +39,8 @@ const Settings = () => {
   const [staticReportData, setStaticReportData] = useState<any | null>(null);
   const [mockDataOpen, setMockDataOpen] = useState(false);
   const [mockReport, setMockReport] = useState<any | null>(null);
+  const [restoreDefaultsOpen, setRestoreDefaultsOpen] = useState(false);
+
   // Supabase diagnostics block state
   const [diag, setDiag] = useState<{ authMode: string; urlPresent: boolean; keyPresent: boolean; configured: boolean; uid: string | null; appUserReadable: boolean | null; lastChecked: string }>({
     authMode: String((import.meta as any)?.env?.VITE_AUTH_MODE || ''),
@@ -320,7 +322,7 @@ const Settings = () => {
           'currentUser', 'auth_token', 'user_session',
           // Pricing & Services (CRITICAL - never delete)
           'packageMeta', 'addOnMeta', 'customServicePackages', 'customAddOns', 'customServices', 'savedPrices',
-          'servicePackages', 'addOns', 'pricing_config',
+          'servicePackages', 'addOns', 'pricing_config', 'savedPrices_backup', 'savedPrices_restore_point',
           // Website Content (CRITICAL - never delete)
           'faqs', 'contactInfo', 'aboutSections', 'aboutFeatures', 'testimonials',
           'hero_content', 'website_pages', 'website_config', 'seo_settings',
@@ -373,12 +375,19 @@ const Settings = () => {
     }
   };
 
-  const handleRestoreDefaults = async () => {
-    const ok = confirm('Restore default website content and pricing? This will overwrite current content.');
-    if (!ok) return;
+  const handleRestoreDefaults = () => {
+    setRestoreDefaultsOpen(true);
+  };
+
+  const executeRestore = async (mode: 'packages' | 'addons' | 'both') => {
     try {
-      toast({ title: 'Restoring Defaults', description: 'Seeding website content and pricing...' });
-      await restoreDefaults();
+      setRestoreDefaultsOpen(false);
+      toast({ title: 'Restoring...', description: `Restoring ${mode === 'both' ? 'packages and add-ons' : mode}...` });
+
+      if (mode === 'packages') await restorePackages();
+      else if (mode === 'addons') await restoreAddons();
+      else await restoreDefaults();
+
       // Notify listeners of content changes
       try {
         window.dispatchEvent(new CustomEvent('content-changed', { detail: { kind: 'vehicle-types' } }));
@@ -387,10 +396,12 @@ const Settings = () => {
         window.dispatchEvent(new CustomEvent('content-changed', { detail: { kind: 'contact' } }));
         window.dispatchEvent(new CustomEvent('content-changed', { detail: { kind: 'about' } }));
       } catch { }
+
       // Revalidate live content endpoints on port 6061 if available
       try { await fetch(`http://localhost:6061/api/packages/live?v=${Date.now()}`, { headers: { 'Cache-Control': 'no-cache' } }); } catch { }
       try { await fetch(`http://localhost:6061/api/addons/live?v=${Date.now()}`, { headers: { 'Cache-Control': 'no-cache' } }); } catch { }
-      toast({ title: 'Defaults Restored', description: 'Website content and pricing reset. Live site updated.' });
+
+      toast({ title: 'Restored', description: `${mode === 'both' ? 'Defaults' : mode} restored successfully. Live site updated.` });
     } catch (err: any) {
       toast({ title: 'Restore Failed', description: err?.message || String(err), variant: 'destructive' });
     }
@@ -663,12 +674,12 @@ const Settings = () => {
               <div className="space-y-4">
                 <div className="flex items-center justify-between flex-wrap gap-4">
                   <div>
-                    <h3 className="font-semibold text-foreground">Restore Default Website Content & Pricing</h3>
-                    <p className="text-sm text-muted-foreground">Overwrite current content with defaults (packages, FAQs, contact, about)</p>
+                    <h3 className="font-semibold text-foreground">Restore Packages & Addons</h3>
+                    <p className="text-sm text-muted-foreground">Restore original pricing packages and add-ons (User Choice)</p>
                   </div>
                   <Button variant="outline" onClick={handleRestoreDefaults} className="border-amber-500 text-amber-400">
                     <RotateCcw className="h-4 w-4 mr-2" />
-                    Restore Defaults
+                    Restore Packages & Addons
                   </Button>
                 </div>
 
@@ -1286,6 +1297,31 @@ const Settings = () => {
               <div className="text-muted-foreground">
                 Local counts — users={staticReportData?.summary?.local_users}, customers={staticReportData?.summary?.local_customers}, employees={staticReportData?.summary?.local_employees}, invoices={staticReportData?.summary?.local_invoices}, checklists={staticReportData?.summary?.local_checklists}, pdfArchive={staticReportData?.summary?.pdf_archive_count}
               </div>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Restore Defaults Choice Modal */}
+      <Dialog open={restoreDefaultsOpen} onOpenChange={setRestoreDefaultsOpen}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>Restore Packages & Addons</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4 py-4">
+            <p className="text-sm text-muted-foreground">
+              Choose what you would like to restore to original defaults. This will overwrite your current pricing for the selected items.
+            </p>
+            <div className="flex flex-col gap-3">
+              <Button onClick={() => executeRestore('packages')} variant="outline" className="justify-start">
+                1. Restore Packages Only
+              </Button>
+              <Button onClick={() => executeRestore('addons')} variant="outline" className="justify-start">
+                2. Restore Add-ons Only
+              </Button>
+              <Button onClick={() => executeRestore('both')} variant="default" className="justify-start bg-primary text-primary-foreground">
+                3. Restore Both (Packages & Addons)
+              </Button>
             </div>
           </div>
         </DialogContent>

@@ -1,5 +1,7 @@
 import { upsert as upsertPackage } from "../services/supabase/packages";
 import { upsert as upsertAddOn } from "../services/supabase/addOns";
+import { servicePackages, addOns } from "@/lib/services";
+import localforage from "localforage";
 
 // Local API helpers
 const api = {
@@ -58,7 +60,7 @@ const api = {
       // Push live sync
       try {
         await fetch("/api/vehicle-types/live", { method: "GET" });
-      } catch {}
+      } catch { }
     } catch (e) {
       console.error("seedVehicleTypes error", e);
     }
@@ -88,7 +90,7 @@ const api = {
       // Push live
       try {
         await fetch("/api/contact/live", { method: "GET" });
-      } catch {}
+      } catch { }
     } catch (e) {
       console.error("seedContact error", e);
     }
@@ -109,120 +111,130 @@ const api = {
   },
 };
 
-// Pricing defaults for packages and add-ons mapped to Supabase schema
-const defaultPackages: Array<{
-  id: string;
-  name: string;
-  description?: string;
-  compact_price?: number;
-  midsize_price?: number;
-  truck_price?: number;
-  luxury_price?: number;
-}> = [
-  {
-    id: "basic-wash",
-    name: "Basic Wash",
-    description: "Exterior hand wash and dry",
-    compact_price: 35,
-    midsize_price: 40,
-    truck_price: 50,
-    luxury_price: 60,
-  },
-  {
-    id: "full-detail",
-    name: "Full Detail",
-    description: "Interior and exterior deep clean",
-    compact_price: 199,
-    midsize_price: 229,
-    truck_price: 259,
-    luxury_price: 299,
-  },
-  {
-    id: "ceramic-coating",
-    name: "Ceramic Coating",
-    description: "Multi-year paint protection",
-    compact_price: 799,
-    midsize_price: 899,
-    truck_price: 1099,
-    luxury_price: 1299,
-  },
-];
+// Helper to construct pricing map key
+const getKey = (type: "package" | "addon", id: string, size: string) => `${type}:${id}:${size}`;
 
-const defaultAddOns: Array<{
-  id: string;
-  name: string;
-  description?: string;
-  compact_price?: number;
-  midsize_price?: number;
-  truck_price?: number;
-  luxury_price?: number;
-}> = [
-  {
-    id: "pet-hair",
-    name: "Pet Hair Removal",
-    description: "Remove embedded pet hair from interior",
-    compact_price: 35,
-    midsize_price: 45,
-    truck_price: 55,
-    luxury_price: 65,
-  },
-  {
-    id: "headlight-restoration",
-    name: "Headlight Restoration",
-    description: "Polish and seal headlight lenses",
-    compact_price: 60,
-    midsize_price: 60,
-    truck_price: 60,
-    luxury_price: 60,
-  },
-  {
-    id: "ozone-treatment",
-    name: "Ozone Treatment",
-    description: "Eliminate persistent interior odors",
-    compact_price: 99,
-    midsize_price: 99,
-    truck_price: 119,
-    luxury_price: 139,
-  },
-];
-
-async function seedPricingSupabase() {
+export async function restorePackages() {
   try {
-    // Upsert packages
-    for (const pkg of defaultPackages) {
-      await upsertPackage(pkg);
+    // 1. Restore to Supabase
+    for (const pkg of servicePackages) {
+      await upsertPackage([{
+        id: pkg.id,
+        name: pkg.name,
+        description: pkg.description,
+        compact_price: pkg.pricing.compact,
+        midsize_price: pkg.pricing.midsize,
+        truck_price: pkg.pricing.truck,
+        luxury_price: pkg.pricing.luxury,
+        is_active: true,
+      }]);
     }
-    // Upsert add-ons
-    for (const addon of defaultAddOns) {
-      await upsertAddOn(addon);
+
+    // 2. Clear deletion flags and restore visibility for all built-in packages
+    const packageMeta = JSON.parse(localStorage.getItem('packageMeta') || '{}');
+    servicePackages.forEach(pkg => {
+      // Remove deleted flag and ensure visible
+      if (packageMeta[pkg.id]) {
+        delete packageMeta[pkg.id].deleted;
+        packageMeta[pkg.id].visible = true;
+      } else {
+        packageMeta[pkg.id] = { id: pkg.id, visible: true };
+      }
+    });
+    localStorage.setItem('packageMeta', JSON.stringify(packageMeta));
+
+    // 3. Restore to Local State (savedPrices)
+    const currentSaved = (await localforage.getItem<Record<string, string>>("savedPrices")) || {};
+    const updated = { ...currentSaved };
+
+    servicePackages.forEach(p => {
+      updated[getKey("package", p.id, "compact")] = String(p.pricing.compact);
+      updated[getKey("package", p.id, "midsize")] = String(p.pricing.midsize);
+      updated[getKey("package", p.id, "truck")] = String(p.pricing.truck);
+      updated[getKey("package", p.id, "luxury")] = String(p.pricing.luxury);
+    });
+
+    await localforage.setItem("savedPrices", updated);
+
+    // 3. Sync to Backend/Live
+    try {
+      await fetch("http://localhost:6061/api/packages/prices", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(updated),
+      });
+    } catch (err) {
+      console.warn("Live sync failed (non-critical)", err);
     }
+
+    window.dispatchEvent(new CustomEvent("content-changed", { detail: { kind: "packages" } }));
+    try { await fetch("/api/pricing/live", { method: "GET" }); } catch { }
+
   } catch (e) {
-    console.warn("Supabase pricing upsert failed (optional)", e);
+    console.error("restorePackages error", e);
+    throw e;
   }
 }
 
-async function seedPricingLocal() {
+export async function restoreAddons() {
   try {
-    // Push the local pricing payload to the live sync API used by BookNow
-    const payload = {
-      packages: defaultPackages,
-      addOns: defaultAddOns,
-    };
-    await fetch("/api/pricing", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(payload),
+    // 1. Restore to Supabase
+    for (const addon of addOns) {
+      await upsertAddOn([{
+        id: addon.id,
+        name: addon.name,
+        description: addon.description,
+        compact_price: addon.pricing.compact,
+        midsize_price: addon.pricing.midsize,
+        truck_price: addon.pricing.truck,
+        luxury_price: addon.pricing.luxury,
+        is_active: true,
+      }]);
+    }
+
+    // 2. Clear deletion flags and restore visibility for all built-in add-ons
+    const addOnMeta = JSON.parse(localStorage.getItem('addOnMeta') || '{}');
+    addOns.forEach(addon => {
+      // Remove deleted flag and ensure visible
+      if (addOnMeta[addon.id]) {
+        delete addOnMeta[addon.id].deleted;
+        addOnMeta[addon.id].visible = true;
+      } else {
+        addOnMeta[addon.id] = { id: addon.id, visible: true };
+      }
+    });
+    localStorage.setItem('addOnMeta', JSON.stringify(addOnMeta));
+
+    // 3. Restore to Local State (savedPrices)
+    const currentSaved = (await localforage.getItem<Record<string, string>>("savedPrices")) || {};
+    const updated = { ...currentSaved };
+
+    addOns.forEach(a => {
+      updated[getKey("addon", a.id, "compact")] = String(a.pricing.compact);
+      updated[getKey("addon", a.id, "midsize")] = String(a.pricing.midsize);
+      updated[getKey("addon", a.id, "truck")] = String(a.pricing.truck);
+      updated[getKey("addon", a.id, "luxury")] = String(a.pricing.luxury);
     });
 
-    // Trigger listeners and live sync
-    window.dispatchEvent(
-      new CustomEvent("content-changed", { detail: { kind: "packages" } })
-    );
+    await localforage.setItem("savedPrices", updated);
+
+    // 3. Sync to Backend/Live
     try {
-      await fetch("/api/pricing/live", { method: "GET" });
-    } catch {}
+      await fetch("http://localhost:6061/api/packages/prices", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(updated),
+      });
+    } catch (err) {
+      console.warn("Live sync failed (non-critical)", err);
+    }
+
+    window.dispatchEvent(new CustomEvent("content-changed", { detail: { kind: "packages" } })); // Addons also trigger package/pricing updates
+    try { await fetch("/api/pricing/live", { method: "GET" }); } catch { }
+
   } catch (e) {
-    console.error("seedPricingLocal error", e);
+    console.error("restoreAddons error", e);
+    throw e;
   }
 }
 
@@ -235,8 +247,7 @@ export async function restoreDefaults(): Promise<void> {
     api.seedAbout(),
   ]);
 
-  // Seed pricing both locally and Supabase (if configured)
-  await seedPricingLocal();
-  await seedPricingSupabase();
+  // Restore both Packages and Addons
+  await restorePackages();
+  await restoreAddons();
 }
-

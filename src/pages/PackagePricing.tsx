@@ -11,6 +11,12 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import {
+  Accordion,
+  AccordionContent,
+  AccordionItem,
+  AccordionTrigger,
+} from "@/components/ui/accordion";
 import { toast as uiToast } from "@/hooks/use-toast";
 import { toast } from "sonner";
 import { servicePackages as builtInPackages, addOns as builtInAddOns } from "@/lib/services";
@@ -134,7 +140,7 @@ export default function PackagePricing() {
           return { ...local, ...data };
         }
       }
-    } catch {}
+    } catch { }
     return local;
   }
 
@@ -178,7 +184,7 @@ export default function PackagePricing() {
   function savePersistentBackup(snapshot: PriceMap) {
     try {
       localStorage.setItem(PERSISTENT_BACKUP_KEY, JSON.stringify(snapshot));
-    } catch {}
+    } catch { }
   }
 
   async function saveToBackend(updated: PriceMap) {
@@ -188,12 +194,12 @@ export default function PackagePricing() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(updated),
       });
-    } catch {}
+    } catch { }
 
     // Supabase write-through: upsert per-vehicle prices for packages/add-ons
     try {
       if (isSupabaseEnabled()) {
-        const getVal = (kind: 'package'|'addon', id: string, vt: keyof Pricing): number => {
+        const getVal = (kind: 'package' | 'addon', id: string, vt: keyof Pricing): number => {
           const k = `${kind}:${id}:${vt}`;
           const raw = updated[k];
           const n = raw != null ? parseFloat(raw) : NaN;
@@ -230,10 +236,10 @@ export default function PackagePricing() {
           is_active: true,
         }));
 
-        try { await supaPkgs.upsert(pkgRows); } catch {}
-        try { await supaAddOns.upsert(addRows); } catch {}
+        try { await supaPkgs.upsert(pkgRows); } catch { }
+        try { await supaAddOns.upsert(addRows); } catch { }
       }
-    } catch {}
+    } catch { }
   }
 
   async function saveToLocalforage(updated: PriceMap) {
@@ -245,35 +251,35 @@ export default function PackagePricing() {
     try {
       const url = `http://localhost:6061/api/packages/live?v=${Date.now()}`;
       await fetch(url, { headers: { 'Cache-Control': 'no-cache' } });
-      try { window.dispatchEvent(new CustomEvent('content-changed', { detail: { kind: 'packages' } })); } catch {}
-    } catch {}
+      try { window.dispatchEvent(new CustomEvent('content-changed', { detail: { kind: 'packages' } })); } catch { }
+    } catch { }
   };
 
   // Soft refresh signal for Website preview without opening tabs
   const forceWebsiteTabRefresh = async () => {
     try {
       await fetch(`http://localhost:6061/api/packages/sync?v=${Date.now()}`, { method: 'POST' });
-    } catch {}
-    try { localStorage.setItem('force-refresh', String(Date.now())); } catch {}
-    try { window.dispatchEvent(new CustomEvent('content-changed', { detail: { kind: 'website' } })); } catch {}
+    } catch { }
+    try { localStorage.setItem('force-refresh', String(Date.now())); } catch { }
+    try { window.dispatchEvent(new CustomEvent('content-changed', { detail: { kind: 'website' } })); } catch { }
   };
 
   // Soft refresh for Book Now preview without opening tabs
   const forceBookNowTabRefresh = async () => {
-    try { localStorage.setItem('force-refresh-book', String(Date.now())); } catch {}
-    try { window.dispatchEvent(new CustomEvent('content-changed', { detail: { kind: 'booknow' } })); } catch {}
+    try { localStorage.setItem('force-refresh-book', String(Date.now())); } catch { }
+    try { window.dispatchEvent(new CustomEvent('content-changed', { detail: { kind: 'booknow' } })); } catch { }
   };
 
   const openViewAllPrices = async () => {
-    try {
-      const res = await fetch(`http://localhost:6061/api/packages/live?v=${Date.now()}`, {
-        headers: { 'Cache-Control': 'no-cache' }
-      });
-      if (res.ok) {
-        const data = await res.json();
-        setLiveSnapshot(data);
-      }
-    } catch {}
+    // Use current in-memory state instead of fetching from backend
+    const snapshot = {
+      savedPrices: currentPrices,
+      packageMeta: getAllPackageMeta(),
+      addOnMeta: getAllAddOnMeta(),
+      customPackages: getCustomPackages(),
+      customAddOns: getCustomAddOns(),
+    };
+    setLiveSnapshot(snapshot);
     setViewAllOpen(true);
   };
 
@@ -325,7 +331,7 @@ export default function PackagePricing() {
       const fileName = `addons_export_${today}.pdf`;
       savePDFToArchive('add-Ons' as any, 'Admin', 'addons_export', pdfDataUrl, { fileName, path: 'add-Ons/' });
       toast.success('Add-Ons List PDF saved to File Manager');
-      try { window.dispatchEvent(new CustomEvent('pdf_archive_updated')); } catch {}
+      try { window.dispatchEvent(new CustomEvent('pdf_archive_updated')); } catch { }
     } catch (err: any) {
       toast.error(err?.message || 'Failed to generate Add-Ons PDF');
     }
@@ -341,10 +347,10 @@ export default function PackagePricing() {
         const data = await res.json();
         setLiveSnapshot(data);
       }
-    } catch {}
+    } catch { }
   };
 
-  const liveGetKey = (type: 'package'|'addon', id: string, size: string) => `${type}:${id}:${size}`;
+  const liveGetKey = (type: 'package' | 'addon', id: string, size: string) => `${type}:${id}:${size}`;
 
   const downloadPricesJSON = async () => {
     const now = new Date().toISOString().split('T')[0];
@@ -382,7 +388,7 @@ export default function PackagePricing() {
         <td style=\"padding:8px;border:1px solid #ddd;text-align:right\">$${pricing.truck}</td>
         <td style=\"padding:8px;border:1px solid #ddd;text-align:right\">$${pricing.luxury}</td>
       </tr>`;
-    const getPrice = (type: 'package'|'addon', id: string) => ({
+    const getPrice = (type: 'package' | 'addon', id: string) => ({
       compact: parseFloat(saved[liveGetKey(type, id, 'compact')]) || 0,
       midsize: parseFloat(saved[liveGetKey(type, id, 'midsize')]) || 0,
       truck: parseFloat(saved[liveGetKey(type, id, 'truck')]) || 0,
@@ -538,7 +544,7 @@ export default function PackagePricing() {
             if (!opts.includes(vehicleType)) setVehicleType(opts[0] || 'compact');
           }
         }
-      } catch {}
+      } catch { }
     };
     loadVehicleTypes();
     const onChanged = (e: any) => {
@@ -648,7 +654,7 @@ export default function PackagePricing() {
     toast.success(`${label} → prices saved as NEW BASELINE`);
     try {
       pushAdminAlert('pricing_update', `Pricing updated: ${label}`, 'system', { recordType: 'Pricing', keys });
-    } catch {}
+    } catch { }
   };
 
   const saveAll = async () => {
@@ -683,7 +689,7 @@ export default function PackagePricing() {
     toast.success("ALL PRICES LOCKED IN FOREVER + WEBSITE UPDATED");
     try {
       pushAdminAlert('pricing_update', 'Pricing updated: ALL prices', 'system', { recordType: 'Pricing' });
-    } catch {}
+    } catch { }
   };
 
   const restoreAllPrices = async () => {
@@ -703,7 +709,7 @@ export default function PackagePricing() {
     setCurrentPrices(restored);
     // Also refresh regular backup to match restored values
     await saveBackupPrices(restored);
-    try { await fetch("http://localhost:6061/api/packages/sync", { method: "POST" }); } catch {}
+    try { await fetch("http://localhost:6061/api/packages/sync", { method: "POST" }); } catch { }
     await postFullSync();
     forceWebsiteTabRefresh();
     forceBookNowTabRefresh();
@@ -874,7 +880,7 @@ export default function PackagePricing() {
 
   const handleNewPackageSave = async () => {
     const id = `custom-${Date.now()}`;
-    const stepsUnion = [...builtInPackages.flatMap(p => p.steps)].reduce<Record<string, {id:string;name:string;category:'exterior'|'interior'|'final'}>>((acc, s) => { acc[s.id] = s; return acc; }, {});
+    const stepsUnion = [...builtInPackages.flatMap(p => p.steps)].reduce<Record<string, { id: string; name: string; category: 'exterior' | 'interior' | 'final' }>>((acc, s) => { acc[s.id] = s; return acc; }, {});
     const defaultSteps = Object.values(stepsUnion).slice(0, 8); // pick some defaults
     const pricing = {
       compact: Math.ceil(parseFloat(newPkgForm.pricing.compact || "") || 0),
@@ -940,312 +946,311 @@ export default function PackagePricing() {
     <div>
       <PageHeader title="Package Pricing" />
       <div className="p-4 space-y-6 max-w-screen-xl mx-auto overflow-x-hidden">
-        {/* FULL TOP SECTION (EXACTLY LIKE MY GOLDEN PAST) */}
+        {/* REORGANIZED PRICING CONTROLS */}
         <div className="bg-zinc-900/70 backdrop-blur border border-zinc-800 rounded-xl p-6 mb-8">
           <h2 className="text-2xl font-bold text-white mb-4">Edit Pricing</h2>
           <p className="text-zinc-400 mb-6">Changes apply everywhere, including the live website.</p>
 
-          <div className="button-group-responsive flex items-center gap-4 flex-wrap md:flex-nowrap max-w-full min-w-0">
-            <div className="flex items-center gap-3">
-              <input 
-                type="number" 
-                step="1" 
-                placeholder="e.g. 5, -10, or 7.5" 
-                className="w-32 px-4 py-3 bg-black border border-zinc-700 rounded-lg text-white text-lg font-medium focus:outline-none focus:border-red-500" 
-                value={masterPct} 
-                onChange={(e) => setMasterPct(e.target.value)} 
-              /> 
-              <span className="text-white text-lg">Increase %</span> 
-            </div> 
+          {/* Vehicle Type Selector - Front and Center */}
+          <div className="mb-6 flex items-center gap-4">
+            <Label className="text-white text-lg font-semibold">Vehicle Type:</Label>
+            <Select value={vehicleType} onValueChange={(v) => setVehicleType(v)}>
+              <SelectTrigger className="w-64 bg-zinc-900 border-zinc-700 text-white text-lg">
+                <SelectValue placeholder="Select vehicle" />
+              </SelectTrigger>
+              <SelectContent className="bg-zinc-900 text-white">
+                {vehicleOptions.map((opt) => (
+                  <SelectItem key={opt} value={opt}>{vehicleLabels[opt] || opt}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
 
-            <Button 
-              size="lg" 
-              className="bg-zinc-800 hover:bg-zinc-700 text-white font-medium px-6" 
-              onClick={() => applyMaster('packages')} 
-            > 
-              Packages 
-            </Button> 
-            <Button 
-              size="lg" 
-              className="bg-zinc-800 hover:bg-zinc-700 text-white font-medium px-6" 
-              onClick={() => applyMaster('addons')} 
-            > 
-              Add-Ons 
-            </Button> 
-            <Button 
-              size="lg" 
-              className="bg-red-600 hover:bg-red-700 text-white font-bold px-8" 
-              onClick={() => applyMaster('both')} 
-            > 
-              Both 
-            </Button> 
+          <Accordion type="multiple" className="space-y-4">
+            {/* Increase % Section */}
+            <AccordionItem value="increase" className="border border-zinc-700 rounded-lg">
+              <AccordionTrigger className="px-4 text-white hover:no-underline">
+                <span className="text-lg font-semibold">Increase % by Category</span>
+              </AccordionTrigger>
+              <AccordionContent className="px-4 pb-4">
+                <div className="flex items-center gap-4 flex-wrap">
+                  <div className="flex items-center gap-3">
+                    <input
+                      type="number"
+                      step="1"
+                      placeholder="e.g. 5, -10"
+                      className="w-32 px-4 py-3 bg-black border border-zinc-700 rounded-lg text-white text-lg font-medium focus:outline-none focus:border-red-500"
+                      value={masterPct}
+                      onChange={(e) => setMasterPct(e.target.value)}
+                    />
+                    <span className="text-white text-lg">Increase %</span>
+                  </div>
 
-            <div className="flex-1" /> 
-            <Button 
-              size="lg"
-              className="bg-red-600 hover:bg-red-700 text-white font-bold px-8"
-              onClick={openViewAllPrices}
-            >
-              View All Prices
-            </Button>
+                  <Button
+                    size="lg"
+                    className="bg-zinc-800 hover:bg-zinc-700 text-white font-medium px-6"
+                    onClick={() => applyMaster('packages')}
+                  >
+                    Packages
+                  </Button>
+                  <Button
+                    size="lg"
+                    className="bg-zinc-800 hover:bg-zinc-700 text-white font-medium px-6"
+                    onClick={() => applyMaster('addons')}
+                  >
+                    Add-Ons
+                  </Button>
+                  <Button
+                    size="lg"
+                    className="bg-red-600 hover:bg-red-700 text-white font-bold px-8"
+                    onClick={() => applyMaster('both')}
+                  >
+                    Both
+                  </Button>
+                </div>
+              </AccordionContent>
+            </AccordionItem>
 
+            {/* View & Export Section */}
+            <AccordionItem value="view-export" className="border border-zinc-700 rounded-lg">
+              <AccordionTrigger className="px-4 text-white hover:no-underline">
+                <span className="text-lg font-semibold">View & Export Pricing</span>
+              </AccordionTrigger>
+              <AccordionContent className="px-4 pb-4">
+                <div className="flex items-center gap-4 flex-wrap">
+                  <Button
+                    size="lg"
+                    className="bg-red-600 hover:bg-red-700 text-white font-bold px-8"
+                    onClick={openViewAllPrices}
+                  >
+                    View All Prices
+                  </Button>
+
+                  <Button
+                    size="lg"
+                    className="bg-zinc-800 hover:bg-zinc-700 text-white font-medium px-6"
+                    onClick={generateAddOnsListPDF}
+                  >
+                    Add-Ons List (PDF)
+                  </Button>
+                </div>
+              </AccordionContent>
+            </AccordionItem>
+
+            {/* Show Services Section */}
+            <AccordionItem value="show-services" className="border border-zinc-700 rounded-lg">
+              <AccordionTrigger className="px-4 text-white hover:no-underline">
+                <span className="text-lg font-semibold">Show Services</span>
+              </AccordionTrigger>
+              <AccordionContent className="px-4 pb-4">
+                <div className="flex items-center gap-3 flex-wrap">
+                  <Button size="lg" variant={view === 'packages' ? 'default' : 'outline'} onClick={() => setView('packages')}>Show Packages</Button>
+                  <Button size="lg" variant={view === 'addons' ? 'default' : 'outline'} onClick={() => setView('addons')}>Show Add-Ons</Button>
+                  <Button size="lg" variant={view === 'both' ? 'default' : 'outline'} onClick={() => setView('both')}>Show Both</Button>
+                </div>
+              </AccordionContent>
+            </AccordionItem>
+          </Accordion>
+
+          {/* Action Buttons */}
+          <div className="mt-6 flex items-center gap-4 flex-wrap">
             <Button
               size="lg"
-              className="bg-zinc-800 hover:bg-zinc-700 text-white font-medium px-6"
-              onClick={generateAddOnsListPDF}
+              className="bg-red-600 hover:bg-red-700 font-bold px-8"
+              onClick={saveAll}
             >
-              Add-Ons List (PDF)
+              Save All
             </Button>
-
-            {/* View selection toggle */}
-            <div className="button-group-responsive flex items-center gap-2">
-              <Button size="sm" variant={view === 'packages' ? 'default' : 'outline'} onClick={() => setView('packages')}>Show Packages</Button>
-              <Button size="sm" variant={view === 'addons' ? 'default' : 'outline'} onClick={() => setView('addons')}>Show Add-Ons</Button>
-              <Button size="sm" variant={view === 'both' ? 'default' : 'outline'} onClick={() => setView('both')}>Show Both</Button>
-            </div>
-
-            {/* Vehicle type selector */}
-            <div className="flex items-center gap-2 flex-shrink-0">
-              <Label className="text-white">Vehicle</Label>
-              <Select value={vehicleType} onValueChange={(v) => setVehicleType(v)}>
-                <SelectTrigger className="w-40 bg-zinc-900 border-zinc-700 text-white">
-                  <SelectValue placeholder="Select vehicle" />
-                </SelectTrigger>
-                <SelectContent className="bg-zinc-900 text-white">
-                  {vehicleOptions.map((opt) => (
-                    <SelectItem key={opt} value={opt}>{vehicleLabels[opt] || opt}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-
-            <Button 
-              size="lg" 
-              className="bg-red-600 hover:bg-red-700 font-bold px-8" 
-              onClick={saveAll} 
-            > 
-              Save All 
-            </Button> 
-            <Button 
-              size="lg" 
-              variant="outline" 
-              className="border-red-600 text-red-500 hover:bg-red-600/20 font-bold px-8" 
-              onClick={resetAll} 
-            > 
-              Reset All Changes 
-            </Button> 
-            <Button 
-              size="lg" 
-              variant="outline" 
-              className="border-green-600 text-green-500 hover:bg-green-600/20 font-bold px-8" 
-              onClick={restoreAllPrices} 
-            > 
-              Restore All Prices 
-            </Button> 
-          </div> 
-        </div>
-
-        {/* NEW CUSTOM % TOOLBAR (ADDED BELOW TOP SECTION) */}
-        <div className="bg-gradient-to-r from-zinc-900 via-zinc-800 to-zinc-900 border-2 border-red-600/30 rounded-xl p-4 mb-6 shadow-2xl shadow-red-900/20"> 
-          <div className="flex items-center gap-4"> 
-            <div className="flex items-center gap-3"> 
-              <span className="text-xl font-bold text-red-500">GOD MODE</span> 
-              <span className="text-white md:text-lg text-base">Apply ANY % to everything</span> 
-            </div> 
-
-            <div className="flex-1" /> 
-
-            <input 
-              type="number" 
-              step="1" 
-              placeholder="e.g. 5, -10, or 7.5" 
-              className="w-40 px-4 py-3 bg-black/80 border-2 border-red-600/50 rounded-lg text-white md:text-lg text-base font-bold text-center focus:outline-none focus:border-red-500" 
-              value={globalPct} 
-              onChange={(e) => setGlobalPct(e.target.value)} 
-              onKeyDown={(e) => e.key === 'Enter' && applyGlobal()} 
-            /> 
-
-            <Button 
-              size="sm" 
-              className="bg-gradient-to-r from-red-600 to-orange-600 hover:from-red-700 hover:to-orange-700 font-bold md:text-lg text-base px-6 py-3 h-auto" 
-              onClick={applyGlobal} 
-            > 
-              APPLY TO EVERYTHING 
-            </Button> 
-          </div> 
+            <Button
+              size="lg"
+              variant="outline"
+              className="border-red-600 text-red-500 hover:bg-red-600/20 font-bold px-8"
+              onClick={resetAll}
+            >
+              Reset All Changes
+            </Button>
+            <Button
+              size="lg"
+              variant="outline"
+              className="border-green-600 text-green-500 hover:bg-green-600/20 font-bold px-8"
+              onClick={restoreAllPrices}
+            >
+              Restore All Prices
+            </Button>
+          </div>
         </div>
 
         {/* Packages grid */}
         {(view === "packages" || view === "both") && (
-  <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-          {[...builtInPackages, ...getCustomPackages()].filter(pkg => !getPackageMeta(pkg.id)?.deleted).map(pkg => (
-            <Card key={pkg.id} className="p-4 space-y-3">
-              <h3 className="font-semibold">{pkg.name}</h3>
-              {/* Picture Upload Area (packages only) */}
-              <div className="flex flex-col md:flex-row md:flex-nowrap items-start gap-3">
-                <img src={getLiveImage(pkg.id)} alt={pkg.name} className="w-full md:w-[300px] md:h-[200px] object-contain md:shrink-0 rounded border border-zinc-700 shadow" />
-                <div className="min-w-0 flex-1 w-full">
-                  <Label className="text-xs text-white mb-1 block">Change Package Image</Label>
-                  <input type="file" accept="image/png,image/jpeg" onChange={(e) => e.target.files && handleImageUpload(pkg.id, e.target.files[0])} />
-              <div className="mt-2 flex items-center gap-2">
-                  <Label className="text-white">Show on Live Website</Label>
-                    <Switch
-                      className={(typeof pendingVisibilityPkg[pkg.id] !== 'undefined')
-                        ? "data-[state=checked]:bg-red-600 data-[state=unchecked]:bg-red-600"
-                        : "data-[state=checked]:bg-green-600 data-[state=unchecked]:bg-red-600"}
-                      checked={(pendingVisibilityPkg[pkg.id] ?? (getPackageMeta(pkg.id)?.visible !== false)) as boolean}
-                      onCheckedChange={(checked) => queueVisibility('package', pkg.id, checked)}
-                    />
-                    {typeof pendingVisibilityPkg[pkg.id] !== 'undefined' ? (
-                      <span className="text-red-500 text-xs">Pending</span>
-                    ) : (getPackageMeta(pkg.id)?.visible === false ? (
-                      <span className="text-red-500 text-xs">Hidden</span>
-                    ) : (
-                      <span className="text-green-500 text-xs">Live</span>
-                    ))}
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            {[...builtInPackages, ...getCustomPackages()].filter(pkg => !getPackageMeta(pkg.id)?.deleted).map(pkg => (
+              <Card key={pkg.id} className="p-4 space-y-3">
+                <h3 className="font-semibold">{pkg.name}</h3>
+                {/* Picture Upload Area (packages only) */}
+                <div className="flex flex-col md:flex-row md:flex-nowrap items-start gap-3">
+                  <img src={getLiveImage(pkg.id)} alt={pkg.name} className="w-full md:w-[300px] md:h-[200px] object-contain md:shrink-0 rounded border border-zinc-700 shadow" />
+                  <div className="min-w-0 flex-1 w-full">
+                    <Label className="text-xs text-white mb-1 block">Change Package Image</Label>
+                    <input type="file" accept="image/png,image/jpeg" onChange={(e) => e.target.files && handleImageUpload(pkg.id, e.target.files[0])} />
+                    <div className="mt-2 flex items-center gap-2">
+                      <Label className="text-white">Show on Live Website</Label>
+                      <Switch
+                        className={(typeof pendingVisibilityPkg[pkg.id] !== 'undefined')
+                          ? "data-[state=checked]:bg-red-600 data-[state=unchecked]:bg-red-600"
+                          : "data-[state=checked]:bg-green-600 data-[state=unchecked]:bg-red-600"}
+                        checked={(pendingVisibilityPkg[pkg.id] ?? (getPackageMeta(pkg.id)?.visible !== false)) as boolean}
+                        onCheckedChange={(checked) => queueVisibility('package', pkg.id, checked)}
+                      />
+                      {typeof pendingVisibilityPkg[pkg.id] !== 'undefined' ? (
+                        <span className="text-red-500 text-xs">Pending</span>
+                      ) : (getPackageMeta(pkg.id)?.visible === false ? (
+                        <span className="text-red-500 text-xs">Hidden</span>
+                      ) : (
+                        <span className="text-green-500 text-xs">Live</span>
+                      ))}
+                    </div>
                   </div>
                 </div>
-              </div>
-              <div className="grid grid-cols-1 gap-3">
-                <div>
-                  <label className="text-xs text-muted-foreground">{vehicleLabels[vehicleType] || vehicleType}</label>
-                  <Input
-                    type="number"
-                    step="1"
-                    value={currentPrices[getKey('package', pkg.id, vehicleType)] || ''}
-                    onChange={(e) => handleChange(getKey('package', pkg.id, vehicleType), e.target.value)}
-                  />
+                <div className="grid grid-cols-1 gap-3">
+                  <div>
+                    <label className="text-xs text-muted-foreground">{vehicleLabels[vehicleType] || vehicleType}</label>
+                    <Input
+                      type="number"
+                      step="1"
+                      value={currentPrices[getKey('package', pkg.id, vehicleType)] || ''}
+                      onChange={(e) => handleChange(getKey('package', pkg.id, vehicleType), e.target.value)}
+                    />
+                  </div>
                 </div>
-              </div>
-            <div className="button-group-responsive flex gap-2 flex-wrap md:flex-nowrap max-w-full">
-                <Button variant="outline" onClick={() => applyIncrease(pkg.id, 5)}>Apply 5%</Button>
-                <Button variant="outline" onClick={() => applyIncrease(pkg.id, 10)}>Apply 10%</Button>
-                <Button variant="outline" onClick={() => reset(pkg.id)}>Reset</Button>
-                <Button
-                  className="bg-red-600 hover:bg-red-700"
-                  onClick={() => saveOne([getKey('package', pkg.id, vehicleType)])}
-                >
-                  Save
-                </Button>
-                <Button variant="outline" className="border-red-600 text-red-500" onClick={() => openEditServices('package', pkg.id)}>Edit Services</Button>
-                <AlertDialog>
-                  <AlertDialogTrigger asChild>
-                    <Button variant="destructive" className="bg-red-700">
-                      <span className="inline-flex items-center gap-2"><Trash2 className="w-4 h-4" /> Delete</span>
-                    </Button>
-                  </AlertDialogTrigger>
-                  <AlertDialogContent>
-                    <AlertDialogHeader>
-                      <AlertDialogTitle>Delete permanently?</AlertDialogTitle>
-                      <AlertDialogDescription>This will remove the package from admin and live site.</AlertDialogDescription>
-                    </AlertDialogHeader>
-            <AlertDialogFooter className="button-group-responsive">
-                      <AlertDialogCancel>Cancel</AlertDialogCancel>
-                      <AlertDialogAction onClick={() => confirmDelete('package', pkg.id)}>Yes, delete</AlertDialogAction>
-            </AlertDialogFooter>
-                  </AlertDialogContent>
-                </AlertDialog>
-              </div>
-            </Card>
-          ))}
-        </div>
+                <div className="button-group-responsive flex gap-2 flex-wrap md:flex-nowrap max-w-full">
+                  <Button variant="outline" onClick={() => applyIncrease(pkg.id, 5)}>Apply 5%</Button>
+                  <Button variant="outline" onClick={() => applyIncrease(pkg.id, 10)}>Apply 10%</Button>
+                  <Button variant="outline" onClick={() => reset(pkg.id)}>Reset</Button>
+                  <Button
+                    className="bg-red-600 hover:bg-red-700"
+                    onClick={() => saveOne([getKey('package', pkg.id, vehicleType)])}
+                  >
+                    Save
+                  </Button>
+                  <Button variant="outline" className="border-red-600 text-red-500" onClick={() => openEditServices('package', pkg.id)}>Edit Services</Button>
+                  <AlertDialog>
+                    <AlertDialogTrigger asChild>
+                      <Button variant="destructive" className="bg-red-700">
+                        <span className="inline-flex items-center gap-2"><Trash2 className="w-4 h-4" /> Delete</span>
+                      </Button>
+                    </AlertDialogTrigger>
+                    <AlertDialogContent>
+                      <AlertDialogHeader>
+                        <AlertDialogTitle>Delete permanently?</AlertDialogTitle>
+                        <AlertDialogDescription>This will remove the package from admin and live site.</AlertDialogDescription>
+                      </AlertDialogHeader>
+                      <AlertDialogFooter className="button-group-responsive">
+                        <AlertDialogCancel>Cancel</AlertDialogCancel>
+                        <AlertDialogAction onClick={() => confirmDelete('package', pkg.id)}>Yes, delete</AlertDialogAction>
+                      </AlertDialogFooter>
+                    </AlertDialogContent>
+                  </AlertDialog>
+                </div>
+              </Card>
+            ))}
+          </div>
         )}
 
         {/* Add-ons grid */}
         {(view === "addons" || view === "both") && (
-  <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-          {[...builtInAddOns, ...getCustomAddOns()].filter(a => !getAddOnMeta(a.id)?.deleted).map(addon => (
-            <Card key={addon.id} className="p-4 space-y-3">
-              <h3 className="font-semibold">{addon.name}</h3>
-              <div className="flex items-center gap-2">
-                <Label className="text-white">Show on Live Website</Label>
-                <Switch
-                  className={(typeof pendingVisibilityAddon[addon.id] !== 'undefined')
-                    ? "data-[state=checked]:bg-red-600 data-[state=unchecked]:bg-red-600"
-                    : "data-[state=checked]:bg-green-600 data-[state=unchecked]:bg-red-600"}
-                  checked={(pendingVisibilityAddon[addon.id] ?? (getAddOnMeta(addon.id)?.visible !== false)) as boolean}
-                  onCheckedChange={(checked) => queueVisibility('addon', addon.id, checked)}
-                />
-                {typeof pendingVisibilityAddon[addon.id] !== 'undefined' ? (
-                  <span className="text-red-500 text-xs">Pending</span>
-                ) : (getAddOnMeta(addon.id)?.visible === false ? (
-                  <span className="text-red-500 text-xs">Hidden</span>
-                ) : (
-                  <span className="text-green-500 text-xs">Live</span>
-                ))}
-              </div>
-              <div className="grid grid-cols-1 gap-3">
-                <div>
-                  <label className="text-xs text-muted-foreground">{vehicleLabels[vehicleType] || vehicleType}</label>
-                  <Input
-                    type="number"
-                    step="1"
-                    value={currentPrices[getKey('addon', addon.id, vehicleType)] || ''}
-                    onChange={(e) => handleChange(getKey('addon', addon.id, vehicleType), e.target.value)}
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            {[...builtInAddOns, ...getCustomAddOns()].filter(a => !getAddOnMeta(a.id)?.deleted).map(addon => (
+              <Card key={addon.id} className="p-4 space-y-3">
+                <h3 className="font-semibold">{addon.name}</h3>
+                <div className="flex items-center gap-2">
+                  <Label className="text-white">Show on Live Website</Label>
+                  <Switch
+                    className={(typeof pendingVisibilityAddon[addon.id] !== 'undefined')
+                      ? "data-[state=checked]:bg-red-600 data-[state=unchecked]:bg-red-600"
+                      : "data-[state=checked]:bg-green-600 data-[state=unchecked]:bg-red-600"}
+                    checked={(pendingVisibilityAddon[addon.id] ?? (getAddOnMeta(addon.id)?.visible !== false)) as boolean}
+                    onCheckedChange={(checked) => queueVisibility('addon', addon.id, checked)}
                   />
+                  {typeof pendingVisibilityAddon[addon.id] !== 'undefined' ? (
+                    <span className="text-red-500 text-xs">Pending</span>
+                  ) : (getAddOnMeta(addon.id)?.visible === false ? (
+                    <span className="text-red-500 text-xs">Hidden</span>
+                  ) : (
+                    <span className="text-green-500 text-xs">Live</span>
+                  ))}
                 </div>
-              </div>
-            <div className="button-group-responsive flex gap-2 flex-wrap md:flex-nowrap max-w-full">
-                <Button variant="outline" onClick={() => {
-                  const sizes: string[] = builtInSizes;
-                  const factor = 1 + (5/100);
-                  const upd = { ...currentPrices };
-                  sizes.forEach(sz => {
-                    const key = getKey('addon', addon.id, sz);
-                    const base = parseFloat(savedPrices[key]) || 0;
-                    upd[key] = String(Math.round(base * factor));
-                  });
-                  setCurrentPrices(upd);
-                }}>Apply 5%</Button>
-                <Button variant="outline" onClick={() => {
-                  const sizes: string[] = builtInSizes;
-                  const factor = 1 + (10/100);
-                  const upd = { ...currentPrices };
-                  sizes.forEach(sz => {
-                    const key = getKey('addon', addon.id, sz);
-                    const base = parseFloat(savedPrices[key]) || 0;
-                    upd[key] = String(Math.round(base * factor));
-                  });
-                  setCurrentPrices(upd);
-                }}>Apply 10%</Button>
-                
-                <Button variant="outline" onClick={() => {
-                  const sizes: string[] = builtInSizes;
-                  const upd = { ...currentPrices };
-                  sizes.forEach(sz => {
-                    const key = getKey('addon', addon.id, sz);
-                    upd[key] = savedPrices[key] || '0';
-                  });
-                  setCurrentPrices(upd);
-                }}>Reset</Button>
-                <Button
-                  className="bg-red-600 hover:bg-red-700"
-                  onClick={() => saveOne([getKey('addon', addon.id, vehicleType)])}
-                >
-                  Save
-                </Button>
-                <Button variant="outline" className="border-red-600 text-red-500" onClick={() => openEditServices('addon', addon.id)}>Edit Services</Button>
-                <AlertDialog>
-                  <AlertDialogTrigger asChild>
-                    <Button variant="destructive" className="bg-red-700">
-                      <span className="inline-flex items-center gap-2"><Trash2 className="w-4 h-4" /> Delete</span>
-                    </Button>
-                  </AlertDialogTrigger>
-                  <AlertDialogContent>
-                    <AlertDialogHeader>
-                      <AlertDialogTitle>Delete permanently?</AlertDialogTitle>
-                      <AlertDialogDescription>This will remove the add-on from admin and live site.</AlertDialogDescription>
-                    </AlertDialogHeader>
-            <AlertDialogFooter className="button-group-responsive">
-                      <AlertDialogCancel>Cancel</AlertDialogCancel>
-                      <AlertDialogAction onClick={() => confirmDelete('addon', addon.id)}>Yes, delete</AlertDialogAction>
-            </AlertDialogFooter>
-                  </AlertDialogContent>
-                </AlertDialog>
-              </div>
-            </Card>
-          ))}
-        </div>
+                <div className="grid grid-cols-1 gap-3">
+                  <div>
+                    <label className="text-xs text-muted-foreground">{vehicleLabels[vehicleType] || vehicleType}</label>
+                    <Input
+                      type="number"
+                      step="1"
+                      value={currentPrices[getKey('addon', addon.id, vehicleType)] || ''}
+                      onChange={(e) => handleChange(getKey('addon', addon.id, vehicleType), e.target.value)}
+                    />
+                  </div>
+                </div>
+                <div className="button-group-responsive flex gap-2 flex-wrap md:flex-nowrap max-w-full">
+                  <Button variant="outline" onClick={() => {
+                    const sizes: string[] = builtInSizes;
+                    const factor = 1 + (5 / 100);
+                    const upd = { ...currentPrices };
+                    sizes.forEach(sz => {
+                      const key = getKey('addon', addon.id, sz);
+                      const base = parseFloat(savedPrices[key]) || 0;
+                      upd[key] = String(Math.round(base * factor));
+                    });
+                    setCurrentPrices(upd);
+                  }}>Apply 5%</Button>
+                  <Button variant="outline" onClick={() => {
+                    const sizes: string[] = builtInSizes;
+                    const factor = 1 + (10 / 100);
+                    const upd = { ...currentPrices };
+                    sizes.forEach(sz => {
+                      const key = getKey('addon', addon.id, sz);
+                      const base = parseFloat(savedPrices[key]) || 0;
+                      upd[key] = String(Math.round(base * factor));
+                    });
+                    setCurrentPrices(upd);
+                  }}>Apply 10%</Button>
+
+                  <Button variant="outline" onClick={() => {
+                    const sizes: string[] = builtInSizes;
+                    const upd = { ...currentPrices };
+                    sizes.forEach(sz => {
+                      const key = getKey('addon', addon.id, sz);
+                      upd[key] = savedPrices[key] || '0';
+                    });
+                    setCurrentPrices(upd);
+                  }}>Reset</Button>
+                  <Button
+                    className="bg-red-600 hover:bg-red-700"
+                    onClick={() => saveOne([getKey('addon', addon.id, vehicleType)])}
+                  >
+                    Save
+                  </Button>
+                  <Button variant="outline" className="border-red-600 text-red-500" onClick={() => openEditServices('addon', addon.id)}>Edit Services</Button>
+                  <AlertDialog>
+                    <AlertDialogTrigger asChild>
+                      <Button variant="destructive" className="bg-red-700">
+                        <span className="inline-flex items-center gap-2"><Trash2 className="w-4 h-4" /> Delete</span>
+                      </Button>
+                    </AlertDialogTrigger>
+                    <AlertDialogContent>
+                      <AlertDialogHeader>
+                        <AlertDialogTitle>Delete permanently?</AlertDialogTitle>
+                        <AlertDialogDescription>This will remove the add-on from admin and live site.</AlertDialogDescription>
+                      </AlertDialogHeader>
+                      <AlertDialogFooter className="button-group-responsive">
+                        <AlertDialogCancel>Cancel</AlertDialogCancel>
+                        <AlertDialogAction onClick={() => confirmDelete('addon', addon.id)}>Yes, delete</AlertDialogAction>
+                      </AlertDialogFooter>
+                    </AlertDialogContent>
+                  </AlertDialog>
+                </div>
+              </Card>
+            ))}
+          </div>
         )}
 
         {/* Toolbar: Add new package/add-on */}
@@ -1270,7 +1275,7 @@ export default function PackagePricing() {
                 <div className="space-y-2">
                   {([...builtInPackages, ...getCustomPackages()].find(p => p.id === editServicesFor)?.steps || [])
                     .slice()
-                    .sort((a,b) => a.name.localeCompare(b.name))
+                    .sort((a, b) => a.name.localeCompare(b.name))
                     .map(step => (
                       <label key={step.id} className="flex items-center gap-2 text-sm">
                         <input type="checkbox" checked={!!editServicesSelection[step.id]} onChange={(e) => setEditServicesSelection(prev => ({ ...prev, [step.id]: e.target.checked }))} />
@@ -1284,9 +1289,9 @@ export default function PackagePricing() {
                 <Label className="text-white">Custom Services</Label>
                 {customServiceRows.map((row, idx) => (
                   <div key={idx} className="flex items-center gap-2">
-                    <input type="checkbox" checked={row.checked} onChange={(e) => setCustomServiceRows(prev => prev.map((r,i) => i===idx ? { ...r, checked: e.target.checked } : r))} />
+                    <input type="checkbox" checked={row.checked} onChange={(e) => setCustomServiceRows(prev => prev.map((r, i) => i === idx ? { ...r, checked: e.target.checked } : r))} />
                     <Input className="flex-1" placeholder="Add Custom Service" value={row.name}
-                      onChange={(e) => setCustomServiceRows(prev => prev.map((r,i) => i===idx ? { ...r, name: e.target.value } : r))} />
+                      onChange={(e) => setCustomServiceRows(prev => prev.map((r, i) => i === idx ? { ...r, name: e.target.value } : r))} />
                     <Button variant="destructive" className="bg-red-700" onClick={() => removeCustomRow(idx)}>
                       <Trash2 className="w-4 h-4" />
                     </Button>
