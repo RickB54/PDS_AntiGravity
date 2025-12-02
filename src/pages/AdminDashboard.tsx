@@ -70,6 +70,7 @@ const MENU_REGISTRY: { key: string; label: string }[] = [
   { key: 'search-customer', label: 'Customer Profiles' },
   { key: 'invoicing', label: 'Invoicing' },
   { key: 'accounting', label: 'Accounting' },
+  { key: 'company-budget', label: 'Company Budget' },
   { key: 'payroll', label: 'Payroll' },
   { key: 'inventory-control', label: 'Inventory Control' },
   { key: 'file-manager', label: 'File Manager' },
@@ -573,8 +574,8 @@ export default function AdminDashboard() {
                 <span className="text-sm font-medium text-white">{a.title}</span>
                 <div className="flex items-center gap-2">
                   <a href={a.href} className="text-xs text-blue-400 hover:underline" onClick={() => markRead(a.id)}>Open</a>
-                  <Button size="xs" variant="outline" onClick={() => markRead(a.id)}>Mark read</Button>
-                  <Button size="xs" variant="outline" className="bg-black text-red-700 border-red-700 hover:bg-red-800/20" onClick={() => dismiss(a.id)}>Dismiss</Button>
+                  <Button size="sm" variant="outline" className="h-6 px-2 text-xs" onClick={() => markRead(a.id)}>Mark read</Button>
+                  <Button size="sm" variant="outline" className="h-6 px-2 text-xs bg-black text-red-700 border-red-700 hover:bg-red-800/20" onClick={() => dismiss(a.id)}>Dismiss</Button>
                 </div>
               </div>
             ))}
@@ -734,6 +735,9 @@ export default function AdminDashboard() {
             </div>
             <Card className="p-4 bg-[#0f0f13] rounded-xl border border-zinc-800">
               <div className="flex flex-row flex-wrap gap-2">
+                {!isMenuHidden('company-budget') && (
+                  <RedBox accent="blue" title="Company Budget" href="/company-budget" Icon={DollarSign} />
+                )}
                 {!isMenuHidden('invoicing') && (
                   <RedBox accent="green" title="Create Invoice" href="/invoicing" Icon={FileText} badgeCount={Math.max(unpaidInvoices, badgeByType('invoice_unpaid'))} />
                 )}

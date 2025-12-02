@@ -14,6 +14,8 @@ import localforage from "localforage";
 import DateRangeFilter, { DateRangeValue } from "@/components/filters/DateRangeFilter";
 import jsPDF from "jspdf";
 import { getCurrentUser } from "@/lib/auth";
+import { getReceivables } from "@/lib/receivables";
+import { getExpenses } from "@/lib/db";
 
 const Reports = () => {
   const [dateFilter, setDateFilter] = useState<"all" | "daily" | "weekly" | "monthly">("all");
@@ -60,8 +62,8 @@ const Reports = () => {
       }
     }
     const estimatesData = (await localforage.getItem<any[]>("estimates")) || [];
-    const incomeData = (await localforage.getItem<any[]>("receivables")) || [];
-    const expenseData = (await localforage.getItem<any[]>("expenses")) || [];
+    const incomeData = await getReceivables();
+    const expenseData = await getExpenses();
     const payrollData = (await localforage.getItem<any[]>("payroll-history")) || [];
     setCustomers(cust);
     setInvoices(inv);
@@ -299,8 +301,10 @@ const Reports = () => {
 
   const lowStockChemicals = chemicals.filter(c => c.currentStock <= c.threshold);
   const lowStockMaterials = materials.filter(m => (m.quantity || 0) <= (m.threshold || m.lowThreshold || 0));
+  const lowStockTools = tools.filter(t => (t.quantity || 0) <= (t.threshold || 0));
   const totalInventoryValue = chemicals.reduce((sum, c) => sum + ((c.costPerBottle || 0) * (c.currentStock || 0)), 0);
   const totalMaterialsValue = materials.reduce((sum, m) => sum + ((m.costPerItem || 0) * (m.quantity || 0)), 0);
+  const totalToolsValue = tools.reduce((sum, t) => sum + ((t.cost || 0) * (t.quantity || 1)), 0);
   const chemicalsSorted = [...chemicals].sort((a, b) => {
     const alow = a.currentStock <= a.threshold; const blow = b.currentStock <= b.threshold;
     if (alow !== blow) return alow ? -1 : 1; return (a.name || '').localeCompare(b.name || '');
@@ -308,6 +312,11 @@ const Reports = () => {
   const materialsSorted = [...materials].sort((a, b) => {
     const alow = (a.quantity || 0) <= (a.threshold || a.lowThreshold || 0);
     const blow = (b.quantity || 0) <= (b.threshold || b.lowThreshold || 0);
+    if (alow !== blow) return alow ? -1 : 1; return (a.name || '').localeCompare(b.name || '');
+  });
+  const toolsSorted = [...tools].sort((a, b) => {
+    const alow = (a.quantity || 0) <= (a.threshold || 0);
+    const blow = (b.quantity || 0) <= (b.threshold || 0);
     if (alow !== blow) return alow ? -1 : 1; return (a.name || '').localeCompare(b.name || '');
   });
 
@@ -485,18 +494,22 @@ const Reports = () => {
                   </div>
                 </div>
 
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 mb-6">
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
                   <div>
-                    <p className="text-xs text-muted-foreground">Total Chemicals</p>
-                    <p className="text-2xl font-bold text-foreground">{chemicals.length}</p>
+                    <p className="text-xs text-muted-foreground">Total Items</p>
+                    <p className="text-2xl font-bold text-foreground">{chemicals.length + materials.length + tools.length}</p>
                   </div>
                   <div>
                     <p className="text-xs text-muted-foreground">Low Stock Items</p>
-                    <p className="text-2xl font-bold text-destructive">{lowStockChemicals.length + lowStockMaterials.length}</p>
+                    <p className="text-2xl font-bold text-destructive">{lowStockChemicals.length + lowStockMaterials.length + lowStockTools.length}</p>
                   </div>
                   <div>
                     <p className="text-xs text-muted-foreground">Total Value</p>
-                    <p className="text-2xl font-bold text-success">${(totalInventoryValue + totalMaterialsValue).toFixed(2)}</p>
+                    <p className="text-2xl font-bold text-success">${(totalInventoryValue + totalMaterialsValue + totalToolsValue).toFixed(2)}</p>
+                  </div>
+                  <div>
+                    <p className="text-xs text-muted-foreground">Categories</p>
+                    <p className="text-2xl font-bold text-primary">Chemicals • Materials • Tools</p>
                   </div>
                 </div>
 
@@ -560,6 +573,45 @@ const Reports = () => {
                       {materialsSorted.length === 0 && (
                         <TableRow>
                           <TableCell colSpan={4} className="text-center text-muted-foreground py-6">No materials tracked.</TableCell>
+                        </TableRow>
+                      )}
+                    </TableBody>
+                  </Table>
+                </div>
+
+                <div className="mt-6">
+                  <h3 className="text-lg font-semibold mb-2">Tools</h3>
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead>Item</TableHead>
+                        <TableHead>Category</TableHead>
+                        <TableHead>Quantity</TableHead>
+                        <TableHead>Threshold</TableHead>
+                        <TableHead>Status</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {toolsSorted.map(tool => (
+                        <TableRow key={tool.id}>
+                          <TableCell className="font-medium">{tool.name}</TableCell>
+                          <TableCell>{tool.category || '—'}</TableCell>
+                          <TableCell className={(tool.quantity || 0) <= (tool.threshold || 0) ? 'text-destructive font-bold' : ''}>
+                            {tool.quantity || 0}
+                          </TableCell>
+                          <TableCell>{tool.threshold || 0}</TableCell>
+                          <TableCell>
+                            {(tool.quantity || 0) <= (tool.threshold || 0) ? (
+                              <span className="text-destructive font-semibold">⚠️ LOW STOCK</span>
+                            ) : (
+                              <span className="text-success">✓ OK</span>
+                            )}
+                          </TableCell>
+                        </TableRow>
+                      ))}
+                      {toolsSorted.length === 0 && (
+                        <TableRow>
+                          <TableCell colSpan={5} className="text-center text-muted-foreground py-6">No tools tracked.</TableCell>
                         </TableRow>
                       )}
                     </TableBody>
@@ -978,7 +1030,7 @@ const Reports = () => {
                       try {
                         const dataUrl = buildCustomerJobsPDF(customerJobsCustomer, customerJobs, true);
                         const fileName = `CustomerJobs_${String(customerJobsCustomer.name || 'Customer').replace(/\s/g, '_')}_${new Date().toISOString().slice(0, 10)}.pdf`;
-                        savePDFToArchive('Customer', customerJobsCustomer.name || 'Customer', customerJobsCustomer.id || String(Date.now()), dataUrl, { fileName });
+                        savePDFToArchive('Customer', customerJobsCustomer.name || 'Customer', customerJobsCustomer.id || String(Date.now()), String(dataUrl), { fileName });
                       } catch { }
                     }}>
                       <Save className="h-4 w-4 mr-2" />Save to File Manager

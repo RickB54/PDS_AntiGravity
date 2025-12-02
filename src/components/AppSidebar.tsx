@@ -335,6 +335,17 @@ export function AppSidebar() {
                 </SidebarMenuItem>
               )}
 
+              {!isHidden('company-budget') && (
+                <SidebarMenuItem>
+                  <SidebarMenuButton asChild onClick={handleNavClick}>
+                    <NavLink to="/company-budget" className={linkClass}>
+                      <DollarSign className="h-4 w-4" />
+                      <span>Company Budget</span>
+                    </NavLink>
+                  </SidebarMenuButton>
+                </SidebarMenuItem>
+              )}
+
               {!isHidden('payroll') && (
                 <SidebarMenuItem>
                   <SidebarMenuButton asChild onClick={handleNavClick}>

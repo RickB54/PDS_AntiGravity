@@ -32,9 +32,13 @@ interface MaterialForm {
 interface ToolForm {
   id?: string;
   name: string;
+  category: string;
   warranty: string;
   purchaseDate: string;
   price: string;
+  cost: string; // alias for price
+  quantity: string;
+  threshold: string;
   lifeExpectancy: string;
   notes: string;
 }
@@ -63,6 +67,7 @@ export default function UnifiedInventoryModal({ mode, open, onOpenChange, initia
     warranty: "",
     purchaseDate: "",
     price: "",
+    cost: "",
     lifeExpectancy: "",
   });
 
@@ -102,6 +107,7 @@ export default function UnifiedInventoryModal({ mode, open, onOpenChange, initia
         warranty: "",
         purchaseDate: "",
         price: "",
+        cost: "",
         lifeExpectancy: "",
       });
     }
@@ -140,9 +146,13 @@ export default function UnifiedInventoryModal({ mode, open, onOpenChange, initia
         const payload = {
           id,
           name: form.name.trim(),
+          category: form.category || "Power Tool",
           warranty: form.warranty || "",
           purchaseDate: form.purchaseDate || "",
           price: numeric(form.price),
+          cost: numeric(form.price), // alias
+          quantity: Math.round(numeric(form.quantity) || 1),
+          threshold: Math.round(numeric(form.threshold) || 0),
           lifeExpectancy: form.lifeExpectancy || "",
           notes: form.notes || "",
           createdAt: new Date().toISOString(),
@@ -215,6 +225,30 @@ export default function UnifiedInventoryModal({ mode, open, onOpenChange, initia
             </>
           ) : mode === 'tool' ? (
             <>
+              <div className="space-y-1">
+                <Label>Category</Label>
+                <select
+                  value={form.category || "Power Tool"}
+                  onChange={(e) => setForm({ ...form, category: e.target.value })}
+                  className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+                >
+                  <option>Power Tool</option>
+                  <option>Hand Tool</option>
+                  <option>Equipment</option>
+                  <option>Accessory</option>
+                  <option>Other</option>
+                </select>
+              </div>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                <div className="space-y-1">
+                  <Label>Quantity</Label>
+                  <Input type="number" value={form.quantity} onChange={(e) => setForm({ ...form, quantity: e.target.value })} />
+                </div>
+                <div className="space-y-1">
+                  <Label>Price / Cost</Label>
+                  <Input type="number" step="0.01" value={form.price} onChange={(e) => setForm({ ...form, price: e.target.value, cost: e.target.value })} />
+                </div>
+              </div>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                 <div className="space-y-1">
                   <Label>Warranty Info</Label>
@@ -225,15 +259,9 @@ export default function UnifiedInventoryModal({ mode, open, onOpenChange, initia
                   <Input type="date" value={form.purchaseDate} onChange={(e) => setForm({ ...form, purchaseDate: e.target.value })} />
                 </div>
               </div>
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                <div className="space-y-1">
-                  <Label>Price</Label>
-                  <Input type="number" step="0.01" value={form.price} onChange={(e) => setForm({ ...form, price: e.target.value })} />
-                </div>
-                <div className="space-y-1">
-                  <Label>Life Expectancy</Label>
-                  <Input value={form.lifeExpectancy} onChange={(e) => setForm({ ...form, lifeExpectancy: e.target.value })} placeholder="e.g. 5 Years" />
-                </div>
+              <div className="space-y-1">
+                <Label>Life Expectancy</Label>
+                <Input value={form.lifeExpectancy} onChange={(e) => setForm({ ...form, lifeExpectancy: e.target.value })} placeholder="e.g. 5 Years" />
               </div>
               <div className="space-y-1">
                 <Label>Notes</Label>

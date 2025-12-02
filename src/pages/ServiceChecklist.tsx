@@ -1003,6 +1003,12 @@ const ServiceChecklist = () => {
             <div className="flex items-center justify-between mb-4">
               <h2 className="text-2xl font-bold text-foreground">Checklist</h2>
               <div className="flex items-center gap-3">
+                <Button variant="outline" size="sm" onClick={() => {
+                  const all = checklistSteps.length > 0 && checklistSteps.every(s => s.checked);
+                  setChecklistSteps(prev => prev.map(s => ({ ...s, checked: !all })));
+                }}>
+                  {checklistSteps.length > 0 && checklistSteps.every(s => s.checked) ? 'Uncheck All' : 'Check All'}
+                </Button>
                 <Progress value={progressPercent} className="w-40" />
                 <span className="text-sm">{progressPercent}%</span>
               </div>

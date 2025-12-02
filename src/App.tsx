@@ -17,6 +17,7 @@ import SearchCustomer from "./pages/SearchCustomer";
 import InventoryControl from "./pages/InventoryControl";
 import Invoicing from "./pages/Invoicing";
 import Accounting from "./pages/Accounting";
+import CompanyBudget from "./pages/CompanyBudget";
 import Reports from "./pages/Reports";
 import TrainingManual from "./pages/TrainingManual";
 import EmployeeTrainingCourse from "./pages/EmployeeTrainingCourse";
@@ -202,6 +203,11 @@ const App = () => {
                     <Route path="/accounting" element={
                       <ProtectedRoute allowedRoles={['admin']}>
                         <Accounting />
+                      </ProtectedRoute>
+                    } />
+                    <Route path="/company-budget" element={
+                      <ProtectedRoute allowedRoles={['admin']}>
+                        <CompanyBudget />
                       </ProtectedRoute>
                     } />
                     <Route path="/payroll" element={
