@@ -378,6 +378,17 @@ const ServiceChecklist = () => {
           doc.text(chemText, 20, y);
           y += chemText.length * 6 + 8;
 
+          doc.text('Materials Used:', 20, y);
+          y += 8;
+          const matLines = matItems.map(mi => `• ${String(materialsList.find(m => String(m.id) === String(mi.materialId))?.name || mi.materialId)} — ${mi.quantity} unit(s)`);
+          const matText = doc.splitTextToSize(matLines.length ? matLines.join('\n') : '(none)', 170);
+          doc.text(matText, 20, y);
+          y += matText.length * 6 + 8;
+
+          doc.text('Tools Used:', 20, y);
+          y += 8;
+          const toolLines = toolItems.map(ti => `• ${String(ti.toolName || ti.toolId)}`);
+          const toolText = doc.splitTextToSize(toolLines.length ? toolLines.join('\n') : '(none)', 170);
           doc.text(toolText, 20, y);
           y += toolText.length * 6 + 8;
 

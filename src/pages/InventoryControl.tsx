@@ -7,7 +7,7 @@ import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
-import { Plus, AlertTriangle, Printer, Save } from "lucide-react";
+import { Plus, AlertTriangle, Printer, Save, Trash2, TrendingUp, Package } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { pushAdminAlert } from "@/lib/adminAlerts";
 import { useAlertsStore } from "@/store/alerts";
@@ -15,6 +15,7 @@ import localforage from "localforage";
 import api from "@/lib/api";
 import DateRangeFilter, { DateRangeValue } from "@/components/filters/DateRangeFilter";
 import UnifiedInventoryModal from "@/components/inventory/UnifiedInventoryModal";
+import ImportWizardModal from "@/components/inventory/ImportWizardModal";
 import jsPDF from "jspdf";
 import { pushEmployeeNotification } from "@/lib/employeeNotifications";
 
@@ -83,6 +84,8 @@ const InventoryControl = () => {
   const [updateMatId, setUpdateMatId] = useState<string>("");
   const [updateMatQtyNote, setUpdateMatQtyNote] = useState<string>("");
   const [employees, setEmployees] = useState<any[]>([]);
+  const [importWizardOpen, setImportWizardOpen] = useState(false);
+  const [importWizardTab, setImportWizardTab] = useState<"chemicals" | "tools" | "materials">("chemicals");
   // Using UnifiedInventoryModal; local form state removed
 
   useEffect(() => {
@@ -155,21 +158,24 @@ const InventoryControl = () => {
 
   // Save handled inside UnifiedInventoryModal; refresh list on onSaved
 
-  const handleDelete = async (id: string, mode: 'chemical' | 'material' | 'tool') => {
+  const handleDelete = async (id: string, mode: 'chemical' | 'material' | 'tool', itemName: string) => {
+    const confirmed = window.confirm(`Are you sure you want to delete "${itemName}"? This action cannot be undone.`);
+    if (!confirmed) return;
+
     if (mode === 'chemical') {
       const updated = chemicals.filter(c => c.id !== id);
       await saveChemicals(updated);
-      toast({ title: "Chemical Deleted", description: "Item removed from inventory." });
+      toast({ title: "Chemical Deleted", description: `${itemName} removed from inventory.` });
     } else if (mode === 'material') {
       const updated = materials.filter(m => m.id !== id);
       await localforage.setItem("materials", updated);
       setMaterials(updated);
-      toast({ title: "Material Deleted", description: "Item removed from inventory." });
+      toast({ title: "Material Deleted", description: `${itemName} removed from inventory.` });
     } else {
       const updated = tools.filter(t => t.id !== id);
       await localforage.setItem("tools", updated);
       setTools(updated);
-      toast({ title: "Tool Deleted", description: "Item removed from inventory." });
+      toast({ title: "Tool Deleted", description: `${itemName} removed from inventory.` });
     }
   };
 
@@ -257,14 +263,117 @@ const InventoryControl = () => {
             </Card>
           )}
 
+          {/* Materials Section */}
           <Card className="p-6 bg-gradient-card border-border">
             <div className="flex items-center justify-between mb-4 flex-wrap gap-2">
-              <h2 className="text-2xl font-bold text-foreground">Combined Inventory</h2>
+              <h2 className="text-2xl font-bold text-foreground">Materials Inventory</h2>
               <div className="flex gap-2">
+                <Button
+                  variant="outline"
+                  onClick={() => navigate('/company-budget?tab=inventory')}
+                  className="flex items-center gap-2"
+                >
+                  <TrendingUp className="h-4 w-4" />
+                  Track in Budget
+                </Button>                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => {
+                    setImportWizardTab("materials");
+                    setImportWizardOpen(true);
+                  }}
+                  className="flex items-center gap-2"
+                >
+                  <Package className="h-4 w-4" />
+                  Import
+                </Button>
+
                 <Button onClick={openAddMaterial} className="bg-gradient-hero">
                   <Plus className="h-4 w-4 mr-2" />
                   Add Material
                 </Button>
+              </div>
+            </div>
+
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Name</TableHead>
+                  <TableHead className="hidden md:table-cell">Category</TableHead>
+                  <TableHead className="hidden md:table-cell">Subtype</TableHead>
+                  <TableHead className="hidden md:table-cell">Cost</TableHead>
+                  <TableHead>Quantity</TableHead>
+                  <TableHead className="hidden md:table-cell">Threshold</TableHead>
+                  <TableHead className="text-right">Actions</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {materials.map(m => {
+                  const isLow = typeof m.lowThreshold === 'number' && m.quantity <= m.lowThreshold;
+                  return (
+                    <TableRow key={m.id}>
+                      <TableCell className="font-medium cursor-pointer" onClick={() => openEdit(m, 'material')}>{m.name}</TableCell>
+                      <TableCell className="hidden md:table-cell cursor-pointer" onClick={() => openEdit(m, 'material')}>{m.category}</TableCell>
+                      <TableCell className="hidden md:table-cell cursor-pointer" onClick={() => openEdit(m, 'material')}>{m.subtype || '-'}</TableCell>
+                      <TableCell className="hidden md:table-cell cursor-pointer" onClick={() => openEdit(m, 'material')}>
+                        {typeof m.costPerItem === 'number' ? `$${m.costPerItem.toFixed(2)}` : '-'}
+                      </TableCell>
+                      <TableCell className={`cursor-pointer ${isLow ? "text-destructive font-bold" : ""}`} onClick={() => openEdit(m, 'material')}>
+                        {m.quantity}
+                      </TableCell>
+                      <TableCell className="hidden md:table-cell cursor-pointer" onClick={() => openEdit(m, 'material')}>
+                        {typeof m.lowThreshold === 'number' ? m.lowThreshold : '-'}
+                      </TableCell>
+                      <TableCell className="text-right">
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleDelete(m.id, 'material', m.name);
+                          }}
+                          className="text-destructive hover:text-destructive hover:bg-destructive/10"
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </Button>
+                      </TableCell>
+                    </TableRow>
+                  );
+                })}
+                {materials.length === 0 && (
+                  <TableRow>
+                    <TableCell colSpan={7} className="text-center text-muted-foreground py-8">No materials added yet.</TableCell>
+                  </TableRow>
+                )}
+              </TableBody>
+            </Table>
+          </Card>
+
+          {/* Chemicals Section */}
+          <Card className="p-6 bg-gradient-card border-border">
+            <div className="flex items-center justify-between mb-4 flex-wrap gap-2">
+              <h2 className="text-2xl font-bold text-foreground">Chemicals Inventory</h2>
+              <div className="flex gap-2">
+                <Button
+                  variant="outline"
+                  onClick={() => navigate('/company-budget?tab=inventory')}
+                  className="flex items-center gap-2"
+                >
+                  <TrendingUp className="h-4 w-4" />
+                  Track in Budget
+                </Button>                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => {
+                    setImportWizardTab("chemicals");
+                    setImportWizardOpen(true);
+                  }}
+                  className="flex items-center gap-2"
+                >
+                  <Package className="h-4 w-4" />
+                  Import
+                </Button>
+
                 <Button onClick={openAddChemical} className="bg-gradient-hero">
                   <Plus className="h-4 w-4 mr-2" />
                   Add Chemical
@@ -276,50 +385,48 @@ const InventoryControl = () => {
               <TableHeader>
                 <TableRow>
                   <TableHead>Name</TableHead>
-                  <TableHead className="hidden md:table-cell">Type</TableHead>
-                  <TableHead className="hidden md:table-cell">Subtype / Size</TableHead>
+                  <TableHead className="hidden md:table-cell">Bottle Size</TableHead>
                   <TableHead className="hidden md:table-cell">Cost</TableHead>
-                  <TableHead>Quantity / Stock</TableHead>
+                  <TableHead>Stock</TableHead>
                   <TableHead className="hidden md:table-cell">Threshold</TableHead>
+                  <TableHead className="text-right">Actions</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {[
-                  ...materials.map(m => ({
-                    id: m.id,
-                    type: 'material' as const,
-                    name: m.name,
-                    subtypeOrSize: m.subtype || '-',
-                    cost: typeof m.costPerItem === 'number' ? `$${m.costPerItem.toFixed(2)}` : '-',
-                    qtyOrStock: m.quantity,
-                    threshold: typeof m.lowThreshold === 'number' ? m.lowThreshold : '-',
-                    low: typeof m.lowThreshold === 'number' ? (m.quantity <= (m.lowThreshold as number)) : false,
-                    raw: m,
-                  })),
-                  ...chemicals.map(c => ({
-                    id: c.id,
-                    type: 'chemical' as const,
-                    name: c.name,
-                    subtypeOrSize: c.bottleSize,
-                    cost: `$${c.costPerBottle.toFixed(2)}`,
-                    qtyOrStock: c.currentStock,
-                    threshold: c.threshold,
-                    low: c.currentStock <= c.threshold,
-                    raw: c,
-                  })),
-                ].map(row => (
-                  <TableRow key={`${row.type}-${row.id}`} className="cursor-pointer" onClick={() => openEdit(row.raw, row.type)}>
-                    <TableCell className="font-medium">{row.name}</TableCell>
-                    <TableCell className="hidden md:table-cell">{row.type === 'chemical' ? 'Chemical' : 'Material'}</TableCell>
-                    <TableCell className="hidden md:table-cell">{row.subtypeOrSize || '-'}</TableCell>
-                    <TableCell className="hidden md:table-cell">{row.cost}</TableCell>
-                    <TableCell className={row.low ? "text-destructive font-bold" : ""}>{row.qtyOrStock}</TableCell>
-                    <TableCell className="hidden md:table-cell">{row.threshold as any}</TableCell>
-                  </TableRow>
-                ))}
-                {materials.length + chemicals.length === 0 && (
+                {chemicals.map(c => {
+                  const isLow = c.currentStock <= c.threshold;
+                  return (
+                    <TableRow key={c.id}>
+                      <TableCell className="font-medium cursor-pointer" onClick={() => openEdit(c, 'chemical')}>{c.name}</TableCell>
+                      <TableCell className="hidden md:table-cell cursor-pointer" onClick={() => openEdit(c, 'chemical')}>{c.bottleSize}</TableCell>
+                      <TableCell className="hidden md:table-cell cursor-pointer" onClick={() => openEdit(c, 'chemical')}>
+                        ${c.costPerBottle.toFixed(2)}
+                      </TableCell>
+                      <TableCell className={`cursor-pointer ${isLow ? "text-destructive font-bold" : ""}`} onClick={() => openEdit(c, 'chemical')}>
+                        {c.currentStock}
+                      </TableCell>
+                      <TableCell className="hidden md:table-cell cursor-pointer" onClick={() => openEdit(c, 'chemical')}>
+                        {c.threshold}
+                      </TableCell>
+                      <TableCell className="text-right">
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleDelete(c.id, 'chemical', c.name);
+                          }}
+                          className="text-destructive hover:text-destructive hover:bg-destructive/10"
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </Button>
+                      </TableCell>
+                    </TableRow>
+                  );
+                })}
+                {chemicals.length === 0 && (
                   <TableRow>
-                    <TableCell colSpan={6} className="text-center text-muted-foreground py-8">No items added yet.</TableCell>
+                    <TableCell colSpan={6} className="text-center text-muted-foreground py-8">No chemicals added yet.</TableCell>
                   </TableRow>
                 )}
               </TableBody>
@@ -329,10 +436,32 @@ const InventoryControl = () => {
           <Card className="p-6 bg-gradient-card border-border">
             <div className="flex items-center justify-between mb-4 flex-wrap gap-2">
               <h2 className="text-2xl font-bold text-foreground">Tools Inventory</h2>
-              <Button onClick={openAddTool} className="bg-gradient-hero">
-                <Plus className="h-4 w-4 mr-2" />
-                Add Tool
-              </Button>
+              <div className="flex gap-2">
+                <Button
+                  variant="outline"
+                  onClick={() => navigate('/company-budget?tab=inventory')}
+                  className="flex items-center gap-2"
+                >
+                  <TrendingUp className="h-4 w-4" />
+                  Track in Budget
+                </Button>                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => {
+                    setImportWizardTab("tools");
+                    setImportWizardOpen(true);
+                  }}
+                  className="flex items-center gap-2"
+                >
+                  <Package className="h-4 w-4" />
+                  Import
+                </Button>
+
+                <Button onClick={openAddTool} className="bg-gradient-hero">
+                  <Plus className="h-4 w-4 mr-2" />
+                  Add Tool
+                </Button>
+              </div>
             </div>
 
             <Table>
@@ -344,22 +473,36 @@ const InventoryControl = () => {
                   <TableHead>Price</TableHead>
                   <TableHead>Life Expectancy</TableHead>
                   <TableHead>Notes</TableHead>
+                  <TableHead className="text-right">Actions</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
                 {tools.map((tool) => (
-                  <TableRow key={tool.id} className="cursor-pointer" onClick={() => openEdit(tool, 'tool')}>
-                    <TableCell className="font-medium">{tool.name}</TableCell>
-                    <TableCell>{tool.warranty || '-'}</TableCell>
-                    <TableCell>{tool.purchaseDate ? new Date(tool.purchaseDate).toLocaleDateString() : '-'}</TableCell>
-                    <TableCell>{tool.price ? `$${tool.price.toFixed(2)}` : '-'}</TableCell>
-                    <TableCell>{tool.lifeExpectancy || '-'}</TableCell>
-                    <TableCell>{tool.notes || '-'}</TableCell>
+                  <TableRow key={tool.id}>
+                    <TableCell className="font-medium cursor-pointer" onClick={() => openEdit(tool, 'tool')}>{tool.name}</TableCell>
+                    <TableCell className="cursor-pointer" onClick={() => openEdit(tool, 'tool')}>{tool.warranty || '-'}</TableCell>
+                    <TableCell className="cursor-pointer" onClick={() => openEdit(tool, 'tool')}>{tool.purchaseDate ? new Date(tool.purchaseDate).toLocaleDateString() : '-'}</TableCell>
+                    <TableCell className="cursor-pointer" onClick={() => openEdit(tool, 'tool')}>{tool.price ? `$${tool.price.toFixed(2)}` : '-'}</TableCell>
+                    <TableCell className="cursor-pointer" onClick={() => openEdit(tool, 'tool')}>{tool.lifeExpectancy || '-'}</TableCell>
+                    <TableCell className="cursor-pointer" onClick={() => openEdit(tool, 'tool')}>{tool.notes || '-'}</TableCell>
+                    <TableCell className="text-right">
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handleDelete(tool.id, 'tool', tool.name);
+                        }}
+                        className="text-destructive hover:text-destructive hover:bg-destructive/10"
+                      >
+                        <Trash2 className="h-4 w-4" />
+                      </Button>
+                    </TableCell>
                   </TableRow>
                 ))}
                 {tools.length === 0 && (
                   <TableRow>
-                    <TableCell colSpan={6} className="text-center text-muted-foreground py-8">No tools added yet.</TableCell>
+                    <TableCell colSpan={7} className="text-center text-muted-foreground py-8">No tools added yet.</TableCell>
                   </TableRow>
                 )}
               </TableBody>
@@ -538,6 +681,15 @@ const InventoryControl = () => {
             }}>Save Update</Button>
           </DialogFooter>
         </DialogContent>
+
+        {/* Import Wizard Modal */}
+        <ImportWizardModal
+          open={importWizardOpen}
+          onOpenChange={setImportWizardOpen}
+          defaultTab={importWizardTab}
+          onImportComplete={loadData}
+        />
+
       </Dialog>
     </div>
   );

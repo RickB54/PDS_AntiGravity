@@ -96,6 +96,8 @@ const CompanyBudget = () => {
     const [expenseList, setExpenseList] = useState<Expense[]>([]);
     const [categoryData, setCategoryData] = useState<CategoryData[]>([]);
     const [customCategories, setCustomCategories] = useState<string[]>([]);
+    const [customIncomeCategories, setCustomIncomeCategories] = useState<string[]>([]);
+    const [customExpenseCategories, setCustomExpenseCategories] = useState<string[]>([]);
     const [budgetTargets, setBudgetTargets] = useState<BudgetTarget[]>([]);
     const [dateFilter, setDateFilter] = useState("monthly");
     const [dateRange, setDateRange] = useState<DateRangeValue>({});
@@ -136,6 +138,10 @@ const CompanyBudget = () => {
     const loadCustomCategories = async () => {
         const cats = await localforage.getItem<string[]>("customCategories") || [];
         setCustomCategories(cats);
+        const incCats = await localforage.getItem<string[]>("customIncomeCategories") || [];
+        setCustomIncomeCategories(incCats);
+        const expCats = await localforage.getItem<string[]>("customExpenseCategories") || [];
+        setCustomExpenseCategories(expCats);
     };
 
     const loadBudgetTargets = async () => {
@@ -200,9 +206,17 @@ const CompanyBudget = () => {
 
     const handleAddCategory = async () => {
         if (!newCategory.trim()) return;
-        const updated = [...customCategories, newCategory.trim()];
-        await localforage.setItem("customCategories", updated);
-        setCustomCategories(updated);
+
+        if (newCategoryType === 'expense') {
+            const updated = [...customExpenseCategories, newCategory.trim()];
+            await localforage.setItem("customExpenseCategories", updated);
+            setCustomExpenseCategories(updated);
+        } else {
+            const updated = [...customIncomeCategories, newCategory.trim()];
+            await localforage.setItem("customIncomeCategories", updated);
+            setCustomIncomeCategories(updated);
+        }
+
         setNewCategory("");
         setAddCategoryOpen(false);
         toast.success("Category added successfully");
@@ -419,6 +433,7 @@ const CompanyBudget = () => {
                                             <SelectTrigger className="h-9"><SelectValue placeholder="Select category" /></SelectTrigger>
                                             <SelectContent>
                                                 {DEFAULT_CATEGORIES.expense.map(cat => <SelectItem key={cat} value={cat}>{cat}</SelectItem>)}
+                                                {customExpenseCategories.map(cat => <SelectItem key={cat} value={cat}>{cat}</SelectItem>)}
                                                 {customCategories.map(cat => <SelectItem key={cat} value={cat}>{cat}</SelectItem>)}
                                             </SelectContent>
                                         </Select>
@@ -717,7 +732,7 @@ const CompanyBudget = () => {
                                     <div>
                                         <h3 className="font-semibold mb-3 text-green-600">Income Categories</h3>
                                         <div className="space-y-2">
-                                            {[...DEFAULT_CATEGORIES.income, ...customCategories.filter(c => !DEFAULT_CATEGORIES.expense.includes(c))].map((cat, idx) => (
+                                            {[...DEFAULT_CATEGORIES.income, ...customIncomeCategories, ...customCategories.filter(c => !DEFAULT_CATEGORIES.expense.includes(c))].map((cat, idx) => (
                                                 <div key={idx} className="p-3 bg-green-50 dark:bg-green-950/20 rounded border border-green-200 dark:border-green-800">
                                                     <span className="font-medium text-green-900 dark:text-green-100">{cat}</span>
                                                 </div>
@@ -728,7 +743,7 @@ const CompanyBudget = () => {
                                     <div>
                                         <h3 className="font-semibold mb-3 text-red-600">Expense Categories</h3>
                                         <div className="space-y-2">
-                                            {DEFAULT_CATEGORIES.expense.map((cat, idx) => (
+                                            {[...DEFAULT_CATEGORIES.expense, ...customExpenseCategories].map((cat, idx) => (
                                                 <div key={idx} className="p-3 bg-red-50 dark:bg-red-950/20 rounded border border-red-200 dark:border-red-800">
                                                     <span className="font-medium text-red-900 dark:text-red-100">{cat}</span>
                                                 </div>
@@ -765,7 +780,7 @@ const CompanyBudget = () => {
                                         </TableHeader>
                                         <TableBody>
                                             {/* Income Categories */}
-                                            {[...DEFAULT_CATEGORIES.income, ...customCategories.filter(c => !DEFAULT_CATEGORIES.expense.includes(c))].map(cat => {
+                                            {[...DEFAULT_CATEGORIES.income, ...customIncomeCategories, ...customCategories.filter(c => !DEFAULT_CATEGORIES.expense.includes(c))].map(cat => {
                                                 const actual = incomeList.filter(i => {
                                                     const d = new Date(i.date || i.createdAt || '');
                                                     const now = new Date();
@@ -818,7 +833,7 @@ const CompanyBudget = () => {
                                             })}
 
                                             {/* Expense Categories */}
-                                            {DEFAULT_CATEGORIES.expense.map(cat => {
+                                            {[...DEFAULT_CATEGORIES.expense, ...customExpenseCategories].map(cat => {
                                                 const actual = expenseList.filter(e => {
                                                     const d = new Date(e.createdAt);
                                                     const now = new Date();

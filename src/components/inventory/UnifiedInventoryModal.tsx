@@ -13,9 +13,11 @@ interface ChemicalForm {
   id?: string;
   name: string;
   bottleSize: string;
-  costPerBottle: string; // numeric string
+  costPerBottle: string; // numeric string - MANDATORY
   currentStock: string; // numeric string
-  threshold: string; // numeric string
+  threshold: string; // numeric string - MANDATORY
+  unitOfMeasure: string; // e.g., "oz", "mL"
+  consumptionRatePerJob: string; // numeric string - consumption per job
 }
 
 interface MaterialForm {
@@ -24,9 +26,11 @@ interface MaterialForm {
   category: string;
   subtype: string;
   quantity: string; // numeric string
-  costPerItem: string; // numeric string
+  costPerItem: string; // numeric string - MANDATORY
   notes: string;
-  threshold: string; // maps to lowThreshold
+  threshold: string; // maps to lowThreshold - MANDATORY
+  unitOfMeasure: string; // e.g., "pads", "units"
+  consumptionRatePerJob: string; // numeric string - consumption per job
 }
 
 interface ToolForm {
@@ -35,12 +39,14 @@ interface ToolForm {
   category: string;
   warranty: string;
   purchaseDate: string;
-  price: string;
-  cost: string; // alias for price
+  price: string; // MANDATORY
+  cost: string; // alias for price - MANDATORY
   quantity: string;
-  threshold: string;
+  threshold: string; // MANDATORY
   lifeExpectancy: string;
   notes: string;
+  unitOfMeasure: string; // e.g., "units"
+  consumptionRatePerJob: string; // numeric string - consumption per job
 }
 
 type Props = {
@@ -69,6 +75,8 @@ export default function UnifiedInventoryModal({ mode, open, onOpenChange, initia
     price: "",
     cost: "",
     lifeExpectancy: "",
+    unitOfMeasure: "",
+    consumptionRatePerJob: "0",
   });
 
   useEffect(() => {
@@ -109,6 +117,8 @@ export default function UnifiedInventoryModal({ mode, open, onOpenChange, initia
         price: "",
         cost: "",
         lifeExpectancy: "",
+        unitOfMeasure: mode === 'chemical' ? "oz" : "units",
+        consumptionRatePerJob: "0",
       });
     }
   }, [initial, open, mode]);
@@ -120,10 +130,27 @@ export default function UnifiedInventoryModal({ mode, open, onOpenChange, initia
 
   const save = async () => {
     try {
+      // Validate required fields
       if (!form.name.trim()) {
         toast.error("Name is required");
         return;
       }
+
+      // Validate cost field (MANDATORY)
+      const cost = mode === 'chemical' ? numeric(form.costPerBottle) :
+        mode === 'tool' ? numeric(form.price) :
+          numeric(form.costPerItem);
+      if (cost <= 0) {
+        toast.error("Cost is required and must be greater than 0");
+        return;
+      }
+
+      // Validate threshold (MANDATORY but can be 0 for equipment)
+      if (numeric(form.threshold) < 0) {
+        toast.error("Low-Stock Threshold cannot be negative (use 0 for equipment that doesn't need restocking)");
+        return;
+      }
+
       const id = form.id || `${mode}-${Date.now()}`;
       if (mode === 'chemical') {
         const payload = {
@@ -133,6 +160,8 @@ export default function UnifiedInventoryModal({ mode, open, onOpenChange, initia
           costPerBottle: numeric(form.costPerBottle),
           currentStock: Math.round(numeric(form.currentStock)),
           threshold: Math.round(numeric(form.threshold) || 2),
+          unitOfMeasure: form.unitOfMeasure || "oz",
+          consumptionRatePerJob: numeric(form.consumptionRatePerJob),
         };
         try {
           await api('/api/inventory/chemicals', { method: 'POST', body: JSON.stringify(payload) });
@@ -155,6 +184,8 @@ export default function UnifiedInventoryModal({ mode, open, onOpenChange, initia
           threshold: Math.round(numeric(form.threshold) || 0),
           lifeExpectancy: form.lifeExpectancy || "",
           notes: form.notes || "",
+          unitOfMeasure: form.unitOfMeasure || "units",
+          consumptionRatePerJob: numeric(form.consumptionRatePerJob),
           createdAt: new Date().toISOString(),
         };
         // Save to localforage only for now as no API endpoint specified for tools
@@ -169,9 +200,11 @@ export default function UnifiedInventoryModal({ mode, open, onOpenChange, initia
           category: form.category || 'Other',
           subtype: form.subtype || "",
           quantity: Math.round(numeric(form.quantity)),
-          costPerItem: form.costPerItem ? numeric(form.costPerItem) : undefined,
+          costPerItem: numeric(form.costPerItem),
           notes: form.notes || undefined,
-          lowThreshold: form.threshold ? Math.round(numeric(form.threshold)) : undefined,
+          lowThreshold: Math.round(numeric(form.threshold)),
+          unitOfMeasure: form.unitOfMeasure || "units",
+          consumptionRatePerJob: numeric(form.consumptionRatePerJob),
           createdAt: new Date().toISOString(),
         };
         try {
@@ -214,12 +247,22 @@ export default function UnifiedInventoryModal({ mode, open, onOpenChange, initia
               </div>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                 <div className="space-y-1">
-                  <Label>Cost per Bottle</Label>
-                  <Input type="number" step="0.01" value={form.costPerBottle} onChange={(e) => setForm({ ...form, costPerBottle: e.target.value })} />
+                  <Label>Cost per Bottle *</Label>
+                  <Input type="number" step="0.01" value={form.costPerBottle} onChange={(e) => setForm({ ...form, costPerBottle: e.target.value })} required />
                 </div>
                 <div className="space-y-1">
                   <Label>Current Stock</Label>
                   <Input type="number" value={form.currentStock} onChange={(e) => setForm({ ...form, currentStock: e.target.value })} />
+                </div>
+              </div>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                <div className="space-y-1">
+                  <Label>Unit of Measure</Label>
+                  <Input value={form.unitOfMeasure} onChange={(e) => setForm({ ...form, unitOfMeasure: e.target.value })} placeholder="e.g., oz, mL, L" />
+                </div>
+                <div className="space-y-1">
+                  <Label>Consumption per Job</Label>
+                  <Input type="number" step="0.01" value={form.consumptionRatePerJob} onChange={(e) => setForm({ ...form, consumptionRatePerJob: e.target.value })} placeholder="e.g., 2" />
                 </div>
               </div>
             </>
@@ -245,8 +288,18 @@ export default function UnifiedInventoryModal({ mode, open, onOpenChange, initia
                   <Input type="number" value={form.quantity} onChange={(e) => setForm({ ...form, quantity: e.target.value })} />
                 </div>
                 <div className="space-y-1">
-                  <Label>Price / Cost</Label>
-                  <Input type="number" step="0.01" value={form.price} onChange={(e) => setForm({ ...form, price: e.target.value, cost: e.target.value })} />
+                  <Label>Price / Cost *</Label>
+                  <Input type="number" step="0.01" value={form.price} onChange={(e) => setForm({ ...form, price: e.target.value, cost: e.target.value })} required />
+                </div>
+              </div>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                <div className="space-y-1">
+                  <Label>Unit of Measure</Label>
+                  <Input value={form.unitOfMeasure} onChange={(e) => setForm({ ...form, unitOfMeasure: e.target.value })} placeholder="e.g., units, pieces" />
+                </div>
+                <div className="space-y-1">
+                  <Label>Consumption per Job</Label>
+                  <Input type="number" step="0.01" value={form.consumptionRatePerJob} onChange={(e) => setForm({ ...form, consumptionRatePerJob: e.target.value })} placeholder="e.g., 1" />
                 </div>
               </div>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
@@ -293,8 +346,18 @@ export default function UnifiedInventoryModal({ mode, open, onOpenChange, initia
                   <Input type="number" value={form.quantity} onChange={(e) => setForm({ ...form, quantity: e.target.value })} />
                 </div>
                 <div className="space-y-1">
-                  <Label>Cost per Item</Label>
-                  <Input type="number" step="0.01" value={form.costPerItem} onChange={(e) => setForm({ ...form, costPerItem: e.target.value })} />
+                  <Label>Cost per Item *</Label>
+                  <Input type="number" step="0.01" value={form.costPerItem} onChange={(e) => setForm({ ...form, costPerItem: e.target.value })} required />
+                </div>
+              </div>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                <div className="space-y-1">
+                  <Label>Unit of Measure</Label>
+                  <Input value={form.unitOfMeasure} onChange={(e) => setForm({ ...form, unitOfMeasure: e.target.value })} placeholder="e.g., pads, units" />
+                </div>
+                <div className="space-y-1">
+                  <Label>Consumption per Job</Label>
+                  <Input type="number" step="0.01" value={form.consumptionRatePerJob} onChange={(e) => setForm({ ...form, consumptionRatePerJob: e.target.value })} placeholder="e.g., 5" />
                 </div>
               </div>
               <div className="space-y-1">
@@ -304,8 +367,8 @@ export default function UnifiedInventoryModal({ mode, open, onOpenChange, initia
             </>
           )}
           <div className="space-y-1">
-            <Label>Low Inventory Threshold</Label>
-            <Input type="number" value={form.threshold} onChange={(e) => setForm({ ...form, threshold: e.target.value })} />
+            <Label>Low Inventory Threshold *</Label>
+            <Input type="number" value={form.threshold} onChange={(e) => setForm({ ...form, threshold: e.target.value })} required />
           </div>
         </div>
         <DialogFooter className="flex items-center gap-2">

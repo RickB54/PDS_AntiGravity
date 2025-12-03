@@ -132,41 +132,107 @@ const Reports = () => {
     doc.text(`Generated: ${new Date().toLocaleString()}`, 105, 28, { align: "center" });
 
     let y = 40;
+    let grandTotal = 0;
+
+    // Chemicals
     doc.setFontSize(14);
+    doc.setTextColor(220, 38, 38);
     doc.text("Chemical Inventory", 20, y);
+    doc.setTextColor(0, 0, 0);
     y += 8;
 
+    let chemicalsTotal = 0;
     chemicals.forEach(chem => {
       if (y > 270) { doc.addPage(); y = 20; }
       doc.setFontSize(10);
-      const lowStock = chem.currentStock <= chem.threshold;
-      doc.text(`${chem.name} - ${chem.bottleSize} - Stock: ${chem.currentStock} ${lowStock ? '(LOW STOCK)' : ''}`, 20, y);
+      const cost = chem.costPerBottle || 0;
+      const stock = chem.currentStock || 0;
+      const total = cost * stock;
+      chemicalsTotal += total;
+
+      const lowStock = stock <= chem.threshold;
+      const text = `${chem.name} (${chem.bottleSize})`;
+      const details = `Stock: ${stock} | Cost: $${cost.toFixed(2)} | Value: $${total.toFixed(2)}`;
+
+      doc.text(text, 20, y);
+      doc.text(details, 120, y);
+      if (lowStock) {
+        doc.setTextColor(220, 38, 38);
+        doc.text("(LOW STOCK)", 180, y);
+        doc.setTextColor(0, 0, 0);
+      }
       y += 6;
     });
 
-    y += 5;
+    doc.setFontSize(11);
+    doc.setFont(undefined, 'bold');
+    doc.text(`Chemicals Subtotal: $${chemicalsTotal.toFixed(2)}`, 120, y + 2);
+    doc.setFont(undefined, 'normal');
+    y += 10;
+    grandTotal += chemicalsTotal;
+
+    // Materials
+    if (y > 250) { doc.addPage(); y = 20; }
     doc.setFontSize(14);
+    doc.setTextColor(220, 38, 38);
     doc.text("Materials Inventory", 20, y);
+    doc.setTextColor(0, 0, 0);
     y += 8;
 
+    let materialsTotal = 0;
     materials.forEach(mat => {
       if (y > 270) { doc.addPage(); y = 20; }
       doc.setFontSize(10);
-      doc.text(`${mat.name} - Qty: ${mat.quantity}`, 20, y);
+      const cost = mat.costPerItem || 0;
+      const qty = mat.quantity || 0;
+      const total = cost * qty;
+      materialsTotal += total;
+
+      doc.text(`${mat.name}`, 20, y);
+      doc.text(`Qty: ${qty} | Cost: $${cost.toFixed(2)} | Value: $${total.toFixed(2)}`, 120, y);
       y += 6;
     });
 
-    y += 5;
+    doc.setFontSize(11);
+    doc.setFont(undefined, 'bold');
+    doc.text(`Materials Subtotal: $${materialsTotal.toFixed(2)}`, 120, y + 2);
+    doc.setFont(undefined, 'normal');
+    y += 10;
+    grandTotal += materialsTotal;
+
+    // Tools
+    if (y > 250) { doc.addPage(); y = 20; }
     doc.setFontSize(14);
+    doc.setTextColor(220, 38, 38);
     doc.text("Tools Inventory", 20, y);
+    doc.setTextColor(0, 0, 0);
     y += 8;
 
+    let toolsTotal = 0;
     tools.forEach(tool => {
       if (y > 270) { doc.addPage(); y = 20; }
       doc.setFontSize(10);
-      doc.text(`${tool.name} - ${tool.warranty ? 'Warranty: ' + tool.warranty : ''} - ${tool.notes || ''}`, 20, y);
+      const cost = tool.cost || 0;
+      const qty = tool.quantity || 1;
+      const total = cost * qty;
+      toolsTotal += total;
+
+      doc.text(`${tool.name}`, 20, y);
+      doc.text(`Qty: ${qty} | Cost: $${cost.toFixed(2)} | Value: $${total.toFixed(2)}`, 120, y);
       y += 6;
     });
+
+    doc.setFontSize(11);
+    doc.setFont(undefined, 'bold');
+    doc.text(`Tools Subtotal: $${toolsTotal.toFixed(2)}`, 120, y + 2);
+    y += 10;
+    grandTotal += toolsTotal;
+
+    // Grand Total
+    y += 5;
+    if (y > 270) { doc.addPage(); y = 20; }
+    doc.setFontSize(14);
+    doc.text(`GRAND TOTAL: $${grandTotal.toFixed(2)}`, 120, y);
 
     if (download) doc.save(`InventoryReport_${new Date().toISOString().split('T')[0]}.pdf`);
     else window.open(doc.output('bloburl'), '_blank');
@@ -494,7 +560,7 @@ const Reports = () => {
                   </div>
                 </div>
 
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
                   <div>
                     <p className="text-xs text-muted-foreground">Total Items</p>
                     <p className="text-2xl font-bold text-foreground">{chemicals.length + materials.length + tools.length}</p>
@@ -507,18 +573,17 @@ const Reports = () => {
                     <p className="text-xs text-muted-foreground">Total Value</p>
                     <p className="text-2xl font-bold text-success">${(totalInventoryValue + totalMaterialsValue + totalToolsValue).toFixed(2)}</p>
                   </div>
-                  <div>
-                    <p className="text-xs text-muted-foreground">Categories</p>
-                    <p className="text-2xl font-bold text-primary">Chemicals • Materials • Tools</p>
-                  </div>
                 </div>
 
+                <h3 className="text-lg font-semibold mb-2 text-red-600">Chemicals</h3>
                 <Table>
                   <TableHeader>
                     <TableRow>
                       <TableHead>Item</TableHead>
                       <TableHead>Size</TableHead>
                       <TableHead>Stock</TableHead>
+                      <TableHead>Cost</TableHead>
+                      <TableHead>Value</TableHead>
                       <TableHead>Status</TableHead>
                     </TableRow>
                   </TableHeader>
@@ -530,6 +595,8 @@ const Reports = () => {
                         <TableCell className={chem.currentStock <= chem.threshold ? 'text-destructive font-bold' : ''}>
                           {chem.currentStock}
                         </TableCell>
+                        <TableCell>${(chem.costPerBottle || 0).toFixed(2)}</TableCell>
+                        <TableCell>${((chem.costPerBottle || 0) * (chem.currentStock || 0)).toFixed(2)}</TableCell>
                         <TableCell>
                           {chem.currentStock <= chem.threshold ? (
                             <span className="text-destructive font-semibold">⚠️ LOW STOCK</span>
@@ -539,17 +606,24 @@ const Reports = () => {
                         </TableCell>
                       </TableRow>
                     ))}
+                    <TableRow className="bg-muted/50 font-bold">
+                      <TableCell colSpan={4} className="text-right">Subtotal:</TableCell>
+                      <TableCell>${totalInventoryValue.toFixed(2)}</TableCell>
+                      <TableCell></TableCell>
+                    </TableRow>
                   </TableBody>
                 </Table>
 
                 <div className="mt-6">
-                  <h3 className="text-lg font-semibold mb-2">Materials</h3>
+                  <h3 className="text-lg font-semibold mb-2 text-red-600">Materials</h3>
                   <Table>
                     <TableHeader>
                       <TableRow>
                         <TableHead>Item</TableHead>
                         <TableHead>Subtype</TableHead>
                         <TableHead>Quantity</TableHead>
+                        <TableHead>Cost</TableHead>
+                        <TableHead>Value</TableHead>
                         <TableHead>Status</TableHead>
                       </TableRow>
                     </TableHeader>
@@ -561,6 +635,8 @@ const Reports = () => {
                           <TableCell className={(mat.quantity || 0) <= (mat.threshold || mat.lowThreshold || 0) ? 'text-destructive font-bold' : ''}>
                             {mat.quantity || 0}
                           </TableCell>
+                          <TableCell>${(mat.costPerItem || 0).toFixed(2)}</TableCell>
+                          <TableCell>${((mat.costPerItem || 0) * (mat.quantity || 0)).toFixed(2)}</TableCell>
                           <TableCell>
                             {(mat.quantity || 0) <= (mat.threshold || mat.lowThreshold || 0) ? (
                               <span className="text-destructive font-semibold">⚠️ LOW STOCK</span>
@@ -572,21 +648,28 @@ const Reports = () => {
                       ))}
                       {materialsSorted.length === 0 && (
                         <TableRow>
-                          <TableCell colSpan={4} className="text-center text-muted-foreground py-6">No materials tracked.</TableCell>
+                          <TableCell colSpan={6} className="text-center text-muted-foreground py-6">No materials tracked.</TableCell>
                         </TableRow>
                       )}
+                      <TableRow className="bg-muted/50 font-bold">
+                        <TableCell colSpan={4} className="text-right">Subtotal:</TableCell>
+                        <TableCell>${totalMaterialsValue.toFixed(2)}</TableCell>
+                        <TableCell></TableCell>
+                      </TableRow>
                     </TableBody>
                   </Table>
                 </div>
 
                 <div className="mt-6">
-                  <h3 className="text-lg font-semibold mb-2">Tools</h3>
+                  <h3 className="text-lg font-semibold mb-2 text-red-600">Tools</h3>
                   <Table>
                     <TableHeader>
                       <TableRow>
                         <TableHead>Item</TableHead>
                         <TableHead>Category</TableHead>
                         <TableHead>Quantity</TableHead>
+                        <TableHead>Cost</TableHead>
+                        <TableHead>Value</TableHead>
                         <TableHead>Threshold</TableHead>
                         <TableHead>Status</TableHead>
                       </TableRow>
@@ -599,6 +682,8 @@ const Reports = () => {
                           <TableCell className={(tool.quantity || 0) <= (tool.threshold || 0) ? 'text-destructive font-bold' : ''}>
                             {tool.quantity || 0}
                           </TableCell>
+                          <TableCell>${(tool.cost || 0).toFixed(2)}</TableCell>
+                          <TableCell>${((tool.cost || 0) * (tool.quantity || 1)).toFixed(2)}</TableCell>
                           <TableCell>{tool.threshold || 0}</TableCell>
                           <TableCell>
                             {(tool.quantity || 0) <= (tool.threshold || 0) ? (
@@ -611,9 +696,14 @@ const Reports = () => {
                       ))}
                       {toolsSorted.length === 0 && (
                         <TableRow>
-                          <TableCell colSpan={5} className="text-center text-muted-foreground py-6">No tools tracked.</TableCell>
+                          <TableCell colSpan={7} className="text-center text-muted-foreground py-6">No tools tracked.</TableCell>
                         </TableRow>
                       )}
+                      <TableRow className="bg-muted/50 font-bold">
+                        <TableCell colSpan={4} className="text-right">Subtotal:</TableCell>
+                        <TableCell>${totalToolsValue.toFixed(2)}</TableCell>
+                        <TableCell colSpan={2}></TableCell>
+                      </TableRow>
                     </TableBody>
                   </Table>
                 </div>
