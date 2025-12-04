@@ -12,7 +12,7 @@ import { Download, Upload, Trash2, RotateCcw } from "lucide-react";
 import { postFullSync, postServicesFullSync } from "@/lib/servicesMeta";
 import { exportAllData, downloadBackup, restoreFromJSON, SCHEMA_VERSION } from '@/lib/backup';
 import { isDriveEnabled, uploadJSONToDrive, pickDriveFileAndDownload } from '@/lib/googleDrive';
-import { deleteCustomersOlderThan, deleteInvoicesOlderThan, deleteExpensesOlderThan, deleteInventoryUsageOlderThan, deleteBookingsOlderThan, deleteEmployeesOlderThan, deleteEverything as deleteAllSupabase } from '@/services/supabase/adminOps';
+import { deleteCustomersOlderThan, deleteInvoicesOlderThan, deleteExpensesOlderThan, deleteInventoryUsageOlderThan, deleteBookingsOlderThan, deleteEmployeesOlderThan, deleteEverything as deleteAllSupabase, previewDeleteCustomers, previewDeleteInvoices, previewDeleteExpenses, previewDeleteInventory, previewDeleteAll } from '@/services/supabase/adminOps';
 import localforage from "localforage";
 import EnvironmentHealthModal from '@/components/admin/EnvironmentHealthModal';
 import { restoreDefaults, restorePackages, restoreAddons } from '@/lib/restoreDefaults';
@@ -20,6 +20,7 @@ import { insertMockData, removeMockData } from '@/lib/mockData';
 import { insertStaticMockData, removeStaticMockData, insertStaticMockBasic, removeStaticMockBasic } from '@/lib/staticMock';
 import jsPDF from 'jspdf';
 import { savePDFToArchive } from '@/lib/pdfArchive';
+import { pushAdminAlert } from '@/lib/adminAlerts';
 import supabase, { isSupabaseConfigured } from '@/lib/supabase';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 
@@ -98,12 +99,14 @@ const Settings = () => {
     }
   });
   const [pinInput, setPinInput] = useState<string>("");
+  const [confirmText, setConfirmText] = useState<string>("");
   const [dangerUnlocked, setDangerUnlocked] = useState<boolean>(false);
   const [pinModalOpen, setPinModalOpen] = useState<boolean>(false);
   const [newPin, setNewPin] = useState<string>("");
   const [pinError, setPinError] = useState<string>("");
   const pinRequired = true; // Always require PIN for destructive actions
   const pinValid = !!dangerPin && !!pinInput && dangerPin === pinInput;
+  const confirmValid = confirmText.trim().toUpperCase() === "DELETE";
 
   // Redirect non-admin users
   if (user?.role !== 'admin') {
@@ -296,19 +299,25 @@ const Settings = () => {
           throw e;
         }
       } else if (type === "all") {
-        // Supabase: ONLY delete allowed tables and roles
+        // Supabase: Try to delete, but don't fail if Supabase is not configured
         try {
           await deleteAllSupabase();
           console.log('[Settings] deleteAllSupabase done');
         } catch (e) {
-          console.error('[Settings] delete all error', e);
-          throw e;
+          console.warn('[Settings] Supabase delete skipped (not configured or failed):', e);
+          // Continue with local deletion even if Supabase fails
         }
+
         // Local: selectively remove volatile data, preserve training/exam/admin/employee/pricing/website
         const volatileLfKeys = [
           'customers', 'invoices', 'expenses', 'estimates',
           'chemicals', 'materials', 'tools', 'chemicalUsage', 'chemical-usage', 'tool-usage', 'inventory-estimates',
-          'completed-jobs', 'payroll-history', 'pdfArchive'
+          'completed-jobs', 'payroll-history', 'pdfArchive',
+          // Category data (user-generated, should be deleted with transactions)
+          'customCategories',
+          'customExpenseCategories',
+          'customIncomeCategories',
+          'category-colors-map'
         ];
         for (const key of volatileLfKeys) {
           try { await localforage.removeItem(key); } catch { }
@@ -346,9 +355,9 @@ const Settings = () => {
           note: 'Preserved: Admin/employee accounts, exam content, training manual, pricing packages, website content, and all system configurations.'
         });
         setSummaryOpen(true);
-        // Revalidate live content endpoints on port 6061
-        try { await fetch(`http://localhost:6061/api/packages/live?v=${Date.now()}`, { headers: { 'Cache-Control': 'no-cache' } }); } catch { }
-        try { await fetch(`http://localhost:6061/api/addons/live?v=${Date.now()}`, { headers: { 'Cache-Control': 'no-cache' } }); } catch { }
+        // Revalidate live content endpoints on port 6063 (user's custom port)
+        try { await fetch(`http://localhost:6063/api/packages/live?v=${Date.now()}`, { headers: { 'Cache-Control': 'no-cache' } }); } catch { }
+        try { await fetch(`http://localhost:6063/api/addons/live?v=${Date.now()}`, { headers: { 'Cache-Control': 'no-cache' } }); } catch { }
         try { setTimeout(() => window.location.reload(), 300); } catch { }
       }
 
@@ -671,88 +680,102 @@ const Settings = () => {
               </div>
             )}
             {dangerUnlocked && (
-              <div className="space-y-4">
-                <div className="flex items-center justify-between flex-wrap gap-4">
-                  <div>
-                    <h3 className="font-semibold text-foreground">Restore Packages & Addons</h3>
-                    <p className="text-sm text-muted-foreground">Restore original pricing packages and add-ons (User Choice)</p>
-                  </div>
-                  <Button variant="outline" onClick={handleRestoreDefaults} className="border-amber-500 text-amber-400">
-                    <RotateCcw className="h-4 w-4 mr-2" />
-                    Restore Packages & Addons
-                  </Button>
-                </div>
+              <div className="space-y-6">
+                <p className="text-sm text-muted-foreground mb-4">
+                  Critical operations. Use individual delete functions in each module for targeted deletions.
+                </p>
 
-                <div className="flex items-center justify-between flex-wrap gap-4">
-                  <div>
-                    <h3 className="font-semibold text-foreground">Delete Customer Records</h3>
-                    <p className="text-sm text-muted-foreground">Remove customer records older than specified days</p>
-                  </div>
-                  <Button variant="destructive" onClick={() => setDeleteDialog("customers")}>
-                    <Trash2 className="h-4 w-4 mr-2" />
-                    Delete Customers
-                  </Button>
-                </div>
-
-                <div className="flex items-center justify-between flex-wrap gap-4">
-                  <div>
-                    <h3 className="font-semibold text-foreground">Delete Accounting Records</h3>
-                    <p className="text-sm text-muted-foreground">Remove expense records older than specified days</p>
-                  </div>
-                  <Button variant="destructive" onClick={() => setDeleteDialog("accounting")}>
-                    <Trash2 className="h-4 w-4 mr-2" />
-                    Delete Accounting
-                  </Button>
-                </div>
-
-                <div className="flex items-center justify-between flex-wrap gap-4">
-                  <div>
-                    <h3 className="font-semibold text-foreground">Delete Invoices</h3>
-                    <p className="text-sm text-muted-foreground">Remove invoices older than specified days</p>
-                  </div>
-                  <Button variant="destructive" onClick={() => setDeleteDialog("invoices")}>
-                    <Trash2 className="h-4 w-4 mr-2" />
-                    Delete Invoices
-                  </Button>
-                </div>
-
-                <div className="flex items-center justify-between flex-wrap gap-4">
-                  <div>
-                    <h3 className="font-semibold text-foreground">Delete Inventory Data</h3>
-                    <p className="text-sm text-muted-foreground">Remove inventory usage older than specified days</p>
-                  </div>
-                  <Button variant="destructive" onClick={() => setDeleteDialog("inventory")}>
-                    <Trash2 className="h-4 w-4 mr-2" />
-                    Delete Inventory
-                  </Button>
-                </div>
-
-                <div className="flex items-center justify-between flex-wrap gap-4">
-                  <div>
-                    <h3 className="font-semibold text-foreground">Delete Employee Records</h3>
-                    <p className="text-sm text-muted-foreground">Remove employee records (admins preserved) for selected period</p>
-                  </div>
-                  <Button variant="destructive" onClick={() => setDeleteDialog("employees")}>
-                    <Trash2 className="h-4 w-4 mr-2" />
-                    Delete Employees
-                  </Button>
-                </div>
-
-                <div className="border-t border-destructive/50 pt-4 mt-6">
-                  <div className="flex items-center justify-between flex-wrap gap-4">
-                    <div>
-                      <h3 className="font-bold text-destructive text-lg">DELETE ALL DATA</h3>
-                      <p className="text-sm text-muted-foreground">Permanently remove ALL application data</p>
+                {/* Restore Packages & Addons */}
+                <div className="border border-amber-500/30 rounded-lg p-4 bg-amber-500/5">
+                  <div className="flex items-start justify-between flex-wrap gap-4">
+                    <div className="flex-1">
+                      <h3 className="font-semibold text-foreground flex items-center gap-2">
+                        <RotateCcw className="h-5 w-5 text-amber-500" />
+                        Restore Packages & Addons
+                      </h3>
+                      <p className="text-sm text-muted-foreground mt-1">
+                        Restore original pricing packages and add-ons to factory defaults
+                      </p>
+                      <p className="text-xs text-muted-foreground mt-2">
+                        ✓ Safe operation - only resets pricing data
+                      </p>
                     </div>
                     <Button
-                      variant="destructive"
-                      className="bg-destructive text-destructive-foreground font-bold"
-                      onClick={() => setDeleteDialog("all")}
+                      variant="outline"
+                      onClick={handleRestoreDefaults}
+                      className="border-amber-500 text-amber-600 hover:bg-amber-500/10"
                     >
-                      <Trash2 className="h-4 w-4 mr-2" />
-                      DELETE EVERYTHING
+                      <RotateCcw className="h-4 w-4 mr-2" />
+                      Restore Defaults
                     </Button>
                   </div>
+                </div>
+
+                {/* DELETE EVERYTHING */}
+                <div className="border-t-2 border-destructive/50 pt-6">
+                  <div className="border border-destructive/50 rounded-lg p-4 bg-destructive/5">
+                    <div className="flex items-start justify-between flex-wrap gap-4">
+                      <div className="flex-1">
+                        <h3 className="font-bold text-destructive text-lg flex items-center gap-2">
+                          <Trash2 className="h-6 w-6" />
+                          DELETE ALL USER DATA
+                        </h3>
+                        <p className="text-sm text-muted-foreground mt-2">
+                          Permanently remove ALL user-generated data from the application
+                        </p>
+                        <div className="mt-3 space-y-1 text-xs">
+                          <p className="text-destructive font-semibold">⚠️ This will delete:</p>
+                          <ul className="list-disc list-inside ml-2 text-muted-foreground space-y-0.5">
+                            <li>All customers, vehicles, and bookings</li>
+                            <li>All invoices and estimates</li>
+                            <li>All accounting records (income & expenses)</li>
+                            <li>All custom income & expense categories</li>
+                            <li>All category color assignments</li>
+                            <li>All inventory data and usage logs</li>
+                            <li>All employee records (except current user)</li>
+                            <li>All payroll history and payment records</li>
+                            <li>All job history and notes</li>
+                          </ul>
+                          <p className="text-green-600 font-semibold mt-2">✓ This will preserve:</p>
+                          <ul className="list-disc list-inside ml-2 text-muted-foreground space-y-0.5">
+                            <li>Pricing packages & addons</li>
+                            <li>Default income & expense categories</li>
+                            <li>Vehicle classifications</li>
+                            <li>Service templates</li>
+                            <li>Standard inventory lists (Import Wizard defaults)</li>
+                            <li>Training manual & exam questions</li>
+                            <li>System settings</li>
+                            <li>Website content</li>
+                          </ul>
+                        </div>
+                      </div>
+                      <Button
+                        variant="destructive"
+                        size="lg"
+                        className="bg-destructive text-destructive-foreground font-bold min-w-[200px]"
+                        onClick={() => setDeleteDialog("all")}
+                      >
+                        <Trash2 className="h-5 w-5 mr-2" />
+                        DELETE EVERYTHING
+                      </Button>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Info Box */}
+                <div className="bg-muted/50 rounded-lg p-4 text-sm">
+                  <p className="font-semibold mb-2">💡 Need to delete specific items?</p>
+                  <ul className="space-y-1 text-muted-foreground text-xs">
+                    <li>• <strong>Customers:</strong> Go to Customers page → Delete individual customers</li>
+                    <li>• <strong>Accounting:</strong> Go to Accounting → Transaction Ledger → Edit/Delete individual transactions</li>
+                    <li>• <strong>Custom Categories:</strong> Go to Company Budget → Manage income/expense categories</li>
+                    <li>• <strong>Category Colors:</strong> Automatically assigned and managed in Accounting page</li>
+                    <li>• <strong>Invoices/Estimates:</strong> Go to Invoicing page → Delete individual invoices</li>
+                    <li>• <strong>Employees:</strong> Go to Company Employees → Delete individual employees</li>
+                    <li>• <strong>Payroll History:</strong> Go to Payroll → History tab → Edit/Delete individual payments</li>
+                    <li>• <strong>Inventory:</strong> Go to Inventory → Delete items (can rebuild from Import Wizard)</li>
+                    <li>• <strong>Mock Data:</strong> Use "Mock Data System" button or "Clear Mock Employees"</li>
+                  </ul>
                 </div>
               </div>
             )}
@@ -836,7 +859,12 @@ const Settings = () => {
         </DialogContent>
       </Dialog>
 
-      <AlertDialog open={deleteDialog !== null} onOpenChange={() => { setDeleteDialog(null); setTimeRange(""); }}>
+      <AlertDialog open={deleteDialog !== null} onOpenChange={() => {
+        setDeleteDialog(null);
+        setTimeRange("");
+        setPinInput("");
+        setConfirmText("");
+      }}>
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle>Confirm Delete</AlertDialogTitle>
@@ -875,27 +903,61 @@ const Settings = () => {
               <p className="text-xs text-muted-foreground mt-2">Leave blank to delete all records in this group.</p>
             </div>
           )}
+
           {/* PIN Entry */}
           <div className="py-2">
-            {/* Fallback simple input if InputOTP is not desired */}
+            <Label className="text-sm font-semibold">
+              {deleteDialog === "all" ? "Step 1: Enter PIN" : "Enter PIN to confirm"}
+            </Label>
             <Input
               inputMode="numeric"
               pattern="[0-9]*"
               placeholder="Enter PIN"
               value={pinInput}
               onChange={(e) => setPinInput(e.target.value.replace(/\D/g, ''))}
-              className="w-48"
+              className="w-48 mt-2"
             />
-            {pinRequired && dangerPin && !pinValid && (
-              <p className="text-xs text-destructive mt-1">PIN does not match.</p>
+            {pinRequired && dangerPin && !pinValid && pinInput && (
+              <p className="text-xs text-destructive mt-1">❌ PIN does not match.</p>
+            )}
+            {pinValid && (
+              <p className="text-xs text-green-600 mt-1">✓ PIN verified</p>
             )}
           </div>
+
+          {/* Type DELETE Confirmation - ONLY for "all" delete */}
+          {deleteDialog === "all" && (
+            <div className="py-2">
+              <Label className="text-sm font-semibold">Step 2: Type DELETE to confirm</Label>
+              <Input
+                placeholder='Type "DELETE" (all caps)'
+                value={confirmText}
+                onChange={(e) => setConfirmText(e.target.value)}
+                className="w-48 mt-2"
+                disabled={!pinValid}
+              />
+              {confirmText && !confirmValid && (
+                <p className="text-xs text-destructive mt-1">❌ Must type DELETE exactly (all caps)</p>
+              )}
+              {confirmValid && (
+                <p className="text-xs text-green-600 mt-1">✓ Confirmation verified</p>
+              )}
+            </div>
+          )}
+
           <AlertDialogFooter className="button-group-responsive">
-            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogCancel onClick={() => {
+              setPinInput("");
+              setConfirmText("");
+            }}>Cancel</AlertDialogCancel>
             <AlertDialogAction
               onClick={() => deleteData(deleteDialog!)}
               className="bg-destructive"
-              disabled={!dangerPin || !pinValid}
+              disabled={
+                !dangerPin ||
+                !pinValid ||
+                (deleteDialog === "all" && !confirmValid) // Only require confirmValid for "all"
+              }
             >
               Yes, Delete {deleteDialog === "all" ? "Everything" : "Data"}
             </AlertDialogAction>
@@ -1048,6 +1110,60 @@ const Settings = () => {
                     doc.setFontSize(11);
                     (mockReport?.inventory || []).forEach((i: any) => addLine(`- ${i.category}: ${i.name}`, 6));
 
+                    // Categories (NEW!)
+                    if (mockReport?.categories) {
+                      doc.setFontSize(12);
+                      addLine('Custom Categories:');
+                      doc.setFontSize(11);
+                      addLine(`Income Categories (${(mockReport.categories.income || []).length}):`, 6);
+                      (mockReport.categories.income || []).forEach((cat: string) => addLine(`  - ${cat}`, 10));
+                      addLine(`Expense Categories (${(mockReport.categories.expense || []).length}):`, 6);
+                      (mockReport.categories.expense || []).forEach((cat: string) => addLine(`  - ${cat}`, 10));
+                    }
+
+                    // Income Transactions (NEW!)
+                    if ((mockReport?.income || []).length > 0) {
+                      doc.setFontSize(12);
+                      addLine(`Income Transactions (${mockReport.income.length}):`);
+                      doc.setFontSize(11);
+                      mockReport.income.forEach((inc: any) => {
+                        const date = new Date(inc.date).toLocaleDateString();
+                        addLine(`- $${inc.amount} — ${inc.category} (${inc.source}) — ${date}`, 6);
+                      });
+                    }
+
+                    // Expense Transactions (NEW!)
+                    if ((mockReport?.expenses || []).length > 0) {
+                      doc.setFontSize(12);
+                      addLine(`Expense Transactions (${mockReport.expenses.length}):`);
+                      doc.setFontSize(11);
+                      mockReport.expenses.forEach((exp: any) => {
+                        const date = new Date(exp.date).toLocaleDateString();
+                        addLine(`- $${exp.amount} — ${exp.category} — ${date}`, 6);
+                      });
+                    }
+
+                    // Payroll History (NEW!)
+                    if ((mockReport?.payroll || []).length > 0) {
+                      doc.setFontSize(12);
+                      addLine(`Payroll History (${mockReport.payroll.length}):`);
+                      doc.setFontSize(11);
+                      mockReport.payroll.forEach((pay: any) => {
+                        const date = new Date(pay.date).toLocaleDateString();
+                        addLine(`- ${pay.employeeName}: $${pay.amount} (${pay.type}) — ${date}`, 6);
+                      });
+                    }
+
+                    // Invoices (NEW!)
+                    if ((mockReport?.invoices || []).length > 0) {
+                      doc.setFontSize(12);
+                      addLine(`Sample Invoices (${mockReport.invoices.length}):`);
+                      doc.setFontSize(11);
+                      mockReport.invoices.forEach((inv: any) => {
+                        addLine(`- Invoice #${inv.invoiceNumber}: ${inv.customerName} — $${inv.total} (${inv.paymentStatus})`, 6);
+                      });
+                    }
+
                     // Removal status
                     if (mockReport?.removed) {
                       doc.setFontSize(12);
@@ -1068,6 +1184,15 @@ const Settings = () => {
                     const today = new Date().toISOString().split('T')[0];
                     const fileName = `MockData_Report_${today}.pdf`;
                     savePDFToArchive('Mock Data' as any, 'Admin', `mock-data-${Date.now()}`, dataUrl, { fileName, path: 'Mock Data/' });
+
+                    // Push admin alert (imported at top)
+                    try {
+                      pushAdminAlert('pdf_saved', 'Mock Data Report saved to File Manager', 'system', {
+                        recordType: 'Mock Data',
+                        fileName
+                      });
+                    } catch { }
+
                     toast?.({ title: 'Saved to File Manager', description: 'Mock Data Report archived.' });
                   } catch (e: any) {
                     toast?.({ title: 'Save Failed', description: e?.message || 'Could not generate PDF', variant: 'destructive' });
@@ -1326,7 +1451,7 @@ const Settings = () => {
           </div>
         </DialogContent>
       </Dialog>
-    </div>
+    </div >
   );
 };
 

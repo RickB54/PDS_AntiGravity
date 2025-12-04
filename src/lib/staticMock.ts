@@ -150,7 +150,7 @@ export async function insertStaticMockData(reporter?: (msg: string) => void) {
       invoiceNumber: 200 + Math.floor(Math.random() * 100),
       date: new Date().toISOString(),
       isStaticMock: true,
-    });
+    } as any);
     tracker.invoices.push(inv.id);
     tracker.jobDetails.push({
       id: recordId,
@@ -228,10 +228,21 @@ export async function insertStaticMockBasic(
   opts: { customers?: number; employees?: number; chemicals?: number; materials?: number } = { customers: 5, employees: 5, chemicals: 3, materials: 3 }
 ) {
   const report = (msg: string) => { try { reporter && reporter(msg); } catch { } };
-  const tracker: { customers: CreatedUser[]; employees: CreatedUser[]; inventory: MockInventoryItem[] } = { customers: [], employees: [], inventory: [] };
+  const tracker: {
+    customers: CreatedUser[];
+    employees: CreatedUser[];
+    inventory: MockInventoryItem[];
+    income?: any[];
+    expenses?: any[];
+    payroll?: any[];
+    invoices?: any[];
+    categories?: any;
+  } = { customers: [], employees: [], inventory: [] };
 
   const custNames = ['Alex Green', 'Casey Brown', 'Drew White', 'Evan Blue', 'Finn Gray'];
   const empNames = ['Harper Quinn', 'Jesse Lane', 'Kai Morgan', 'Logan Reese', 'Milan Avery'];
+
+  // Create customers
   report('Creating static customers…');
   for (let i = 0; i < (opts.customers || 5); i++) {
     const name = custNames[i % custNames.length];
@@ -241,6 +252,8 @@ export async function insertStaticMockBasic(
     tracker.customers.push(u);
     report(`Customer created: ${u.name} (${u.email})`);
   }
+
+  // Create employees
   report('Creating static employees…');
   for (let i = 0; i < (opts.employees || 5); i++) {
     const name = empNames[i % empNames.length];
@@ -251,15 +264,136 @@ export async function insertStaticMockBasic(
     report(`Employee created: ${u.name} (${u.email})`);
   }
 
+  // Create inventory
   report('Adding static inventory…');
   tracker.inventory = await addStaticInventory();
+
+  // Create custom categories
+  report('Creating custom categories…');
+  const incomeTransactions = [];
+  const incomeCategories = ['Detail Package Sales', 'Add-on Services', 'Gift Cards'];
+  const now = new Date();
+
+  for (let i = 0; i < 10; i++) {
+    const daysAgo = Math.floor(Math.random() * 30);
+    const date = new Date(now.getTime() - daysAgo * 24 * 60 * 60 * 1000);
+    const income = {
+      id: genId('income'),
+      amount: Math.floor(Math.random() * 300) + 50,
+      category: incomeCategories[i % incomeCategories.length],
+      source: tracker.customers[i % tracker.customers.length]?.name || 'Customer',
+      description: `Mock ${incomeCategories[i % incomeCategories.length]}`,
+      date: date.toISOString(),
+      createdAt: date.toISOString()
+    };
+    incomeTransactions.push(income);
+  }
+
+  // Save income via receivables
+  const { upsertReceivable } = await import('@/lib/receivables');
+  for (const inc of incomeTransactions) {
+    await upsertReceivable(inc);
+  }
+  tracker.income = incomeTransactions;
+  report(`Created ${incomeTransactions.length} income transactions`);
+
+  // Create expense transactions (debits)
+  report('Creating expense transactions…');
+  const expenseTransactions = [];
+  const expenseCategories = ['Marketing', 'Equipment Purchases', 'Payroll', 'Office Supplies'];
+
+  for (let i = 0; i < 12; i++) {
+    const daysAgo = Math.floor(Math.random() * 30);
+    const date = new Date(now.getTime() - daysAgo * 24 * 60 * 60 * 1000);
+    const expense = {
+      id: genId('expense'),
+      amount: Math.floor(Math.random() * 200) + 30,
+      category: expenseCategories[i % expenseCategories.length],
+      description: `Mock ${expenseCategories[i % expenseCategories.length]} expense`,
+      date: date.toISOString(),
+      createdAt: date.toISOString()
+    };
+    expenseTransactions.push(expense);
+  }
+
+  // Save expenses via db
+  const { upsertExpense } = await import('@/lib/db');
+  for (const exp of expenseTransactions) {
+    await upsertExpense(exp);
+  }
+  tracker.expenses = expenseTransactions;
+  report(`Created ${expenseTransactions.length} expense transactions`);
+
+  // Create payroll history
+  report('Creating payroll history…');
+  const payrollEntries = [];
+  for (let i = 0; i < tracker.employees.length; i++) {
+    const emp = tracker.employees[i];
+    const daysAgo = Math.floor(Math.random() * 14);
+    const date = new Date(now.getTime() - daysAgo * 24 * 60 * 60 * 1000);
+    const entry = {
+      id: genId('payroll'),
+      employee: emp.email,
+      employeeName: emp.name,
+      amount: Math.floor(Math.random() * 500) + 200,
+      type: ['Job Payment', 'Hourly Wage', 'Bonus'][i % 3],
+      description: `Mock payment for ${emp.name}`,
+      date: date.toISOString(),
+      status: 'Paid'
+    };
+    payrollEntries.push(entry);
+  }
+
+  const currentPayroll = (await localforage.getItem<any[]>('payroll-history')) || [];
+  await localforage.setItem('payroll-history', [...currentPayroll, ...payrollEntries]);
+  tracker.payroll = payrollEntries;
+  report(`Created ${payrollEntries.length} payroll entries`);
+
+  // Create sample invoices
+  report('Creating sample invoices…');
+  const invoices = [];
+  for (let i = 0; i < 5; i++) {
+    const customer = tracker.customers[i % tracker.customers.length];
+    const daysAgo = Math.floor(Math.random() * 20);
+    const date = new Date(now.getTime() - daysAgo * 24 * 60 * 60 * 1000);
+    const total = Math.floor(Math.random() * 400) + 100;
+    const paid = Math.random() > 0.3 ? total : Math.floor(total * 0.5);
+
+    const invoice = {
+      id: genId('invoice'),
+      invoiceNumber: 1000 + i,
+      customerId: customer.id,
+      customerName: customer.name,
+      customerEmail: customer.email,
+      total,
+      paidAmount: paid,
+      paymentStatus: paid >= total ? 'Paid' : paid > 0 ? 'Partial' : 'Unpaid',
+      date: date.toISOString(),
+      dueDate: new Date(date.getTime() + 14 * 24 * 60 * 60 * 1000).toISOString(),
+      items: [
+        { name: 'Full Detail Package', quantity: 1, price: total * 0.8 },
+        { name: 'Ceramic Coating Add-on', quantity: 1, price: total * 0.2 }
+      ]
+    };
+    invoices.push(invoice);
+  }
+
+  const currentInvoices = (await localforage.getItem<any[]>('invoices')) || [];
+  await localforage.setItem('invoices', [...currentInvoices, ...invoices]);
+  tracker.invoices = invoices;
+  report(`Created ${invoices.length} invoices`);
+
+  // Dispatch events
   try {
     window.dispatchEvent(new CustomEvent('content-changed', { detail: { kind: 'users' } }));
     window.dispatchEvent(new CustomEvent('content-changed', { detail: { kind: 'employees' } }));
     window.dispatchEvent(new CustomEvent('content-changed', { detail: { kind: 'customers' } }));
     window.dispatchEvent(new CustomEvent('inventory-changed'));
+    window.dispatchEvent(new CustomEvent('accounting-changed'));
+    window.dispatchEvent(new CustomEvent('payroll-changed'));
   } catch { }
-  report('Static mock data insertion complete');
+
+  report('Static mock data insertion complete with accounting, payroll, invoices, and categories!');
   return tracker;
 }
 

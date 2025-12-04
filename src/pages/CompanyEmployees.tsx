@@ -63,6 +63,8 @@ const CompanyEmployees = () => {
   const [modalOpen, setModalOpen] = useState(false);
   const [payDialogOpen, setPayDialogOpen] = useState(false);
   const [payAmount, setPayAmount] = useState("");
+  const [payType, setPayType] = useState("");
+  const [payDescription, setPayDescription] = useState("");
   const [payEmployee, setPayEmployee] = useState<Employee | null>(null);
   const [isEditMode, setIsEditMode] = useState(false);
   const [form, setForm] = useState<{
@@ -213,44 +215,6 @@ const CompanyEmployees = () => {
     }
   };
 
-  const handlePay = async () => {
-    if (!payEmployee) return;
-    const amt = parseFloat(payAmount);
-    if (isNaN(amt) || amt <= 0) {
-      toast({ title: "Invalid Amount", description: "Please enter a valid positive amount.", variant: "destructive" });
-      return;
-    }
-
-    // 1. Add to payroll history
-    const newHistory = {
-      employee: payEmployee.email,
-      amount: amt,
-      date: new Date().toISOString(),
-      status: 'Paid'
-    };
-    const currentHistory = await localforage.getItem<any[]>('payroll-history') || [];
-    const updatedHistory = [...currentHistory, newHistory];
-    await localforage.setItem('payroll-history', updatedHistory);
-    setPayrollHistory(updatedHistory);
-
-    // 2. Add to expenses (Budget/Accounting)
-    await upsertExpense({
-      amount: amt,
-      category: 'Payroll',
-      description: `Payroll: ${payEmployee.name}`,
-      createdAt: new Date().toISOString()
-    } as any);
-
-    // 3. Update employee lastPaid (if we want to track it on the employee object)
-    const updatedEmployee = { ...payEmployee, lastPaid: new Date().toLocaleDateString() };
-    const updatedEmployees = employees.map(e => e.email === payEmployee.email ? updatedEmployee : e);
-    await saveEmployees(updatedEmployees);
-
-    setPayDialogOpen(false);
-    setPayAmount("");
-    setPayEmployee(null);
-    toast({ title: "Payment Recorded", description: `Paid $${amt.toFixed(2)} to ${payEmployee.name}` });
-  };
 
   const handleDelete = async (email: string) => {
     const empToDelete = employees.find(e => e.email === email);
@@ -310,15 +274,112 @@ const CompanyEmployees = () => {
 
   const clearMockEmployees = async () => {
     if (!confirm("Remove all mock employees?")) return;
-    const realEmployees = employees.filter(e => !e.email.startsWith('mock+') && !e.name.startsWith('Mock'));
+
+    const realEmployees = employees.filter(e => {
+      const email = (e.email || '').toLowerCase();
+      const name = (e.name || '').toLowerCase();
+
+      // Filter out mock, static, and test employees
+      const isMock =
+        email.startsWith('mock+') ||
+        email.startsWith('static+') ||
+        email.includes('@example.local') ||
+        email.includes('@example.com') ||
+        email.includes('@test.') ||
+        name.startsWith('mock') ||
+        name.startsWith('static') ||
+        name.includes('test employee');
+
+      return !isMock; // Keep only non-mock employees
+    });
+
     await saveEmployees(realEmployees);
-    toast({ title: "Mock Employees Cleared" });
+    setEmployees(realEmployees);
+
+    toast({
+      title: "Mock Employees Cleared",
+      description: `Removed ${employees.length - realEmployees.length} mock employees`
+    });
   };
 
   const openAdd = () => {
     setForm({ name: "", email: "", role: "Employee", flatRate: "", bonuses: "", paymentByJob: false, jobRates: {} });
     setIsEditMode(false);
     setModalOpen(true);
+  };
+
+  const handlePay = async () => {
+    if (!payEmployee) return;
+
+    const amt = parseFloat(payAmount) || 0;
+    if (amt <= 0) {
+      toast({ title: 'Invalid Amount', description: 'Please enter a valid payment amount.', variant: 'destructive' });
+      return;
+    }
+
+    if (!payType) {
+      toast({ title: 'Type Required', description: 'Please select a payment type.', variant: 'destructive' });
+      return;
+    }
+
+    try {
+      // Record payment in payroll history with type and description
+      await api('/api/payroll/history', {
+        method: 'POST',
+        body: JSON.stringify({
+          date: new Date().toISOString().slice(0, 10),
+          type: payType,
+          description: payDescription || payType,
+          amount: amt,
+          status: 'Paid',
+          employee: payEmployee.name
+        })
+      });
+
+      // Record as expense in accounting
+      await upsertExpense({
+        amount: amt,
+        description: payDescription || `${payType}: ${payEmployee.name}`,
+        category: 'Payroll',
+        createdAt: new Date().toISOString(),
+      } as any);
+
+      // Update lastPaid for employee
+      const list = (await localforage.getItem<any[]>("company-employees")) || [];
+      const today = new Date().toISOString().slice(0, 10);
+      const next = list.map((e: any) =>
+        e.email === payEmployee.email ? { ...e, lastPaid: today } : e
+      );
+      await localforage.setItem('company-employees', next);
+      setEmployees(next);
+
+      // Update owed amount
+      const currentOwed = owedMap[payEmployee.email] || 0;
+      const newOwed = Math.max(0, currentOwed - amt);
+      setOwedMap(prev => ({ ...prev, [payEmployee.email]: newOwed }));
+
+      // Close dialog and reset
+      setPayDialogOpen(false);
+      setPayAmount("");
+      setPayType("");
+      setPayDescription("");
+      setPayEmployee(null);
+
+      toast({
+        title: 'Payment Recorded',
+        description: `$${amt.toFixed(2)} paid to ${payEmployee.name}`
+      });
+
+      loadJobRecords();
+      loadPayrollHistory();
+    } catch (error) {
+      console.error('Payment error:', error);
+      toast({
+        title: 'Payment Failed',
+        description: 'Could not record payment. Please try again.',
+        variant: 'destructive'
+      });
+    }
   };
 
   const handleSave = async () => {
@@ -423,62 +484,73 @@ const CompanyEmployees = () => {
           <Card className="p-6 bg-gradient-card border-border">
             <h2 className="text-xl font-bold text-foreground mb-4">All Employees</h2>
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-              {employees.map((emp) => (
-                <div key={emp.email} className="p-4 rounded border border-border flex flex-col gap-3">
-                  <div className="flex-1 min-w-0">
-                    <p className="font-medium text-foreground truncate">{emp.name}</p>
-                    <p className="text-sm text-muted-foreground truncate">{emp.email}</p>
-                    <p className="text-xs text-muted-foreground">Role: {emp.role}</p>
-                  </div>
+              {employees.map((emp) => {
+                const owed = owedMap[emp.email] || 0;
+                return (
+                  <div key={emp.email} className="p-4 rounded border border-border flex flex-col gap-3">
+                    <div className="flex-1 min-w-0">
+                      <p className="font-medium text-foreground truncate">{emp.name}</p>
+                      <p className="text-sm text-muted-foreground truncate">{emp.email}</p>
+                      <p className="text-xs text-muted-foreground">Role: {emp.role}</p>
 
-                  <div className="flex flex-col gap-2">
-                    <Button
-                      size="sm"
-                      className="bg-red-700 hover:bg-red-800 w-full"
-                      onClick={() => impersonateEmployee(emp)}
-                    >
-                      Impersonate
-                    </Button>
+                      {/* Amount Owed Display */}
+                      <div className={`mt-2 p-2 rounded-lg ${owed > 0 ? 'bg-amber-100 dark:bg-amber-900/30 border border-amber-300 dark:border-amber-700' : 'bg-muted/50 border border-border'}`}>
+                        <p className="text-xs text-muted-foreground">Amount Owed</p>
+                        <p className={`text-lg font-bold ${owed > 0 ? 'text-amber-700 dark:text-amber-400' : 'text-muted-foreground'}`}>
+                          ${owed.toFixed(2)}
+                        </p>
+                      </div>
+                    </div>
 
-                    <div className="flex gap-2 w-full">
+                    <div className="flex flex-col gap-2">
                       <Button
                         size="sm"
-                        variant="outline"
-                        className="flex-1"
-                        onClick={() => openEdit(emp)}
-                        title="Edit Employee"
+                        className="bg-red-700 hover:bg-red-800 w-full"
+                        onClick={() => impersonateEmployee(emp)}
                       >
-                        <Edit className="h-4 w-4 mr-1" />
-                        Edit
+                        Impersonate
                       </Button>
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        className="flex-1 text-destructive hover:text-destructive"
-                        onClick={() => handleDelete(emp.email)}
-                        title="Delete Employee"
-                      >
-                        <Trash2 className="h-4 w-4 mr-1" />
-                        Delete
-                      </Button>
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        className="flex-1 text-green-600 hover:text-green-700"
-                        onClick={() => {
-                          setPayEmployee(emp);
-                          setPayAmount(owedMap[emp.email] ? String(owedMap[emp.email].toFixed(2)) : "");
-                          setPayDialogOpen(true);
-                        }}
-                        title="Pay Employee"
-                      >
-                        <Wallet className="h-4 w-4 mr-1" />
-                        Pay
-                      </Button>
+
+                      <div className="flex gap-2 w-full">
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          className="flex-1"
+                          onClick={() => openEdit(emp)}
+                          title="Edit Employee"
+                        >
+                          <Edit className="h-4 w-4 mr-1" />
+                          Edit
+                        </Button>
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          className="flex-1 text-destructive hover:text-destructive"
+                          onClick={() => handleDelete(emp.email)}
+                          title="Delete Employee"
+                        >
+                          <Trash2 className="h-4 w-4 mr-1" />
+                          Delete
+                        </Button>
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          className="flex-1 text-green-600 hover:text-green-700"
+                          onClick={() => {
+                            setPayEmployee(emp);
+                            setPayAmount(owedMap[emp.email] ? String(owedMap[emp.email].toFixed(2)) : "");
+                            setPayDialogOpen(true);
+                          }}
+                          title="Pay Employee"
+                        >
+                          <Wallet className="h-4 w-4 mr-1" />
+                          Pay
+                        </Button>
+                      </div>
                     </div>
                   </div>
-                </div>
-              ))}
+                );
+              })}
               {employees.length === 0 && (
                 <p className="text-sm text-muted-foreground">No employees saved yet.</p>
               )}
@@ -671,27 +743,93 @@ const CompanyEmployees = () => {
       </Dialog>
 
       {/* Pay Employee Dialog */}
-      <Dialog open={payDialogOpen} onOpenChange={setPayDialogOpen}>
-        <DialogContent>
+      <Dialog open={payDialogOpen} onOpenChange={(open) => {
+        setPayDialogOpen(open);
+        if (!open) {
+          // Reset fields when closing
+          setPayAmount("");
+          setPayType("");
+          setPayDescription("");
+        }
+      }}>
+        <DialogContent className="max-w-md">
           <DialogHeader>
             <DialogTitle>Pay Employee</DialogTitle>
           </DialogHeader>
           <div className="space-y-4 py-2">
-            <p>Recording payment for <strong>{payEmployee?.name}</strong>.</p>
+            <p className="text-sm">
+              Recording payment for <strong className="text-primary">{payEmployee?.name}</strong>
+            </p>
+
+            {/* Show Owed Amount */}
+            {payEmployee && owedMap[payEmployee.email] > 0 && (
+              <div className="p-3 bg-amber-100 dark:bg-amber-900/30 border border-amber-300 dark:border-amber-700 rounded-lg">
+                <p className="text-xs text-muted-foreground">Amount Currently Owed</p>
+                <p className="text-2xl font-bold text-amber-700 dark:text-amber-400">
+                  ${owedMap[payEmployee.email].toFixed(2)}
+                </p>
+              </div>
+            )}
+
             <div className="space-y-2">
-              <Label>Amount</Label>
+              <Label htmlFor="pay-amount">Payment Amount *</Label>
               <Input
+                id="pay-amount"
                 type="number"
                 step="0.01"
                 value={payAmount}
                 onChange={(e) => setPayAmount(e.target.value)}
                 placeholder="0.00"
+                autoFocus
               />
+              <p className="text-xs text-muted-foreground">Enter the amount you're paying</p>
             </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="pay-type">Payment Type *</Label>
+              <Select value={payType} onValueChange={setPayType}>
+                <SelectTrigger id="pay-type">
+                  <SelectValue placeholder="Select payment type" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="Job">Job Payment</SelectItem>
+                  <SelectItem value="Hourly">Hourly Wage</SelectItem>
+                  <SelectItem value="Bonus">Bonus</SelectItem>
+                  <SelectItem value="Commission">Commission</SelectItem>
+                  <SelectItem value="Salary">Salary</SelectItem>
+                  <SelectItem value="Other">Other</SelectItem>
+                </SelectContent>
+              </Select>
+              <p className="text-xs text-muted-foreground">What is this payment for?</p>
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="pay-description">Description (Optional)</Label>
+              <Input
+                id="pay-description"
+                value={payDescription}
+                onChange={(e) => setPayDescription(e.target.value)}
+                placeholder="e.g., Week 1 payment, December bonus"
+              />
+              <p className="text-xs text-muted-foreground">Add notes about this payment</p>
+            </div>
+
+            {!payAmount || !payType ? (
+              <div className="p-3 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded-lg flex items-start gap-2">
+                <AlertTriangle className="h-4 w-4 text-amber-600 mt-0.5" />
+                <p className="text-xs text-amber-700 dark:text-amber-400">
+                  Please fill in Amount and Type to continue
+                </p>
+              </div>
+            ) : null}
           </div>
-          <DialogFooter>
+          <DialogFooter className="gap-2">
             <Button variant="outline" onClick={() => setPayDialogOpen(false)}>Cancel</Button>
-            <Button className="bg-green-600 hover:bg-green-700" onClick={handlePay}>
+            <Button
+              className="bg-green-600 hover:bg-green-700"
+              onClick={handlePay}
+              disabled={!payAmount || !payType || parseFloat(payAmount) <= 0}
+            >
               <DollarSign className="h-4 w-4 mr-2" /> Confirm Payment
             </Button>
           </DialogFooter>

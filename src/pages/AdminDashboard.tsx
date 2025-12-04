@@ -66,7 +66,7 @@ type Job = { finishedAt: string; totalRevenue: number; status: string };
 const MENU_STORAGE_KEY = 'hiddenMenuItems';
 const MENU_REGISTRY: { key: string; label: string }[] = [
   { key: 'start-job', label: 'Start a Job' },
-  // { key: 'bookings', label: 'Bookings' }, // removed
+  { key: 'bookings', label: 'Bookings' },
   { key: 'search-customer', label: 'Customer Profiles' },
   { key: 'invoicing', label: 'Invoicing' },
   { key: 'accounting', label: 'Accounting' },
@@ -788,6 +788,9 @@ export default function AdminDashboard() {
               <div className="flex flex-col gap-2">
                 {!isMenuHidden('employee-dashboard') && (
                   <RedBox accent="zinc" title="Staff Portal" href="/employee-dashboard" Icon={Grid3X3} />
+                )}
+                {!isMenuHidden('bookings') && (
+                  <RedBox accent="zinc" title="Bookings Calendar" href="/bookings" Icon={CalendarDays} badgeCount={newBookingsToday} />
                 )}
                 {!isMenuHidden('service-checklist') && (
                   <RedBox accent="zinc" title="Todo" href="/tasks" Icon={CheckSquare} badgeCount={badgeByType('todo_overdue')} />

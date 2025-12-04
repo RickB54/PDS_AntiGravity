@@ -260,7 +260,11 @@ const App = () => {
                         <WebsiteAdministration />
                       </ProtectedRoute>
                     } />
-                    {/* Bookings route removed */}
+                    <Route path="/bookings" element={
+                      <ProtectedRoute allowedRoles={['admin', 'employee']}>
+                        <BookingsPage />
+                      </ProtectedRoute>
+                    } />
                     <Route path="/discount-coupons" element={
                       <ProtectedRoute allowedRoles={['admin']}>
                         <DiscountCoupons />

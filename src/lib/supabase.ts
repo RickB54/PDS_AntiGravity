@@ -22,13 +22,14 @@ export const supabase = {
     onAuthStateChange: () => ({ data: { subscription: { unsubscribe: () => { } } } }),
     updateUser: async () => ({ data: null, error: null }),
   },
-  from: (/*table:string*/) => {
+  from: (table: string) => {
     const createBuilder = (data: any = []) => {
       const result = { data, error: null };
       const builder: any = {
         select: () => builder,
         order: () => builder,
         eq: () => builder,
+        in: () => builder,
         single: async () => ({ data: Array.isArray(data) ? data[0] || {} : data, error: null }),
         maybeSingle: async () => ({ data: Array.isArray(data) ? data[0] || null : data, error: null }),
         upsert: () => builder,

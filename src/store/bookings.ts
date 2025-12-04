@@ -9,6 +9,9 @@ export interface Booking {
   date: string; // ISO date
   status: BookingStatus;
   createdAt?: string;
+  vehicle?: string;
+  notes?: string;
+  price?: number;
 }
 
 const STORAGE_KEY = "bookings";

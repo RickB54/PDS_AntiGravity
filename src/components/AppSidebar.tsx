@@ -15,7 +15,8 @@ import {
   TicketPercent,
   GraduationCap,
   Shield,
-  CheckSquare
+  CheckSquare,
+  CalendarDays
 } from "lucide-react";
 import { NavLink, Link, useLocation } from "react-router-dom";
 import { useEffect, useState } from "react";
@@ -213,6 +214,18 @@ export function AppSidebar() {
                     <NavLink to="/service-checklist" className={linkClass}>
                       <ClipboardCheck className="h-4 w-4" />
                       <span>Service Checklist</span>
+                    </NavLink>
+                  </SidebarMenuButton>
+                </SidebarMenuItem>
+              )}
+
+              {/* Bookings module */}
+              {!isHidden('bookings') && (
+                <SidebarMenuItem>
+                  <SidebarMenuButton asChild onClick={handleNavClick}>
+                    <NavLink to="/bookings" className={linkClass}>
+                      <CalendarDays className="h-4 w-4" />
+                      <span>Bookings</span>
                     </NavLink>
                   </SidebarMenuButton>
                 </SidebarMenuItem>

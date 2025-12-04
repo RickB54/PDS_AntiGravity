@@ -1,666 +1,390 @@
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useState, useMemo, useEffect } from "react";
 import {
-  addDays,
-  addMinutes,
-  eachDayOfInterval,
-  endOfMonth,
   format,
-  isSameDay,
-  isSameMonth,
-  isToday,
-  parseISO,
-  setHours,
-  setMinutes,
   startOfMonth,
+  endOfMonth,
   startOfWeek,
+  endOfWeek,
+  eachDayOfInterval,
+  isSameMonth,
+  isSameDay,
+  addMonths,
+  subMonths,
+  parseISO,
+  isToday,
+  addHours
 } from "date-fns";
-import { toast } from "sonner";
 import { PageHeader } from "@/components/PageHeader";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
-import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
-import CustomerModal, { type Customer } from "@/components/customers/CustomerModal";
-import api from "@/lib/api";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
+import { Badge } from "@/components/ui/badge";
+import { ChevronLeft, ChevronRight, Plus, Calendar as CalendarIcon, Clock, User, Car, Search, X } from "lucide-react";
 import { useBookingsStore, type Booking } from "@/store/bookings";
-import { getCurrentUser } from "@/lib/auth";
+import { cn } from "@/lib/utils";
+import { toast } from "sonner";
+import api from "@/lib/api";
 
-type ViewMode = "week" | "month";
+// --- Types ---
+type ViewMode = "month" | "list";
 
-type BookingTime = {
-  start: string; // ISO with time
-  durationMinutes: number; // default 60
-  techId?: string;
-};
-
-const HOURS_START = 7; // 7 AM
-const HOURS_END = 20; // Keep original slots through 8 PM; ensure 7 PM line shows
-const SLOT_MINUTES = 30;
-
-type Tech = { id: string; name: string; initials: string };
-// Remove mock techs; default to empty so only real employees or self show
-const DEFAULT_TECHS: Tech[] = [];
-
-// LocalStorage helpers
-function loadBookingTimes(): Record<string, BookingTime> {
-  try {
-    const raw = localStorage.getItem("bookingTimes");
-    return raw ? JSON.parse(raw) : {};
-  } catch {
-    return {};
-  }
-}
-function saveBookingTimes(map: Record<string, BookingTime>) {
-  localStorage.setItem("bookingTimes", JSON.stringify(map));
-}
-function loadRequestFlags(): Record<string, boolean> {
-  try {
-    const raw = localStorage.getItem("bookingRequestFlags");
-    return raw ? JSON.parse(raw) : {};
-  } catch {
-    return {};
-  }
-}
-function saveRequestFlags(map: Record<string, boolean>) {
-  localStorage.setItem("bookingRequestFlags", JSON.stringify(map));
-}
-
-function statusClasses(status: Booking["status"]) {
-  switch (status) {
-    case "pending":
-      return "bg-red-500 text-white";
-    case "confirmed":
-      return "bg-red-700 text-white";
-    case "in_progress":
-      return "bg-red-600 text-white animate-pulse";
-    case "done":
-      return "bg-zinc-900 text-gray-500";
-    default:
-      return "bg-red-500 text-white";
-  }
-}
+// --- Components ---
 
 export default function BookingsPage() {
-  const { items, add, update, remove } = useBookingsStore();
-  const refresh = useBookingsStore((s) => s.refresh);
-  const [viewMode, setViewMode] = useState<ViewMode>("week");
-  const [weekStart, setWeekStart] = useState<Date>(startOfWeek(new Date(), { weekStartsOn: 1 }));
-  const [monthDate, setMonthDate] = useState<Date>(new Date());
-  const [bookingTimes, setBookingTimes] = useState<Record<string, BookingTime>>(() => loadBookingTimes());
-  const [requestFlags, setRequestFlags] = useState<Record<string, boolean>>(() => loadRequestFlags());
-  const [inlineForm, setInlineForm] = useState<null | { start: Date; techId?: string }>(null);
-  const [formCustomer, setFormCustomer] = useState("");
-  const [formService, setFormService] = useState("");
-  const [formVehicle, setFormVehicle] = useState("");
-  const [selected, setSelected] = useState<Booking | null>(null);
-  const [newPdfsToday, setNewPdfsToday] = useState<number>(0);
-  const [now, setNow] = useState<number>(() => Date.now());
-  const [knownIds, setKnownIds] = useState<Set<string>>(() => new Set((Array.isArray(items) ? items : []).map(i => i.id)));
+  const { items, add, update, remove, refresh } = useBookingsStore();
+  const [currentDate, setCurrentDate] = useState(new Date());
+  const [selectedDate, setSelectedDate] = useState<Date | null>(null);
+  const [viewMode, setViewMode] = useState<ViewMode>("month");
+  const [isAddModalOpen, setIsAddModalOpen] = useState(false);
+  const [selectedBooking, setSelectedBooking] = useState<Booking | null>(null);
 
-  const user = getCurrentUser();
-  const isAdmin = user?.role === "admin";
-  const isEmployee = user?.role === "employee";
+  // Form State
+  const [formData, setFormData] = useState({
+    customer: "",
+    service: "",
+    vehicle: "",
+    time: "09:00",
+    notes: ""
+  });
 
-  const techSelf: Tech | null = isEmployee
-    ? { id: `tech-${user?.email ?? "self"}`, name: user?.name ?? "Me", initials: (user?.name?.split(" ").map((n) => n[0]).join("") || "ME").slice(0, 2) }
-    : null;
-  const techs: Tech[] = techSelf ? [techSelf, ...DEFAULT_TECHS] : DEFAULT_TECHS;
-  const [showMyOnly, setShowMyOnly] = useState<boolean>(isEmployee);
-
+  // Refresh data on mount and focus
   useEffect(() => {
-    saveBookingTimes(bookingTimes);
-  }, [bookingTimes]);
+    refresh();
+    const onFocus = () => refresh();
+    window.addEventListener("focus", onFocus);
+    return () => window.removeEventListener("focus", onFocus);
+  }, [refresh]);
 
-  useEffect(() => {
-    saveRequestFlags(requestFlags);
-  }, [requestFlags]);
+  // Calendar Grid Generation
+  const calendarDays = useMemo(() => {
+    const monthStart = startOfMonth(currentDate);
+    const monthEnd = endOfMonth(monthStart);
+    const startDate = startOfWeek(monthStart);
+    const endDate = endOfWeek(monthEnd);
+    return eachDayOfInterval({ start: startDate, end: endDate });
+  }, [currentDate]);
 
-  // Heartbeat to re-evaluate NEW badge window
-  useEffect(() => {
-    const t = setInterval(() => setNow(Date.now()), 1000);
-    return () => clearInterval(t);
-  }, []);
-
-  // Count today's new booking PDFs for badge on Bookings page
-  useEffect(() => {
-    try {
-      const records = JSON.parse(localStorage.getItem('pdfArchive') || '[]');
-      const today = new Date().toDateString();
-      const count = (Array.isArray(records) ? records : []).filter((r: any) => {
-        if (r.recordType !== 'Bookings') return false;
-        const ts = new Date(r.timestamp);
-        return ts.toDateString() === today;
-      }).length;
-      setNewPdfsToday(count);
-    } catch {}
-  }, [items]);
-
-  // Listen for employee booking requests and notify admin instantly
-  useEffect(() => {
-    function onRequested(ev: any) {
-      if (!isAdmin) return;
-      const payload = ev?.detail as { when: string; service: string; customer: string; employee: string };
-      if (!payload) return;
-      toast.error(`${payload.employee} requested ${payload.when} ${payload.service} – ${payload.customer}`, {
-        description: "Employee Request",
-      });
-    }
-    window.addEventListener("booking-requested", onRequested as any);
-    return () => window.removeEventListener("booking-requested", onRequested as any);
-  }, [isAdmin]);
-
-  // Real-time cross-tab syncing: refresh store and toast when new booking arrives
-  useEffect(() => {
-    function onStorage(e: StorageEvent) {
-      try {
-        if (e.key === 'bookings') {
-          refresh();
-        }
-        if (e.key === 'pdfArchive') {
-          // recalc today's PDF count
-          const records = JSON.parse(localStorage.getItem('pdfArchive') || '[]');
-          const today = new Date().toDateString();
-          const count = (Array.isArray(records) ? records : []).filter((r: any) => {
-            if (r.recordType !== 'Bookings') return false;
-            const ts = new Date(r.timestamp);
-            return ts.toDateString() === today;
-          }).length;
-          setNewPdfsToday(count);
-        }
-        if (e.key === 'lastBookingEvent' && e.newValue) {
-          const payload = JSON.parse(e.newValue);
-          const { id, ts, price } = payload || {};
-          // Slight delay to ensure store refresh pulls in new item
-          setTimeout(() => {
-            const bk = useBookingsStore.getState().items.find(i => i.id === id);
-            if (!bk) return;
-            if (!isAdmin) return;
-            const timeStr = new Date(bk.date).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-            const amt = typeof price === 'number' ? ` $${price}` : '';
-            toast.success(`NEW BOOKING!${amt} — ${bk.customer} @ ${timeStr}`, { duration: 8000 });
-            try { new Audio('/sounds/cash-register.mp3').play().catch(() => {}); } catch {}
-            if (typeof Notification !== 'undefined') {
-              if (Notification.permission === 'granted') {
-                new Notification('New Booking', { body: `${bk.customer}${amt ? ' —' + amt : ''} @ ${timeStr}`, icon: '/favicon.ico' });
-              } else if (Notification.permission !== 'denied') {
-                Notification.requestPermission().then((p) => { if (p === 'granted') new Notification('New Booking', { body: `${bk.customer}${amt ? ' —' + amt : ''} @ ${timeStr}`, icon: '/favicon.ico' }); });
-              }
-            }
-          }, 250);
-        }
-      } catch {}
-    }
-    window.addEventListener('storage', onStorage);
-    return () => window.removeEventListener('storage', onStorage);
-  }, [isAdmin, refresh]);
-
-  // Track known IDs and detect newly added items (same-tab adds)
-  useEffect(() => {
-    const nextIds = new Set<string>([...knownIds]);
-    let hasNew = false;
-    items.forEach(i => { if (!nextIds.has(i.id)) { nextIds.add(i.id); hasNew = true; } });
-    if (hasNew) setKnownIds(nextIds);
-  }, [items]);
-
-  const weekDays = useMemo(() => Array.from({ length: 7 }).map((_, i) => addDays(weekStart, i)), [weekStart]);
-  const monthDays = useMemo(() => {
-    const start = startOfWeek(startOfMonth(monthDate), { weekStartsOn: 1 });
-    const end = addDays(endOfMonth(monthDate), 6);
-    return eachDayOfInterval({ start, end: startOfWeek(end, { weekStartsOn: 1 }) });
-  }, [monthDate]);
-
-  function eventTopMinutes(date: Date) {
-    const mins = date.getHours() * 60 + date.getMinutes();
-    return Math.max(0, mins - HOURS_START * 60);
-  }
-
-  function startOfDayWithHour(base: Date, h: number) {
-    return setHours(setMinutes(base, 0), h);
-  }
-
-  function getTime(b: Booking): BookingTime | undefined {
-    return bookingTimes[b.id];
-  }
-
-  function upsertTime(id: string, next: Partial<BookingTime>) {
-    const prev = bookingTimes[id] || { start: startOfDayWithHour(new Date(), 9).toISOString(), durationMinutes: 60 };
-    const merged = { ...prev, ...next } as BookingTime;
-    setBookingTimes((m) => ({ ...m, [id]: merged }));
-  }
-
-  function handleAddRequest(start: Date, techId?: string) {
-    if (!isEmployee) return;
-    const id = `req-${Date.now()}`;
-    const title = formService ? formService : "New Booking";
-    const customer = formCustomer || "Unknown";
-    const dateIso = start.toISOString();
-    const newBooking: Booking = { id, title, customer, date: dateIso, status: "pending" };
-    add(newBooking);
-    upsertTime(id, { start: dateIso, durationMinutes: 60, techId: techId || techSelf?.id });
-    setRequestFlags((f) => ({ ...f, [id]: true }));
-
-    const when = format(start, "p");
-    const detail = { when, service: formService || "Service", customer, employee: user?.name || "Employee" };
-    window.dispatchEvent(new CustomEvent("booking-requested", { detail }));
-    setInlineForm(null);
-    setFormCustomer("");
-    setFormService("");
-    setFormVehicle("");
-  }
-
-  function handleAdminCreate(start: Date, techId?: string) {
-    if (!isAdmin) return;
-    const id = `b-${Date.now()}`;
-    const title = formService || "New Booking";
-    const customer = formCustomer || "Unknown";
-    const dateIso = start.toISOString();
-    const newBooking: Booking = { id, title, customer, date: dateIso, status: "pending" };
-    add(newBooking);
-    upsertTime(id, { start: dateIso, durationMinutes: 60, techId });
-    setInlineForm(null);
-    setFormCustomer("");
-    setFormService("");
-    setFormVehicle("");
-  }
-
-  function moveEvent(id: string, nextStart: Date, nextTechId?: string) {
-    const bt = bookingTimes[id];
-    const duration = bt?.durationMinutes ?? 60;
-    upsertTime(id, { start: nextStart.toISOString(), durationMinutes: duration, techId: nextTechId ?? bt?.techId });
-  }
-
-  function resizeEvent(id: string, minutes: number) {
-    upsertTime(id, { durationMinutes: Math.max(30, minutes) });
-  }
-
-  function DayDots({ day }: { day: Date }) {
-    const dayBookings = items.filter((b) => isSameDay(parseISO(b.date), day));
-    const visible = dayBookings.slice(0, 8);
-    const extra = Math.max(0, dayBookings.length - visible.length);
-    return (
-      <div className="mt-2 flex flex-wrap gap-1 relative">
-        {visible.map((b) => (
-          <span key={b.id} title={`${b.customer} – ${b.title}`} className={`inline-block w-2 h-2 rounded-full ${b.status === "done" ? "bg-zinc-700" : "bg-red-600"}`}></span>
-        ))}
-        {extra > 0 && <span className="text-xs text-zinc-400">+{extra}</span>}
-      </div>
-    );
-  }
-
-  function WeekView() {
-    const columnsBase = showMyOnly && techSelf ? [techSelf] : techs;
-    const columns = columnsBase.length > 0 ? columnsBase : [{ id: 'unassigned', name: 'Unassigned', initials: 'UA' }];
-    const totalMinutes = (HOURS_END - HOURS_START) * 60;
-
-    return (
-      <div className="rounded-lg border border-zinc-800 overflow-hidden">
-        <div className="grid" style={{ gridTemplateColumns: `repeat(${columns.length}, 1fr)` }}>
-          {columns.map((col) => (
-            <div key={col.id} className="border-r border-zinc-800">
-              <div className="flex items-center gap-2 px-3 py-2 bg-zinc-900/60">
-                <div className="w-7 h-7 rounded-full bg-zinc-800 flex items-center justify-center text-xs text-white">{col.initials}</div>
-                <div className="text-sm font-semibold text-white">{col.name}</div>
-              </div>
-              {/* Match container height to slot count × slot height to remove extra blank space */}
-              <div className="relative" style={{ height: (totalMinutes / SLOT_MINUTES) * 24 }}>
-                {/* time slots */}
-                {Array.from({ length: totalMinutes / SLOT_MINUTES }).map((_, idx) => {
-                  const minutes = HOURS_START * 60 + idx * SLOT_MINUTES;
-                  const h = Math.floor(minutes / 60);
-                  const m = minutes % 60;
-                  const label = format(setMinutes(setHours(weekDays[0], h), m), "p");
-                  return (
-                    <div
-                      key={idx}
-                      className="border-t border-zinc-800/60 hover:bg-zinc-900/40"
-                      style={{ height: 24 }}
-                      onClick={() => {
-                        const base = setHours(setMinutes(weekDays[0], h), m);
-                        setInlineForm({ start: base, techId: col.id });
-                      }}
-                    >
-                      {idx % 2 === 0 && (
-                        <div className="absolute -left-14 text-[10px] text-zinc-500">{label}</div>
-                      )}
-                    </div>
-                  );
-                })}
-                {/* events */}
-                {items
-                  .filter((b) => {
-                    const bt = getTime(b);
-                    if (!bt) return false;
-                    const d = parseISO(bt.start);
-                    const matchesDay = weekDays.some((wd) => isSameDay(wd, d));
-                    const matchesTech = (bt.techId || columns[0].id) === col.id;
-                    return matchesDay && matchesTech;
-                  })
-                  .map((b) => {
-                    const bt = getTime(b)!;
-                    const start = parseISO(bt.start);
-                    const top = (eventTopMinutes(start) / SLOT_MINUTES) * 24; // 24px per slot
-                    const height = (bt.durationMinutes / SLOT_MINUTES) * 24;
-                    const isRequest = !!requestFlags[b.id];
-                    const faded = isEmployee && !isRequest;
-                    const isNew = !!b.createdAt && (now - new Date(b.createdAt).getTime()) < 10_000;
-                    return (
-                      <div
-                        key={b.id}
-                        className={`absolute left-2 right-2 rounded-md shadow ${statusClasses(b.status)} ${faded ? "opacity-60 cursor-default" : ""} ${isNew ? 'ring-2 ring-red-500 animate-pulse' : ''}`}
-                        style={{ top, height }}
-                        onMouseDown={(e) => {
-                          if (!isAdmin) return;
-                          const startY = e.clientY;
-                          const origStart = start;
-                          function onMove(me: MouseEvent) {
-                            const dy = me.clientY - startY;
-                            const slots = Math.round(dy / 24);
-                            const next = addMinutes(origStart, slots * SLOT_MINUTES);
-                            moveEvent(b.id, next, col.id);
-                          }
-                          function onUp() {
-                            window.removeEventListener("mousemove", onMove);
-                            window.removeEventListener("mouseup", onUp);
-                          }
-                          window.addEventListener("mousemove", onMove);
-                          window.addEventListener("mouseup", onUp);
-                        }}
-                        onDoubleClick={() => setSelected(b)}
-                      >
-                        <div className={`px-2 py-1 text-xs flex items-center justify-between ${isRequest ? "border-l-2 border-yellow-400" : ""}`}>
-                          <span className="font-semibold">{b.customer}</span>
-                          <span className="opacity-80">{b.title}</span>
-                          {isRequest && (
-                            <span className="ml-2 text-[10px] bg-yellow-500 text-black px-1 rounded">Employee Request</span>
-                          )}
-                          {isNew && (
-                            <span className="ml-2 text-[10px] bg-red-600 text-white px-1 rounded">NEW</span>
-                          )}
-                        </div>
-                        {isAdmin && (
-                          <div
-                            className="absolute bottom-0 left-0 right-0 h-1 cursor-ns-resize"
-                            onMouseDown={(e) => {
-                              const startY = e.clientY;
-                              const orig = bt.durationMinutes;
-                              function onMove(me: MouseEvent) {
-                                const dy = me.clientY - startY;
-                                const slots = Math.round(dy / 24);
-                                resizeEvent(b.id, Math.max(30, orig + slots * SLOT_MINUTES));
-                              }
-                              function onUp() {
-                                window.removeEventListener("mousemove", onMove);
-                                window.removeEventListener("mouseup", onUp);
-                              }
-                              window.addEventListener("mousemove", onMove);
-                              window.addEventListener("mouseup", onUp);
-                            }}
-                          />
-                        )}
-                      </div>
-                    );
-                  })}
-              </div>
-            </div>
-          ))}
-        </div>
-        {inlineForm && (
-          <div className="fixed bottom-6 right-6 w-96 rounded-lg border border-zinc-800 bg-black p-4 shadow-xl">
-            <div className="text-sm font-semibold text-white mb-2">{isAdmin ? "Create Booking" : "New Booking Request"}</div>
-            <div className="space-y-2">
-              <CustomerSearchField
-                value={formCustomer}
-                onChange={(v) => setFormCustomer(v)}
-                onAddNew={(cust) => setFormCustomer(cust.name)}
-              />
-              <Input placeholder="Service" value={formService} onChange={(e) => setFormService(e.target.value)} />
-              <Input placeholder="Vehicle" value={formVehicle} onChange={(e) => setFormVehicle(e.target.value)} />
-            </div>
-            <div className="flex items-center justify-between mt-3">
-              <div className="text-xs text-zinc-400">{format(inlineForm.start, "EEE p")}</div>
-              <div className="flex gap-2">
-                <Button variant="outline" onClick={() => setInlineForm(null)}>Cancel</Button>
-                {isAdmin ? (
-                  <Button className="bg-red-700 hover:bg-red-800" onClick={() => handleAdminCreate(inlineForm.start, inlineForm.techId)}>Create Booking</Button>
-                ) : (
-                  <Button className="bg-red-700 hover:bg-red-800" onClick={() => handleAddRequest(inlineForm.start, inlineForm.techId)}>Request Booking</Button>
-                )}
-              </div>
-            </div>
-          </div>
-        )}
-      </div>
-    );
-  }
-
-  function MonthView() {
-    return (
-  <div className="grid grid-cols-1 md:grid-cols-7 gap-2">
-        {monthDays.map((day, idx) => (
-          <div key={idx} className={`p-2 rounded-lg border ${isSameMonth(day, monthDate) ? "border-zinc-800" : "border-zinc-900 opacity-60"}`}>
-            <div className="text-xs text-zinc-400">{format(day, "d")}</div>
-            <DayDots day={day} />
-          </div>
-        ))}
-      </div>
-    );
-  }
-
-  const todayList = items
-    .filter((b) => isSameDay(parseISO(b.date), new Date()))
-    .sort((a, b) => {
-      const ta = bookingTimes[a.id]?.start || a.date;
-      const tb = bookingTimes[b.id]?.start || b.date;
-      return parseISO(ta).getTime() - parseISO(tb).getTime();
+  // Filter bookings for the current view
+  const monthBookings = useMemo(() => {
+    return items.filter(b => {
+      const d = parseISO(b.date);
+      return isSameMonth(d, currentDate);
     });
+  }, [items, currentDate]);
 
-  function StatusBadge({ b }: { b: Booking }) {
-    const base = statusClasses(b.status);
-    const isRequest = !!requestFlags[b.id];
-    return <span className={`text-[10px] px-2 py-0.5 rounded ${base}`}>{isRequest ? "Employee Request" : b.status.replace("_", " ")}</span>;
-  }
+  const getBookingsForDay = (day: Date) => {
+    return items.filter(b => isSameDay(parseISO(b.date), day)).sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
+  };
+
+  // Handlers
+  const handlePrevMonth = () => setCurrentDate(subMonths(currentDate, 1));
+  const handleNextMonth = () => setCurrentDate(addMonths(currentDate, 1));
+  const handleToday = () => setCurrentDate(new Date());
+
+  const handleDayClick = (day: Date) => {
+    setSelectedDate(day);
+    setFormData(prev => ({ ...prev, time: "09:00" })); // Reset time default
+    setIsAddModalOpen(true);
+  };
+
+  const handleBookingClick = (e: React.MouseEvent, booking: Booking) => {
+    e.stopPropagation();
+    setSelectedBooking(booking);
+    setFormData({
+      customer: booking.customer,
+      service: booking.title,
+      vehicle: booking.vehicle || "",
+      time: format(parseISO(booking.date), "HH:mm"),
+      notes: booking.notes || ""
+    });
+    setIsAddModalOpen(true);
+  };
+
+  const handleSave = () => {
+    if (!formData.customer || !formData.service) {
+      toast.error("Customer and Service are required");
+      return;
+    }
+
+    const dateBase = selectedDate || new Date();
+    const [hours, minutes] = formData.time.split(":").map(Number);
+    const date = new Date(dateBase);
+    date.setHours(hours, minutes, 0, 0);
+
+    if (selectedBooking) {
+      // Update
+      update(selectedBooking.id, {
+        customer: formData.customer,
+        title: formData.service,
+        date: date.toISOString(),
+        vehicle: formData.vehicle,
+        notes: formData.notes
+      });
+      toast.success("Booking updated");
+    } else {
+      // Create
+      add({
+        id: `b-${Date.now()}`,
+        customer: formData.customer,
+        title: formData.service,
+        date: date.toISOString(),
+        status: "confirmed",
+        vehicle: formData.vehicle,
+        notes: formData.notes,
+        createdAt: new Date().toISOString()
+      });
+      toast.success("Booking created");
+    }
+    setIsAddModalOpen(false);
+    setSelectedBooking(null);
+    setFormData({ customer: "", service: "", vehicle: "", time: "09:00", notes: "" });
+  };
+
+  const handleDelete = () => {
+    if (selectedBooking) {
+      if (confirm("Are you sure you want to delete this booking?")) {
+        remove(selectedBooking.id);
+        toast.success("Booking deleted");
+        setIsAddModalOpen(false);
+        setSelectedBooking(null);
+      }
+    }
+  };
+
+  const getStatusColor = (status: string) => {
+    switch (status) {
+      case 'pending': return 'bg-yellow-500/20 text-yellow-500 border-yellow-500/50';
+      case 'confirmed': return 'bg-blue-500/20 text-blue-400 border-blue-500/50';
+      case 'in_progress': return 'bg-purple-500/20 text-purple-400 border-purple-500/50';
+      case 'done': return 'bg-green-500/20 text-green-400 border-green-500/50';
+      default: return 'bg-zinc-800 text-zinc-400 border-zinc-700';
+    }
+  };
 
   return (
-    <div className="space-y-4">
-      <PageHeader title="Bookings" />
-      {newPdfsToday > 0 && (
-        <div className="px-4">
-          <Badge className="bg-red-600 text-white">{newPdfsToday} update{newPdfsToday === 1 ? '' : 's'} today</Badge>
+    <div className="min-h-screen bg-background text-foreground p-6 space-y-6">
+      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+        <div>
+          <h1 className="text-3xl font-bold tracking-tight">Booking Calendar</h1>
+          <p className="text-muted-foreground">Manage appointments and schedule services</p>
         </div>
-      )}
-
-      <Card className="bg-black border-zinc-800">
-        <div className="flex items-center justify-between p-3">
-          <div className="flex items-center gap-2">
-            <Button variant={viewMode === "week" ? "default" : "outline"} className={viewMode === "week" ? "bg-red-700 hover:bg-red-800" : ""} onClick={() => setViewMode("week")}>Week</Button>
-            <Button variant={viewMode === "month" ? "default" : "outline"} className={viewMode === "month" ? "bg-red-700 hover:bg-red-800" : ""} onClick={() => setViewMode("month")}>Month</Button>
+        <div className="flex items-center gap-2">
+          <Button variant="outline" onClick={handleToday}>Today</Button>
+          <div className="flex items-center bg-secondary/50 rounded-md border border-border">
+            <Button variant="ghost" size="icon" onClick={handlePrevMonth}><ChevronLeft className="h-4 w-4" /></Button>
+            <span className="w-32 text-center font-semibold">{format(currentDate, "MMMM yyyy")}</span>
+            <Button variant="ghost" size="icon" onClick={handleNextMonth}><ChevronRight className="h-4 w-4" /></Button>
           </div>
-          <div className="flex items-center gap-2">
-            <Button variant="outline" onClick={() => setWeekStart(addDays(weekStart, -7))}>Prev</Button>
-            <Button variant="outline" onClick={() => setWeekStart(startOfWeek(new Date(), { weekStartsOn: 1 }))}>Today</Button>
-            <Button variant="outline" onClick={() => setWeekStart(addDays(weekStart, 7))}>Next</Button>
-            <div className="ml-4 flex items-center gap-2">
-              <Button variant={showMyOnly ? "default" : "outline"} className={showMyOnly ? "bg-red-700 hover:bg-red-800" : ""} onClick={() => setShowMyOnly(true)}>My Schedule Only</Button>
-              <Button variant={!showMyOnly ? "default" : "outline"} className={!showMyOnly ? "bg-red-700 hover:bg-red-800" : ""} onClick={() => setShowMyOnly(false)}>All Techs</Button>
-            </div>
-          </div>
+          <Button className="bg-primary hover:bg-primary/90" onClick={() => { setSelectedDate(new Date()); setIsAddModalOpen(true); }}>
+            <Plus className="h-4 w-4 mr-2" /> New Booking
+          </Button>
         </div>
-        <div className="p-3">
-          {viewMode === "week" ? <WeekView /> : <MonthView />}
-        </div>
-      </Card>
+      </div>
 
-      {/* Pending module moved up under buttons for clarity */}
-      <Card className="bg-black border-zinc-800">
-        <div className="p-3 text-sm font-semibold text-white">Pending</div>
-        <div className="px-3 pb-3">
-          <div className="divide-y divide-zinc-800">
-            {items
-              .filter((b) => b.status === "pending")
-              .sort((a, b) => {
-                const ta = bookingTimes[a.id]?.start || a.date;
-                const tb = bookingTimes[b.id]?.start || b.date;
-                return parseISO(ta).getTime() - parseISO(tb).getTime();
-              })
-              .map((b) => {
-                const bt = bookingTimes[b.id];
-                const time = bt ? format(parseISO(bt.start), "p") : format(parseISO(b.date), "p");
-                const isNew = !!b.createdAt && (now - new Date(b.createdAt).getTime()) < 10_000;
-                return (
-                  <div key={b.id} className={`flex items-center justify-between py-2 hover:bg-zinc-900/40 rounded px-2 cursor-pointer ${isNew ? 'ring-1 ring-red-600 animate-pulse' : ''}`} onClick={() => setSelected(b)}>
-                    <div className="flex items-center gap-3">
-                      <span className={`inline-block w-2 h-2 rounded-full ${requestFlags[b.id] ? "bg-yellow-500" : "bg-red-600"}`}></span>
-                      <span className="text-xs text-zinc-400 w-16">{time}</span>
-                      <span className="text-sm text-white">{b.customer}</span>
-                      <span className="text-sm text-zinc-300">{b.title}</span>
-                      {isNew && <span className="ml-2 text-[10px] bg-red-600 text-white px-1 rounded">NEW</span>}
-                    </div>
-                    <StatusBadge b={b} />
-                  </div>
-                );
-              })}
-          </div>
+      <Card className="p-1 bg-zinc-950/50 border-zinc-800 shadow-2xl overflow-hidden rounded-xl">
+        {/* Calendar Header */}
+        <div className="grid grid-cols-7 mb-1 text-center py-2 bg-zinc-900/50 rounded-t-lg border-b border-zinc-800">
+          {['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].map(day => (
+            <div key={day} className="text-sm font-medium text-muted-foreground uppercase tracking-wider">{day}</div>
+          ))}
         </div>
-      </Card>
 
-      <Card className="bg-black border-zinc-800">
-        <div className="p-3 text-sm font-semibold text-white">Today</div>
-        <div className="px-3 pb-3">
-          <div className="divide-y divide-zinc-800">
-            {todayList.map((b) => {
-              const bt = bookingTimes[b.id];
-              const time = bt ? format(parseISO(bt.start), "p") : format(parseISO(b.date), "p");
-              const isNew = !!b.createdAt && (now - new Date(b.createdAt).getTime()) < 10_000;
-              return (
-                <div key={b.id} className={`flex items-center justify-between py-2 hover:bg-zinc-900/40 rounded px-2 cursor-pointer ${isNew ? 'ring-1 ring-red-600 animate-pulse' : ''}`} onClick={() => setSelected(b)}>
-                  <div className="flex items-center gap-3">
-                    <span className={`inline-block w-2 h-2 rounded-full ${requestFlags[b.id] ? "bg-yellow-500" : "bg-red-600"}`}></span>
-                    <span className="text-xs text-zinc-400 w-16">{time}</span>
-                    <span className="text-sm text-white">{b.customer}</span>
-                    <span className="text-sm text-zinc-300">{b.title}</span>
-                    {isNew && <span className="ml-2 text-[10px] bg-red-600 text-white px-1 rounded">NEW</span>}
-                  </div>
-                  <StatusBadge b={b} />
-                </div>
-              );
-            })}
-          </div>
-        </div>
-      </Card>
+        {/* Calendar Grid */}
+        <div className="grid grid-cols-7 auto-rows-fr gap-px bg-zinc-800">
+          {calendarDays.map((day, dayIdx) => {
+            const bookings = getBookingsForDay(day);
+            const isSelectedMonth = isSameMonth(day, currentDate);
+            const isTodayDate = isToday(day);
 
-      {/* Customer Add/Edit Modal */}
-      <Dialog open={!!selected} onOpenChange={(o) => !o && setSelected(null)}>
-        <DialogContent className="sm:max-w-[520px]">
-          <DialogHeader>
-            <DialogTitle>Booking</DialogTitle>
-          </DialogHeader>
-          {selected && (
-            <div className="space-y-2">
-              {/* Editable fields for admin */}
-              {isAdmin ? (
-                <>
-                  <CustomerSearchField
-                    value={formCustomer || selected.customer}
-                    onChange={(v) => setFormCustomer(v)}
-                    onAddNew={(cust) => setFormCustomer(cust.name)}
-                  />
-                  <Input
-                    placeholder="Service"
-                    value={formService || selected.title}
-                    onChange={(e) => setFormService(e.target.value)}
-                  />
-                </>
-              ) : (
-                <>
-                  <div className="text-sm text-zinc-300">Customer: {selected.customer}</div>
-                  <div className="text-sm text-zinc-300">Service: {selected.title}</div>
-                </>
-              )}
-              <div className="text-sm text-zinc-300">Date: {format(parseISO(selected.date), "PPP p")}</div>
-              <div className="button-group-responsive flex flex-wrap gap-2 pt-2">
-                {isAdmin && (
-                  <>
-                    <Button className="bg-red-700 hover:bg-red-800" onClick={() => update(selected.id, { status: "pending" })}>Pending</Button>
-                    <Button className="bg-red-800 hover:bg-red-900" onClick={() => update(selected.id, { status: "confirmed" })}>Confirm</Button>
-                    <Button className="bg-red-600 hover:bg-red-700" onClick={() => update(selected.id, { status: "in_progress" })}>Start</Button>
-                    <Button className="bg-zinc-900 hover:bg-zinc-800" onClick={() => update(selected.id, { status: "done" })}>Complete</Button>
-                    <Button variant="outline" onClick={() => { update(selected.id, { customer: formCustomer || selected.customer, title: formService || selected.title }); setSelected(null); setFormCustomer(""); setFormService(""); }}>Save Changes</Button>
-                    <Button variant="outline" onClick={() => { remove(selected.id); setSelected(null); }}>Delete</Button>
-                  </>
+            return (
+              <div
+                key={day.toString()}
+                onClick={() => handleDayClick(day)}
+                className={cn(
+                  "min-h-[140px] bg-zinc-950 p-2 relative group transition-colors hover:bg-zinc-900/80 cursor-pointer flex flex-col gap-1",
+                  !isSelectedMonth && "bg-zinc-950/30 text-muted-foreground/40"
                 )}
+              >
+                <div className="flex justify-between items-start">
+                  <span className={cn(
+                    "text-sm font-medium w-7 h-7 flex items-center justify-center rounded-full",
+                    isTodayDate ? "bg-primary text-primary-foreground" : "text-muted-foreground group-hover:text-foreground"
+                  )}>
+                    {format(day, "d")}
+                  </span>
+                  {bookings.length > 0 && (
+                    <span className="text-[10px] text-muted-foreground font-mono">{bookings.length}</span>
+                  )}
+                </div>
+
+                <div className="flex-1 flex flex-col gap-1 overflow-y-auto max-h-[100px] custom-scrollbar">
+                  {bookings.map(booking => (
+                    <div
+                      key={booking.id}
+                      onClick={(e) => handleBookingClick(e, booking)}
+                      className={cn(
+                        "text-xs px-2 py-1.5 rounded border truncate transition-all hover:scale-[1.02] shadow-sm",
+                        getStatusColor(booking.status)
+                      )}
+                    >
+                      <div className="flex items-center gap-1">
+                        <span className="font-mono opacity-70 text-[10px]">{format(parseISO(booking.date), "HH:mm")}</span>
+                        <span className="font-semibold truncate">{booking.customer}</span>
+                      </div>
+                      <div className="truncate opacity-80 text-[10px]">{booking.title}</div>
+                    </div>
+                  ))}
+                </div>
+
+                {/* Hover Add Button */}
+                <div className="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 pointer-events-none">
+                  <Plus className="h-8 w-8 text-zinc-700/50" />
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      </Card>
+
+      {/* Booking Dialog */}
+      <Dialog open={isAddModalOpen} onOpenChange={(open) => { if (!open) setSelectedBooking(null); setIsAddModalOpen(open); }}>
+        <DialogContent className="sm:max-w-[500px] bg-zinc-950 border-zinc-800">
+          <DialogHeader>
+            <DialogTitle className="text-xl font-bold flex items-center gap-2">
+              {selectedBooking ? 'Edit Booking' : 'New Booking'}
+              <Badge variant="outline" className="ml-2 font-normal text-xs">
+                {selectedDate ? format(selectedDate, "MMMM d, yyyy") : format(new Date(), "MMMM d, yyyy")}
+              </Badge>
+            </DialogTitle>
+          </DialogHeader>
+
+          <div className="grid gap-4 py-4">
+            <div className="grid grid-cols-4 items-center gap-4">
+              <label className="text-right text-sm font-medium text-muted-foreground">Time</label>
+              <div className="col-span-3 relative">
+                <Clock className="absolute left-3 top-2.5 h-4 w-4 text-muted-foreground" />
+                <Input
+                  type="time"
+                  className="pl-9 bg-zinc-900 border-zinc-800"
+                  value={formData.time}
+                  onChange={(e) => setFormData({ ...formData, time: e.target.value })}
+                />
               </div>
             </div>
-          )}
-          <DialogFooter className="button-group-responsive">
-            <Button variant="outline" onClick={() => setSelected(null)}>Close</Button>
+
+            <div className="grid grid-cols-4 items-center gap-4">
+              <label className="text-right text-sm font-medium text-muted-foreground">Customer</label>
+              <div className="col-span-3 relative">
+                <User className="absolute left-3 top-2.5 h-4 w-4 text-muted-foreground" />
+                <CustomerSearchField
+                  value={formData.customer}
+                  onChange={(val) => setFormData({ ...formData, customer: val })}
+                />
+              </div>
+            </div>
+
+            <div className="grid grid-cols-4 items-center gap-4">
+              <label className="text-right text-sm font-medium text-muted-foreground">Service</label>
+              <div className="col-span-3 relative">
+                <CalendarIcon className="absolute left-3 top-2.5 h-4 w-4 text-muted-foreground" />
+                <Input
+                  placeholder="e.g. Full Detail, Ceramic Coating"
+                  className="pl-9 bg-zinc-900 border-zinc-800"
+                  value={formData.service}
+                  onChange={(e) => setFormData({ ...formData, service: e.target.value })}
+                />
+              </div>
+            </div>
+
+            <div className="grid grid-cols-4 items-center gap-4">
+              <label className="text-right text-sm font-medium text-muted-foreground">Vehicle</label>
+              <div className="col-span-3 relative">
+                <Car className="absolute left-3 top-2.5 h-4 w-4 text-muted-foreground" />
+                <Input
+                  placeholder="e.g. 2023 Tesla Model Y"
+                  className="pl-9 bg-zinc-900 border-zinc-800"
+                  value={formData.vehicle}
+                  onChange={(e) => setFormData({ ...formData, vehicle: e.target.value })}
+                />
+              </div>
+            </div>
+
+            <div className="grid grid-cols-4 items-start gap-4">
+              <label className="text-right text-sm font-medium text-muted-foreground mt-2">Notes</label>
+              <div className="col-span-3">
+                <textarea
+                  className="flex w-full rounded-md border border-zinc-800 bg-zinc-900 px-3 py-2 text-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50 min-h-[80px]"
+                  placeholder="Additional notes..."
+                  value={formData.notes}
+                  onChange={(e) => setFormData({ ...formData, notes: e.target.value })}
+                />
+              </div>
+            </div>
+          </div>
+
+          <DialogFooter className="flex justify-between sm:justify-between gap-2">
+            {selectedBooking ? (
+              <Button variant="destructive" onClick={handleDelete} className="bg-red-900/50 hover:bg-red-900 text-red-200 border border-red-900">
+                Delete Booking
+              </Button>
+            ) : <div></div>}
+            <div className="flex gap-2">
+              <Button variant="outline" onClick={() => setIsAddModalOpen(false)}>Cancel</Button>
+              <Button onClick={handleSave} className="bg-primary hover:bg-primary/90">Save Booking</Button>
+            </div>
           </DialogFooter>
         </DialogContent>
       </Dialog>
-
-      {/* Inline quick-create form */}
-      {/* Enhance customer field with search and add */}
-      
     </div>
   );
 }
 
-// Lightweight customer search dropdown with Add New modal
-function CustomerSearchField({ value, onChange, onAddNew }: { value: string; onChange: (v: string) => void; onAddNew: (c: Customer) => void }) {
-  const [query, setQuery] = useState("");
-  const [options, setOptions] = useState<Customer[]>([]);
-  const [open, setOpen] = useState(false);
-  const [modalOpen, setModalOpen] = useState(false);
+// --- Helper Components ---
+
+function CustomerSearchField({ value, onChange }: { value: string; onChange: (v: string) => void }) {
+  const [query, setQuery] = useState(value);
+  const [options, setOptions] = useState<any[]>([]);
+  const [showOptions, setShowOptions] = useState(false);
+
+  useEffect(() => { setQuery(value); }, [value]);
 
   useEffect(() => {
-    setQuery(value || "");
-  }, [value]);
-
-  useEffect(() => {
-    const run = async () => {
-      if (!query) { setOptions([]); return; }
+    const search = async () => {
+      if (!query || query.length < 2) { setOptions([]); return; }
       try {
-        const list = await api(`/api/customers/search?q=${encodeURIComponent(query)}`, { method: 'GET' });
-        setOptions(list || []);
-        setOpen(true);
-      } catch {
-        setOptions([]);
-      }
+        const res = await api(`/api/customers/search?q=${encodeURIComponent(query)}`, { method: 'GET' });
+        if (Array.isArray(res)) setOptions(res);
+      } catch { setOptions([]); }
     };
-    const t = setTimeout(run, 200);
+    const t = setTimeout(search, 300);
     return () => clearTimeout(t);
   }, [query]);
-
-  const select = (name: string) => {
-    onChange(name);
-    setOpen(false);
-  };
 
   return (
     <div className="relative">
       <Input
-        placeholder="Customer name"
+        className="pl-9 bg-zinc-900 border-zinc-800"
+        placeholder="Search or enter name..."
         value={query}
-        onChange={(e) => { setQuery(e.target.value); onChange(e.target.value); }}
+        onChange={(e) => { setQuery(e.target.value); onChange(e.target.value); setShowOptions(true); }}
+        onFocus={() => setShowOptions(true)}
+        onBlur={() => setTimeout(() => setShowOptions(false), 200)}
       />
-      {open && options.length > 0 && (
-        <div className="absolute z-10 mt-1 w-full rounded-md border border-zinc-800 bg-black shadow-lg">
-          {options.slice(0, 6).map((c) => (
-            <div key={c.id || c.name} className="px-3 py-2 text-sm text-white hover:bg-zinc-900 cursor-pointer" onClick={() => select(c.name)}>
-              {c.name}
+      {showOptions && options.length > 0 && (
+        <div className="absolute z-50 mt-1 w-full rounded-md border border-zinc-800 bg-zinc-950 shadow-lg max-h-48 overflow-auto">
+          {options.map((c) => (
+            <div
+              key={c.id}
+              className="px-3 py-2 text-sm hover:bg-zinc-900 cursor-pointer flex flex-col"
+              onMouseDown={() => { onChange(c.name); setQuery(c.name); setShowOptions(false); }}
+            >
+              <span className="font-medium">{c.name}</span>
+              <span className="text-xs text-muted-foreground">{c.email}</span>
             </div>
           ))}
         </div>
       )}
-      <div className="flex justify-end mt-2">
-        <Button variant="outline" size="sm" onClick={() => setModalOpen(true)}>Add New Customer</Button>
-      </div>
-      <CustomerModal
-        open={modalOpen}
-        onOpenChange={setModalOpen}
-        initial={null}
-        onSave={(data) => { onAddNew(data); setModalOpen(false); }}
-      />
     </div>
   );
 }

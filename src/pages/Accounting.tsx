@@ -17,6 +17,14 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import {
   Accordion,
   AccordionContent,
   AccordionItem,
@@ -35,6 +43,7 @@ import { getReceivables, upsertReceivable, Receivable } from "@/lib/receivables"
 import jsPDF from "jspdf";
 import DateRangeFilter, { DateRangeValue } from "@/components/filters/DateRangeFilter";
 import localforage from "localforage";
+import { getCategoryColors } from "@/lib/categoryColors";
 
 interface Invoice {
   id?: string;
@@ -47,6 +56,7 @@ interface Expense {
   amount: number;
   description: string;
   createdAt: string;
+  category?: string;
 }
 
 const DEFAULT_CATEGORIES = {
@@ -85,6 +95,7 @@ const Accounting = () => {
   const [invoiceList, setInvoiceList] = useState<Invoice[]>([]);
   const [incomeList, setIncomeList] = useState<Receivable[]>([]);
   const [customCategories, setCustomCategories] = useState<string[]>([]);
+  const [categoryColors, setCategoryColors] = useState<Record<string, string>>({});
 
   // Add Income form state
   const [incomeAmount, setIncomeAmount] = useState<string>("");
@@ -93,6 +104,11 @@ const Accounting = () => {
   const [incomeDate, setIncomeDate] = useState<string>(new Date().toISOString().slice(0, 10));
   const [incomeCustomer, setIncomeCustomer] = useState<string>("");
   const [incomeMethod, setIncomeMethod] = useState<string>("");
+
+  // New category creation
+  const [showNewCategoryDialog, setShowNewCategoryDialog] = useState(false);
+  const [newCategoryName, setNewCategoryName] = useState("");
+  const [newCategoryType, setNewCategoryType] = useState<"income" | "expense">("income");
 
   useEffect(() => {
     loadData();
@@ -111,6 +127,19 @@ const Accounting = () => {
     setExpenseList(expensesData as Expense[]);
     setInvoiceList(invoices as Invoice[]);
     setIncomeList(incomes as Receivable[]);
+
+    // Load category colors
+    const allCategories = new Set<string>();
+    (expensesData as Expense[]).forEach(exp => {
+      if (exp.category) allCategories.add(exp.category);
+    });
+    (incomes as Receivable[]).forEach(inc => {
+      if (inc.category) allCategories.add(inc.category);
+    });
+    if (allCategories.size > 0) {
+      const colors = await getCategoryColors(Array.from(allCategories));
+      setCategoryColors(colors);
+    }
 
     const now = new Date();
     const today = now.toDateString();
@@ -211,6 +240,49 @@ const Accounting = () => {
     toast({ title: "Income Added", description: `$${amt.toFixed(2)} recorded as income.` });
   };
 
+  const handleCreateNewCategory = async () => {
+    if (!newCategoryName.trim()) {
+      toast({ title: "Error", description: "Please enter a category name", variant: "destructive" });
+      return;
+    }
+
+    const trimmedName = newCategoryName.trim();
+
+    // Check if category already exists
+    const allExistingCategories = [
+      ...DEFAULT_CATEGORIES.income,
+      ...DEFAULT_CATEGORIES.expense,
+      ...customCategories
+    ];
+
+    if (allExistingCategories.includes(trimmedName)) {
+      toast({ title: "Error", description: "Category already exists", variant: "destructive" });
+      return;
+    }
+
+    // Add to custom categories
+    const updated = [...customCategories, trimmedName];
+    await localforage.setItem("customCategories", updated);
+    setCustomCategories(updated);
+
+    // Assign a color to the new category
+    const { getCategoryColor } = await import("@/lib/categoryColors");
+    const color = await getCategoryColor(trimmedName);
+    setCategoryColors(prev => ({ ...prev, [trimmedName]: color }));
+
+    // Set it as the selected category for the current form
+    if (newCategoryType === "income") {
+      setIncomeCategory(trimmedName);
+    } else {
+      setExpenseCategory(trimmedName);
+    }
+
+    // Reset and close dialog
+    setNewCategoryName("");
+    setShowNewCategoryDialog(false);
+    toast({ title: "Category Created", description: `"${trimmedName}" has been added` });
+  };
+
   const generatePDF = (download = false) => {
     const doc = new jsPDF();
     doc.setFontSize(18);
@@ -276,14 +348,14 @@ const Accounting = () => {
           </div>
 
           {/* Profit/Loss Summary - Moved to Top */}
-          <Card className={`p-6 border-border ${profit >= 0 ? 'bg-gradient-hero' : 'bg-destructive/20'}`}>
+          <Card className={`p-6 border-border ${profit > 0 ? 'bg-gradient-hero' : profit < 0 ? 'bg-destructive/20' : 'bg-blue-500/20'}`}>
             <h2 className="text-2xl font-bold text-white mb-2">Profit/Loss Summary</h2>
             <div className="flex items-baseline gap-2">
               <span className="text-4xl font-bold text-white">
                 ${Math.abs(profit).toFixed(2)}
               </span>
               <span className="text-white/80">
-                {profit >= 0 ? 'Profit' : 'Loss'}
+                {profit > 0 ? 'Profit' : profit < 0 ? 'Loss' : 'Break-Even'}
               </span>
             </div>
           </Card>
@@ -316,7 +388,7 @@ const Accounting = () => {
           </Card>
 
           {/* Accordion Sections */}
-          <Accordion type="multiple" defaultValue={["income", "expenses", "ledger"]} className="space-y-4">
+          <Accordion type="multiple" defaultValue={["ledger"]} className="space-y-4">
             {/* Add Income Section */}
             <AccordionItem value="income" className="border-none">
               <Card className="bg-gradient-card border-border">
@@ -335,11 +407,24 @@ const Accounting = () => {
                       </div>
                       <div>
                         <Label>Category</Label>
-                        <Select value={incomeCategory} onValueChange={setIncomeCategory}>
+                        <Select
+                          value={incomeCategory}
+                          onValueChange={(value) => {
+                            if (value === "___CREATE_NEW___") {
+                              setNewCategoryType("income");
+                              setShowNewCategoryDialog(true);
+                            } else {
+                              setIncomeCategory(value);
+                            }
+                          }}
+                        >
                           <SelectTrigger><SelectValue placeholder="Select category" /></SelectTrigger>
                           <SelectContent>
                             {DEFAULT_CATEGORIES.income.map(cat => <SelectItem key={cat} value={cat}>{cat}</SelectItem>)}
                             {customCategories.filter(c => !DEFAULT_CATEGORIES.expense.includes(c)).map(cat => <SelectItem key={cat} value={cat}>{cat}</SelectItem>)}
+                            <SelectItem value="___CREATE_NEW___" className="text-primary font-semibold border-t mt-1 pt-1">
+                              + Create New Category
+                            </SelectItem>
                           </SelectContent>
                         </Select>
                       </div>
@@ -414,11 +499,24 @@ const Accounting = () => {
                         </div>
                         <div>
                           <Label className="text-xs mb-1 block">Category</Label>
-                          <Select value={expenseCategory} onValueChange={setExpenseCategory}>
+                          <Select
+                            value={expenseCategory}
+                            onValueChange={(value) => {
+                              if (value === "___CREATE_NEW___") {
+                                setNewCategoryType("expense");
+                                setShowNewCategoryDialog(true);
+                              } else {
+                                setExpenseCategory(value);
+                              }
+                            }}
+                          >
                             <SelectTrigger className="bg-background border-border"><SelectValue placeholder="Select category" /></SelectTrigger>
                             <SelectContent>
                               {DEFAULT_CATEGORIES.expense.map(cat => <SelectItem key={cat} value={cat}>{cat}</SelectItem>)}
                               {customCategories.map(cat => <SelectItem key={cat} value={cat}>{cat}</SelectItem>)}
+                              <SelectItem value="___CREATE_NEW___" className="text-primary font-semibold border-t mt-1 pt-1">
+                                + Create New Category
+                              </SelectItem>
                             </SelectContent>
                           </Select>
                         </div>
@@ -474,14 +572,29 @@ const Accounting = () => {
                           <p className="text-sm text-muted-foreground p-4 text-center border border-dashed rounded">No income transactions yet</p>
                         ) : (
                           incomeList.map((income) => (
-                            <div key={income.id} className="p-3 bg-green-50 dark:bg-green-950/20 border border-green-200 dark:border-green-800 rounded-lg">
+                            <div
+                              key={income.id}
+                              className="p-3 border rounded-lg"
+                              style={{
+                                backgroundColor: categoryColors[income.category || 'General']
+                                  ? `${categoryColors[income.category || 'General']}15`
+                                  : 'rgb(240, 253, 244)',
+                                borderColor: categoryColors[income.category || 'General'] || 'rgb(187, 247, 208)'
+                              }}
+                            >
                               <div className="flex items-start justify-between gap-4">
                                 <div className="flex-1 min-w-0">
                                   <div className="flex items-center gap-2 mb-1">
                                     <span className="font-semibold text-green-700 dark:text-green-400">
                                       +${(income.amount || 0).toFixed(2)}
                                     </span>
-                                    <span className="text-xs px-2 py-0.5 bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-300 rounded">
+                                    <span
+                                      className="text-xs px-2 py-0.5 rounded font-medium"
+                                      style={{
+                                        backgroundColor: categoryColors[income.category || 'General'] || '#10b981',
+                                        color: 'white'
+                                      }}
+                                    >
                                       {income.category || 'General'}
                                     </span>
                                   </div>
@@ -544,14 +657,29 @@ const Accounting = () => {
                           <p className="text-sm text-muted-foreground p-4 text-center border border-dashed rounded">No expense transactions yet</p>
                         ) : (
                           expenseList.map((expense) => (
-                            <div key={expense.id} className="p-3 bg-red-50 dark:bg-red-950/20 border border-red-200 dark:border-red-800 rounded-lg">
+                            <div
+                              key={expense.id}
+                              className="p-3 border rounded-lg"
+                              style={{
+                                backgroundColor: categoryColors[(expense as any).category || 'General']
+                                  ? `${categoryColors[(expense as any).category || 'General']}15`
+                                  : 'rgb(254, 242, 242)',
+                                borderColor: categoryColors[(expense as any).category || 'General'] || 'rgb(254, 202, 202)'
+                              }}
+                            >
                               <div className="flex items-start justify-between gap-4">
                                 <div className="flex-1 min-w-0">
                                   <div className="flex items-center gap-2 mb-1">
                                     <span className="font-semibold text-red-700 dark:text-red-400">
                                       -${(expense.amount || 0).toFixed(2)}
                                     </span>
-                                    <span className="text-xs px-2 py-0.5 bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-300 rounded">
+                                    <span
+                                      className="text-xs px-2 py-0.5 rounded font-medium"
+                                      style={{
+                                        backgroundColor: categoryColors[(expense as any).category || 'General'] || '#ef4444',
+                                        color: 'white'
+                                      }}
+                                    >
                                       {(expense as any).category || 'General'}
                                     </span>
                                   </div>
@@ -692,6 +820,48 @@ const Accounting = () => {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      {/* New Category Dialog */}
+      <Dialog open={showNewCategoryDialog} onOpenChange={setShowNewCategoryDialog}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Create New Category</DialogTitle>
+            <DialogDescription>
+              Add a new {newCategoryType === "income" ? "income" : "expense"} category.
+              A unique color will be automatically assigned.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 py-4">
+            <div>
+              <Label htmlFor="new-category-name">Category Name</Label>
+              <Input
+                id="new-category-name"
+                placeholder="Enter category name"
+                value={newCategoryName}
+                onChange={(e) => setNewCategoryName(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") {
+                    e.preventDefault();
+                    handleCreateNewCategory();
+                  }
+                }}
+                autoFocus
+              />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => {
+              setShowNewCategoryDialog(false);
+              setNewCategoryName("");
+            }}>
+              Cancel
+            </Button>
+            <Button onClick={handleCreateNewCategory} className="bg-gradient-hero">
+              Create Category
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div >
   );
 };
