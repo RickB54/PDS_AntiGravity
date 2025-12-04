@@ -3,7 +3,7 @@ import { upsertCustomer, upsertInvoice } from '@/lib/db';
 import { savePDFToArchive } from '@/lib/pdfArchive';
 import { servicePackages, addOns, getServicePrice, getAddOnPrice } from '@/lib/services';
 
-type CreatedUser = { id: string; name: string; email: string; role: 'customer'|'employee' };
+type CreatedUser = { id: string; name: string; email: string; role: 'customer' | 'employee' };
 type MockJob = {
   id: string;
   customerId: string;
@@ -14,13 +14,13 @@ type MockJob = {
   vehicleType: string;
   invoice?: { id?: string; total: number; paidAmount: number; paymentStatus: string; invoiceNumber?: number };
 };
-type MockInventoryItem = { name: string; category: 'Chemical'|'Material' };
+type MockInventoryItem = { name: string; category: 'Chemical' | 'Material' };
 
 function genId(prefix: string) {
-  return `${prefix}_${Date.now()}_${Math.random().toString(36).slice(2,6)}`;
+  return `${prefix}_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`;
 }
 
-function mockEmail(slug: string, role: 'customer'|'employee', n: number) {
+function mockEmail(slug: string, role: 'customer' | 'employee', n: number) {
   return `static+${slug}.${role}${n}@example.local`;
 }
 
@@ -68,17 +68,17 @@ async function addStaticInventory(): Promise<MockInventoryItem[]> {
     { name: 'Soft Brush', category: 'Material' },
     { name: 'Detailing Clay', category: 'Material' },
   ];
-  try { window.dispatchEvent(new CustomEvent('inventory-changed')); } catch {}
+  try { window.dispatchEvent(new CustomEvent('inventory-changed')); } catch { }
   return inv;
 }
 
 function archiveJobPDFPlaceholder(customerName: string, checklistId: string) {
   const dummy = 'data:application/pdf;base64,' + btoa('Static Mock Job PDF');
-  try { savePDFToArchive('Job', customerName, checklistId, dummy, { fileName: `Job_Completion_${customerName}_${new Date().toISOString().split('T')[0]}.pdf` }); } catch {}
+  try { savePDFToArchive('Job', customerName, checklistId, dummy, { fileName: `Job_Completion_${customerName}_${new Date().toISOString().split('T')[0]}.pdf` }); } catch { }
 }
 
 export async function insertStaticMockData(reporter?: (msg: string) => void) {
-  const report = (msg: string) => { try { reporter && reporter(msg); } catch {} };
+  const report = (msg: string) => { try { reporter && reporter(msg); } catch { } };
   const tracker: { users: CreatedUser[]; jobs: string[]; invoices: string[]; jobDetails: MockJob[]; inventory: MockInventoryItem[] } = { users: [], jobs: [], invoices: [], jobDetails: [], inventory: [] };
   const custNames = ['Taylor Frost', 'Jordan Lee', 'Morgan Park'];
   const empNames = ['Sam Rivera', 'Jamie Chen', 'Riley Brooks'];
@@ -86,7 +86,7 @@ export async function insertStaticMockData(reporter?: (msg: string) => void) {
   report('Creating static customers…');
   for (let i = 0; i < custNames.length; i++) {
     const name = custNames[i];
-    const email = mockEmail(name.split(' ')[0].toLowerCase(), 'customer', i+1);
+    const email = mockEmail(name.split(' ')[0].toLowerCase(), 'customer', i + 1);
     const u: CreatedUser = { id: genId('static_cust'), name, email, role: 'customer' };
     await addLocalUserRecord(u);
     tracker.users.push(u);
@@ -95,7 +95,7 @@ export async function insertStaticMockData(reporter?: (msg: string) => void) {
   report('Creating static employees…');
   for (let i = 0; i < empNames.length; i++) {
     const name = empNames[i];
-    const email = mockEmail(name.split(' ')[0].toLowerCase(), 'employee', i+1);
+    const email = mockEmail(name.split(' ')[0].toLowerCase(), 'employee', i + 1);
     const u: CreatedUser = { id: genId('static_emp'), name, email, role: 'employee' };
     await addLocalUserRecord(u);
     tracker.users.push(u);
@@ -106,14 +106,14 @@ export async function insertStaticMockData(reporter?: (msg: string) => void) {
   report('Creating static jobs and checklists…');
   const customers = tracker.users.filter(u => u.role === 'customer');
   const employees = tracker.users.filter(u => u.role === 'employee');
-  const pkgChoices = [...servicePackages].slice(0,2);
+  const pkgChoices = [...servicePackages].slice(0, 2);
   const checklists = (await localforage.getItem<any[]>('generic-checklists')) || [];
   for (let j = 0; j < 2; j++) {
     const cust = customers[j % customers.length];
     const emp = employees[j % employees.length];
     const pkg = pkgChoices[j];
-    const addOnChoices = [...addOns].slice(0,2);
-    const vehicleType = ['compact','midsize','truck','luxury'][j % 4];
+    const addOnChoices = [...addOns].slice(0, 2);
+    const vehicleType = ['compact', 'midsize', 'truck', 'luxury'][j % 4];
     const tasks = (pkg.steps || []).map((s: any) => ({ id: s.id || s, name: s.name || s, category: s.category || 'exterior', checked: true }));
     const recordId = genId('gc');
     const record = {
@@ -125,7 +125,7 @@ export async function insertStaticMockData(reporter?: (msg: string) => void) {
       tasks,
       progress: 100,
       employeeId: emp.name, // filter expects name
-      estimatedTime: `${90 + j*15} mins`,
+      estimatedTime: `${90 + j * 15} mins`,
       customerId: cust.id,
       createdAt: new Date().toISOString(),
       linkedAt: new Date().toISOString(),
@@ -147,7 +147,7 @@ export async function insertStaticMockData(reporter?: (msg: string) => void) {
       total,
       paidAmount: j === 0 ? total : Math.round(total * 0.5),
       paymentStatus: j === 0 ? 'paid' : 'unpaid',
-      invoiceNumber: 200 + Math.floor(Math.random()*100),
+      invoiceNumber: 200 + Math.floor(Math.random() * 100),
       date: new Date().toISOString(),
       isStaticMock: true,
     });
@@ -170,7 +170,7 @@ export async function insertStaticMockData(reporter?: (msg: string) => void) {
   tracker.inventory = await addStaticInventory();
 
   await localforage.setItem('static-mock-tracker', tracker);
-  try { window.dispatchEvent(new CustomEvent('content-changed', { detail: { type: 'static-mock-data' } })); } catch {}
+  try { window.dispatchEvent(new CustomEvent('content-changed', { detail: { type: 'static-mock-data' } })); } catch { }
   report('Static mock data insertion complete');
   return tracker;
 }
@@ -179,15 +179,20 @@ export async function removeStaticMockData() {
   const tracker = (await localforage.getItem<any>('static-mock-tracker')) || { users: [], jobs: [], invoices: [] };
   // Remove users
   const users = (await localforage.getItem<any[]>('users')) || [];
-  const nextUsers = users.filter(u => !u.isStaticMock && !String(u.email||'').startsWith('static+'));
+  const nextUsers = users.filter(u => !u.isStaticMock && !String(u.email || '').startsWith('static+'));
   await localforage.setItem('users', nextUsers);
-  // Employees
+  // Employees (both localforage and localStorage)
   const emps = (await localforage.getItem<any[]>('company-employees')) || [];
-  const nextEmps = emps.filter(u => !u.isStaticMock && !String(u.email||'').startsWith('static+'));
+  const nextEmps = emps.filter(u => !u.isStaticMock && !String(u.email || '').startsWith('static+'));
   await localforage.setItem('company-employees', nextEmps);
+  try {
+    const lsEmps = JSON.parse(localStorage.getItem('company-employees') || '[]');
+    const nextLsEmps = lsEmps.filter((u: any) => !u.isStaticMock && !String(u.email || '').startsWith('static+'));
+    localStorage.setItem('company-employees', JSON.stringify(nextLsEmps));
+  } catch { }
   // Customers
   const customers = (await localforage.getItem<any[]>('customers')) || [];
-  const nextCust = customers.filter(c => !String(c.email||'').startsWith('static+'));
+  const nextCust = customers.filter(c => !String(c.email || '').startsWith('static+'));
   await localforage.setItem('customers', nextCust);
   // Inventory
   const chemicals = (await localforage.getItem<any[]>('chemicals')) || [];
@@ -209,10 +214,10 @@ export async function removeStaticMockData() {
     const pdfRaw = JSON.parse(localStorage.getItem('pdfArchive') || '[]');
     const nextPdf = pdfRaw.filter((r: any) => !(tracker.jobs || []).includes(r.recordId));
     localStorage.setItem('pdfArchive', JSON.stringify(nextPdf));
-  } catch {}
+  } catch { }
 
   await localforage.removeItem('static-mock-tracker');
-  try { window.dispatchEvent(new CustomEvent('content-changed', { detail: { type: 'static-mock-data-removed' } })); } catch {}
+  try { window.dispatchEvent(new CustomEvent('content-changed', { detail: { type: 'static-mock-data-removed' } })); } catch { }
 }
 
 export default { insertStaticMockData, removeStaticMockData };
@@ -222,15 +227,15 @@ export async function insertStaticMockBasic(
   reporter?: (msg: string) => void,
   opts: { customers?: number; employees?: number; chemicals?: number; materials?: number } = { customers: 5, employees: 5, chemicals: 3, materials: 3 }
 ) {
-  const report = (msg: string) => { try { reporter && reporter(msg); } catch {} };
+  const report = (msg: string) => { try { reporter && reporter(msg); } catch { } };
   const tracker: { customers: CreatedUser[]; employees: CreatedUser[]; inventory: MockInventoryItem[] } = { customers: [], employees: [], inventory: [] };
 
-  const custNames = ['Alex Green','Casey Brown','Drew White','Evan Blue','Finn Gray'];
-  const empNames = ['Harper Quinn','Jesse Lane','Kai Morgan','Logan Reese','Milan Avery'];
+  const custNames = ['Alex Green', 'Casey Brown', 'Drew White', 'Evan Blue', 'Finn Gray'];
+  const empNames = ['Harper Quinn', 'Jesse Lane', 'Kai Morgan', 'Logan Reese', 'Milan Avery'];
   report('Creating static customers…');
   for (let i = 0; i < (opts.customers || 5); i++) {
     const name = custNames[i % custNames.length];
-    const email = mockEmail(name.split(' ')[0].toLowerCase(), 'customer', i+1);
+    const email = mockEmail(name.split(' ')[0].toLowerCase(), 'customer', i + 1);
     const u: CreatedUser = { id: genId('static_cust'), name, email, role: 'customer' };
     await addLocalUserRecord(u);
     tracker.customers.push(u);
@@ -239,7 +244,7 @@ export async function insertStaticMockBasic(
   report('Creating static employees…');
   for (let i = 0; i < (opts.employees || 5); i++) {
     const name = empNames[i % empNames.length];
-    const email = mockEmail(name.split(' ')[0].toLowerCase(), 'employee', i+1);
+    const email = mockEmail(name.split(' ')[0].toLowerCase(), 'employee', i + 1);
     const u: CreatedUser = { id: genId('static_emp'), name, email, role: 'employee' };
     await addLocalUserRecord(u);
     tracker.employees.push(u);
@@ -253,21 +258,28 @@ export async function insertStaticMockBasic(
     window.dispatchEvent(new CustomEvent('content-changed', { detail: { kind: 'employees' } }));
     window.dispatchEvent(new CustomEvent('content-changed', { detail: { kind: 'customers' } }));
     window.dispatchEvent(new CustomEvent('inventory-changed'));
-  } catch {}
+  } catch { }
   report('Static mock data insertion complete');
   return tracker;
 }
 
 export async function removeStaticMockBasic(reporter?: (msg: string) => void) {
-  const report = (msg: string) => { try { reporter && reporter(msg); } catch {} };
+  const report = (msg: string) => { try { reporter && reporter(msg); } catch { } };
   report('Removing static customers, employees, and inventory…');
   // Users
   const users = (await localforage.getItem<any[]>('users')) || [];
-  await localforage.setItem('users', users.filter(u => !u.isStaticMock && !String(u.email||'').startsWith('static+')));
+  await localforage.setItem('users', users.filter(u => !u.isStaticMock && !String(u.email || '').startsWith('static+')));
+  // Employees (both localforage and localStorage)
   const emps = (await localforage.getItem<any[]>('company-employees')) || [];
-  await localforage.setItem('company-employees', emps.filter(u => !u.isStaticMock && !String(u.email||'').startsWith('static+')));
+  await localforage.setItem('company-employees', emps.filter(u => !u.isStaticMock && !String(u.email || '').startsWith('static+')));
+  try {
+    const lsEmps = JSON.parse(localStorage.getItem('company-employees') || '[]');
+    const nextLsEmps = lsEmps.filter((u: any) => !u.isStaticMock && !String(u.email || '').startsWith('static+'));
+    localStorage.setItem('company-employees', JSON.stringify(nextLsEmps));
+  } catch { }
+  // Customers
   const customers = (await localforage.getItem<any[]>('customers')) || [];
-  await localforage.setItem('customers', customers.filter(c => !String(c.email||'').startsWith('static+')));
+  await localforage.setItem('customers', customers.filter(c => !String(c.email || '').startsWith('static+')));
   // Inventory
   const chemicals = (await localforage.getItem<any[]>('chemicals')) || [];
   await localforage.setItem('chemicals', chemicals.filter(c => !c.isStaticMock));
@@ -277,16 +289,16 @@ export async function removeStaticMockBasic(reporter?: (msg: string) => void) {
   try {
     const { clearAllAlerts } = await import('@/lib/adminAlerts');
     clearAllAlerts();
-  } catch {}
+  } catch { }
   // Reset computed badge helpers
-  try { localStorage.setItem('inventory_low_count', '0'); } catch {}
-  try { localStorage.setItem('payroll_owed_adjustments', '{}'); } catch {}
+  try { localStorage.setItem('inventory_low_count', '0'); } catch { }
+  try { localStorage.setItem('payroll_owed_adjustments', '{}'); } catch { }
   try {
     window.dispatchEvent(new CustomEvent('content-changed', { detail: { kind: 'users' } }));
     window.dispatchEvent(new CustomEvent('content-changed', { detail: { kind: 'employees' } }));
     window.dispatchEvent(new CustomEvent('content-changed', { detail: { kind: 'customers' } }));
     window.dispatchEvent(new CustomEvent('inventory-changed'));
     window.dispatchEvent(new CustomEvent('admin_alerts_updated'));
-  } catch {}
+  } catch { }
   report('Static mock data removal complete');
 }

@@ -17,6 +17,12 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import {
+  Accordion,
+  AccordionContent,
+  AccordionItem,
+  AccordionTrigger,
+} from "@/components/ui/accordion";
+import {
   Select,
   SelectContent,
   SelectItem,
@@ -269,6 +275,19 @@ const Accounting = () => {
             </div>
           </div>
 
+          {/* Profit/Loss Summary - Moved to Top */}
+          <Card className={`p-6 border-border ${profit >= 0 ? 'bg-gradient-hero' : 'bg-destructive/20'}`}>
+            <h2 className="text-2xl font-bold text-white mb-2">Profit/Loss Summary</h2>
+            <div className="flex items-baseline gap-2">
+              <span className="text-4xl font-bold text-white">
+                ${Math.abs(profit).toFixed(2)}
+              </span>
+              <span className="text-white/80">
+                {profit >= 0 ? 'Profit' : 'Loss'}
+              </span>
+            </div>
+          </Card>
+
           <Card className="p-6 bg-gradient-card border-border">
             <h2 className="text-2xl font-bold text-foreground mb-4 flex items-center gap-2">
               <TrendingUp className="h-6 w-6 text-primary" />
@@ -296,140 +315,318 @@ const Accounting = () => {
             </div>
           </Card>
 
-          <Card className="p-6 bg-gradient-card border-border">
-            <h2 className="text-2xl font-bold text-foreground mb-4 flex items-center gap-2">
-              <TrendingUp className="h-6 w-6 text-primary" />
-              Add Income (Receivables)
-            </h2>
-            <div className="space-y-4">
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div>
-                  <Label>Amount</Label>
-                  <Input type="number" value={incomeAmount} onChange={(e) => setIncomeAmount(e.target.value)} placeholder="0.00" />
-                </div>
-                <div>
-                  <Label>Category</Label>
-                  <Select value={incomeCategory} onValueChange={setIncomeCategory}>
-                    <SelectTrigger><SelectValue placeholder="Select category" /></SelectTrigger>
-                    <SelectContent>
-                      {DEFAULT_CATEGORIES.income.map(cat => <SelectItem key={cat} value={cat}>{cat}</SelectItem>)}
-                      {customCategories.filter(c => !DEFAULT_CATEGORIES.expense.includes(c)).map(cat => <SelectItem key={cat} value={cat}>{cat}</SelectItem>)}
-                    </SelectContent>
-                  </Select>
-                </div>
-                <div>
-                  <Label>Description</Label>
-                  <Input value={incomeDescription} onChange={(e) => setIncomeDescription(e.target.value)} placeholder="Optional description" />
-                </div>
-                <div>
-                  <Label>Date</Label>
-                  <Input type="date" value={incomeDate} onChange={(e) => setIncomeDate(e.target.value)} />
-                </div>
-                <div>
-                  <Label>Customer (optional)</Label>
-                  <Input value={incomeCustomer} onChange={(e) => setIncomeCustomer(e.target.value)} placeholder="Customer name" />
-                </div>
-                <div>
-                  <Label>Payment Method (optional)</Label>
-                  <Select value={incomeMethod} onValueChange={setIncomeMethod}>
-                    <SelectTrigger><SelectValue placeholder="Select" /></SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="cash">Cash</SelectItem>
-                      <SelectItem value="card">Card</SelectItem>
-                      <SelectItem value="transfer">Bank Transfer</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-              </div>
-              <div>
-                <Button onClick={handleAddIncome} className="bg-gradient-hero">Add Income</Button>
-              </div>
-            </div>
-          </Card>
-
-          <Card className="p-6 bg-gradient-card border-border">
-            <h2 className="text-2xl font-bold text-foreground mb-4 flex items-center gap-2">
-              <TrendingDown className="h-6 w-6 text-primary" />
-              Expense Tracking
-            </h2>
-
-            <div className="space-y-4">
-              <div className="space-y-2">
-                <div className="flex items-center justify-between">
-                  <Label htmlFor="job-expense">Add New Expense</Label>
-                  <div className="flex gap-2">
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      onClick={() => expenses && setShowDeleteExpense(true)}
-                      disabled={!expenses}
-                    >
-                      <Trash2 className="h-4 w-4" />
-                    </Button>
+          {/* Accordion Sections */}
+          <Accordion type="multiple" defaultValue={["income", "expenses", "ledger"]} className="space-y-4">
+            {/* Add Income Section */}
+            <AccordionItem value="income" className="border-none">
+              <Card className="bg-gradient-card border-border">
+                <AccordionTrigger className="px-6 pt-6 pb-4 hover:no-underline">
+                  <h2 className="text-2xl font-bold text-foreground flex items-center gap-2">
+                    <TrendingUp className="h-6 w-6 text-primary" />
+                    Add Income (Receivables)
+                  </h2>
+                </AccordionTrigger>
+                <AccordionContent className="px-6 pb-6">
+                  <div className="space-y-4">
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      <div>
+                        <Label>Amount</Label>
+                        <Input type="number" value={incomeAmount} onChange={(e) => setIncomeAmount(e.target.value)} placeholder="0.00" />
+                      </div>
+                      <div>
+                        <Label>Category</Label>
+                        <Select value={incomeCategory} onValueChange={setIncomeCategory}>
+                          <SelectTrigger><SelectValue placeholder="Select category" /></SelectTrigger>
+                          <SelectContent>
+                            {DEFAULT_CATEGORIES.income.map(cat => <SelectItem key={cat} value={cat}>{cat}</SelectItem>)}
+                            {customCategories.filter(c => !DEFAULT_CATEGORIES.expense.includes(c)).map(cat => <SelectItem key={cat} value={cat}>{cat}</SelectItem>)}
+                          </SelectContent>
+                        </Select>
+                      </div>
+                      <div>
+                        <Label>Description</Label>
+                        <Input value={incomeDescription} onChange={(e) => setIncomeDescription(e.target.value)} placeholder="Optional description" />
+                      </div>
+                      <div>
+                        <Label>Date</Label>
+                        <Input type="date" value={incomeDate} onChange={(e) => setIncomeDate(e.target.value)} />
+                      </div>
+                      <div>
+                        <Label>Customer (optional)</Label>
+                        <Input value={incomeCustomer} onChange={(e) => setIncomeCustomer(e.target.value)} placeholder="Customer name" />
+                      </div>
+                      <div>
+                        <Label>Payment Method (optional)</Label>
+                        <Select value={incomeMethod} onValueChange={setIncomeMethod}>
+                          <SelectTrigger><SelectValue placeholder="Select" /></SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="cash">Cash</SelectItem>
+                            <SelectItem value="card">Card</SelectItem>
+                            <SelectItem value="transfer">Bank Transfer</SelectItem>
+                          </SelectContent>
+                        </Select>
+                      </div>
+                    </div>
+                    <div>
+                      <Button onClick={handleAddIncome} className="bg-gradient-hero">Add Income</Button>
+                    </div>
                   </div>
-                </div>
+                </AccordionContent>
+              </Card>
+            </AccordionItem>
 
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-2">
-                  <div>
-                    <Label className="text-xs mb-1 block">Description</Label>
-                    <Input
-                      id="expense-desc"
-                      placeholder="Expense description"
-                      value={expenseDesc}
-                      onChange={(e) => setExpenseDesc(e.target.value)}
-                      className="bg-background border-border"
-                    />
+            {/* Expense Tracking Section */}
+            <AccordionItem value="expenses" className="border-none">
+              <Card className="bg-gradient-card border-border">
+                <AccordionTrigger className="px-6 pt-6 pb-4 hover:no-underline">
+                  <h2 className="text-2xl font-bold text-foreground flex items-center gap-2">
+                    <TrendingDown className="h-6 w-6 text-primary" />
+                    Expense Tracking
+                  </h2>
+                </AccordionTrigger>
+                <AccordionContent className="px-6 pb-6">
+                  <div className="space-y-4">
+                    <div className="space-y-2">
+                      <div className="flex items-center justify-between">
+                        <Label htmlFor="job-expense">Add New Expense</Label>
+                        <div className="flex gap-2">
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            onClick={() => expenses && setShowDeleteExpense(true)}
+                            disabled={!expenses}
+                          >
+                            <Trash2 className="h-4 w-4" />
+                          </Button>
+                        </div>
+                      </div>
+
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-2">
+                        <div>
+                          <Label className="text-xs mb-1 block">Description</Label>
+                          <Input
+                            id="expense-desc"
+                            placeholder="Expense description"
+                            value={expenseDesc}
+                            onChange={(e) => setExpenseDesc(e.target.value)}
+                            className="bg-background border-border"
+                          />
+                        </div>
+                        <div>
+                          <Label className="text-xs mb-1 block">Category</Label>
+                          <Select value={expenseCategory} onValueChange={setExpenseCategory}>
+                            <SelectTrigger className="bg-background border-border"><SelectValue placeholder="Select category" /></SelectTrigger>
+                            <SelectContent>
+                              {DEFAULT_CATEGORIES.expense.map(cat => <SelectItem key={cat} value={cat}>{cat}</SelectItem>)}
+                              {customCategories.map(cat => <SelectItem key={cat} value={cat}>{cat}</SelectItem>)}
+                            </SelectContent>
+                          </Select>
+                        </div>
+                      </div>
+
+                      <div className="flex gap-2">
+                        <div className="relative flex-1">
+                          <DollarSign className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
+                          <Input
+                            id="job-expense"
+                            type="number"
+                            value={expenses}
+                            onChange={(e) => setExpenses(e.target.value)}
+                            placeholder="Enter expense amount"
+                            className="pl-10 bg-background border-border"
+                          />
+                        </div>
+                        <Button onClick={handleAddExpense} className="bg-gradient-hero">
+                          Add Expense
+                        </Button>
+                      </div>
+                    </div>
+
+                    <div className="p-4 bg-background/50 rounded-lg border border-border">
+                      <Label className="text-muted-foreground">Total Spent to Date</Label>
+                      <p className="text-3xl font-bold text-foreground mt-2">
+                        ${totalSpent.toFixed(2)}
+                      </p>
+                    </div>
                   </div>
-                  <div>
-                    <Label className="text-xs mb-1 block">Category</Label>
-                    <Select value={expenseCategory} onValueChange={setExpenseCategory}>
-                      <SelectTrigger className="bg-background border-border"><SelectValue placeholder="Select category" /></SelectTrigger>
-                      <SelectContent>
-                        {DEFAULT_CATEGORIES.expense.map(cat => <SelectItem key={cat} value={cat}>{cat}</SelectItem>)}
-                        {customCategories.map(cat => <SelectItem key={cat} value={cat}>{cat}</SelectItem>)}
-                      </SelectContent>
-                    </Select>
+                </AccordionContent>
+              </Card>
+            </AccordionItem>
+
+            {/* Transaction Ledger Section */}
+            <AccordionItem value="ledger" className="border-none">
+              <Card className="bg-gradient-card border-border">
+                <AccordionTrigger className="px-6 pt-6 pb-4 hover:no-underline">
+                  <h2 className="text-2xl font-bold text-foreground">Transaction Ledger</h2>
+                </AccordionTrigger>
+                <AccordionContent className="px-6 pb-6">
+                  <p className="text-sm text-muted-foreground mb-4">View, edit, or delete individual debits (expenses) and credits (income)</p>
+
+                  <div className="space-y-6">
+                    {/* Credits (Income) Section */}
+                    <div>
+                      <h3 className="text-lg font-semibold text-green-600 mb-3 flex items-center gap-2">
+                        <TrendingUp className="h-5 w-5" />
+                        Credits (Income) - {incomeList.length} transactions
+                      </h3>
+                      <div className="space-y-2 max-h-96 overflow-y-auto">
+                        {incomeList.length === 0 ? (
+                          <p className="text-sm text-muted-foreground p-4 text-center border border-dashed rounded">No income transactions yet</p>
+                        ) : (
+                          incomeList.map((income) => (
+                            <div key={income.id} className="p-3 bg-green-50 dark:bg-green-950/20 border border-green-200 dark:border-green-800 rounded-lg">
+                              <div className="flex items-start justify-between gap-4">
+                                <div className="flex-1 min-w-0">
+                                  <div className="flex items-center gap-2 mb-1">
+                                    <span className="font-semibold text-green-700 dark:text-green-400">
+                                      +${(income.amount || 0).toFixed(2)}
+                                    </span>
+                                    <span className="text-xs px-2 py-0.5 bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-300 rounded">
+                                      {income.category || 'General'}
+                                    </span>
+                                  </div>
+                                  <p className="text-sm text-foreground truncate">{income.description || income.customerName || 'No description'}</p>
+                                  <div className="flex items-center gap-3 mt-1 text-xs text-muted-foreground">
+                                    <span>{new Date(income.date || income.createdAt).toLocaleString()}</span>
+                                    {income.customerName && <span>• Customer: {income.customerName}</span>}
+                                    {income.paymentMethod && <span>• {income.paymentMethod}</span>}
+                                  </div>
+                                </div>
+                                <div className="flex gap-1">
+                                  <Button
+                                    size="icon"
+                                    variant="ghost"
+                                    className="h-8 w-8"
+                                    onClick={async () => {
+                                      const newAmount = prompt('Edit amount:', String(income.amount || 0));
+                                      if (newAmount && !isNaN(parseFloat(newAmount))) {
+                                        await upsertReceivable({ ...income, amount: parseFloat(newAmount) });
+                                        loadData();
+                                        toast({ title: 'Income Updated' });
+                                      }
+                                    }}
+                                    title="Edit"
+                                  >
+                                    <Pencil className="h-4 w-4" />
+                                  </Button>
+                                  <Button
+                                    size="icon"
+                                    variant="ghost"
+                                    className="h-8 w-8 text-destructive hover:text-destructive"
+                                    onClick={async () => {
+                                      if (confirm('Delete this income transaction?')) {
+                                        const { deleteReceivable } = await import('@/lib/receivables');
+                                        if (income.id) await deleteReceivable(income.id);
+                                        loadData();
+                                        toast({ title: 'Income Deleted' });
+                                      }
+                                    }}
+                                    title="Delete"
+                                  >
+                                    <Trash2 className="h-4 w-4" />
+                                  </Button>
+                                </div>
+                              </div>
+                            </div>
+                          ))
+                        )}
+                      </div>
+                    </div>
+
+                    {/* Debits (Expenses) Section */}
+                    <div>
+                      <h3 className="text-lg font-semibold text-red-600 mb-3 flex items-center gap-2">
+                        <TrendingDown className="h-5 w-5" />
+                        Debits (Expenses) - {expenseList.length} transactions
+                      </h3>
+                      <div className="space-y-2 max-h-96 overflow-y-auto">
+                        {expenseList.length === 0 ? (
+                          <p className="text-sm text-muted-foreground p-4 text-center border border-dashed rounded">No expense transactions yet</p>
+                        ) : (
+                          expenseList.map((expense) => (
+                            <div key={expense.id} className="p-3 bg-red-50 dark:bg-red-950/20 border border-red-200 dark:border-red-800 rounded-lg">
+                              <div className="flex items-start justify-between gap-4">
+                                <div className="flex-1 min-w-0">
+                                  <div className="flex items-center gap-2 mb-1">
+                                    <span className="font-semibold text-red-700 dark:text-red-400">
+                                      -${(expense.amount || 0).toFixed(2)}
+                                    </span>
+                                    <span className="text-xs px-2 py-0.5 bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-300 rounded">
+                                      {(expense as any).category || 'General'}
+                                    </span>
+                                  </div>
+                                  <p className="text-sm text-foreground truncate">{expense.description || 'No description'}</p>
+                                  <div className="flex items-center gap-3 mt-1 text-xs text-muted-foreground">
+                                    <span>{new Date(expense.createdAt).toLocaleString()}</span>
+                                  </div>
+                                </div>
+                                <div className="flex gap-1">
+                                  <Button
+                                    size="icon"
+                                    variant="ghost"
+                                    className="h-8 w-8"
+                                    onClick={async () => {
+                                      const newAmount = prompt('Edit amount:', String(expense.amount || 0));
+                                      if (newAmount && !isNaN(parseFloat(newAmount))) {
+                                        await upsertExpense({ ...expense, amount: parseFloat(newAmount) } as any);
+                                        loadData();
+                                        toast({ title: 'Expense Updated' });
+                                      }
+                                    }}
+                                    title="Edit"
+                                  >
+                                    <Pencil className="h-4 w-4" />
+                                  </Button>
+                                  <Button
+                                    size="icon"
+                                    variant="ghost"
+                                    className="h-8 w-8 text-destructive hover:text-destructive"
+                                    onClick={async () => {
+                                      if (confirm('Delete this expense transaction?')) {
+                                        const { deleteExpense } = await import('@/lib/db');
+                                        if (expense.id) await deleteExpense(expense.id);
+                                        loadData();
+                                        toast({ title: 'Expense Deleted' });
+                                      }
+                                    }}
+                                    title="Delete"
+                                  >
+                                    <Trash2 className="h-4 w-4" />
+                                  </Button>
+                                </div>
+                              </div>
+                            </div>
+                          ))
+                        )}
+                      </div>
+                    </div>
+
+                    {/* Summary */}
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4 pt-4 border-t border-border">
+                      <div className="p-3 bg-green-50 dark:bg-green-950/20 rounded-lg">
+                        <p className="text-xs text-muted-foreground">Total Credits</p>
+                        <p className="text-xl font-bold text-green-600">
+                          +${incomeList.reduce((sum, i) => sum + (i.amount || 0), 0).toFixed(2)}
+                        </p>
+                      </div>
+                      <div className="p-3 bg-red-50 dark:bg-red-950/20 rounded-lg">
+                        <p className="text-xs text-muted-foreground">Total Debits</p>
+                        <p className="text-xl font-bold text-red-600">
+                          -${expenseList.reduce((sum, e) => sum + (e.amount || 0), 0).toFixed(2)}
+                        </p>
+                      </div>
+                      <div className="p-3 bg-blue-50 dark:bg-blue-950/20 rounded-lg">
+                        <p className="text-xs text-muted-foreground">Net Balance</p>
+                        <p className={`text-xl font-bold ${profit >= 0 ? 'text-green-600' : 'text-red-600'}`}>
+                          {profit >= 0 ? '+' : ''} ${profit.toFixed(2)}
+                        </p>
+                      </div>
+                    </div>
                   </div>
-                </div>
-
-                <div className="flex gap-2">
-                  <div className="relative flex-1">
-                    <DollarSign className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
-                    <Input
-                      id="job-expense"
-                      type="number"
-                      value={expenses}
-                      onChange={(e) => setExpenses(e.target.value)}
-                      placeholder="Enter expense amount"
-                      className="pl-10 bg-background border-border"
-                    />
-                  </div>
-                  <Button onClick={handleAddExpense} className="bg-gradient-hero">
-                    Add Expense
-                  </Button>
-                </div>
-              </div>
-
-              <div className="p-4 bg-background/50 rounded-lg border border-border">
-                <Label className="text-muted-foreground">Total Spent to Date</Label>
-                <p className="text-3xl font-bold text-foreground mt-2">
-                  ${totalSpent.toFixed(2)}
-                </p>
-              </div>
-            </div>
-          </Card>
-
-          <Card className={`p-6 border-border ${profit >= 0 ? 'bg-gradient-hero' : 'bg-destructive/20'}`}>
-            <h2 className="text-2xl font-bold text-white mb-2">Profit/Loss Summary</h2>
-            <div className="flex items-baseline gap-2">
-              <span className="text-4xl font-bold text-white">
-                ${Math.abs(profit).toFixed(2)}
-              </span>
-              <span className="text-white/80">
-                {profit >= 0 ? 'Profit' : 'Loss'}
-              </span>
-            </div>
-          </Card>
+                </AccordionContent>
+              </Card>
+            </AccordionItem>
+          </Accordion>
 
           <Card className="p-6 bg-gradient-card border-border">
             <div className="flex items-center justify-between mb-4">
@@ -460,7 +657,7 @@ const Accounting = () => {
             </p>
           </Card>
         </div>
-      </main>
+      </main >
 
       <AlertDialog open={showDeleteExpense} onOpenChange={setShowDeleteExpense}>
         <AlertDialogContent>
@@ -495,7 +692,7 @@ const Accounting = () => {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
-    </div>
+    </div >
   );
 };
 

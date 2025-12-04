@@ -3,7 +3,7 @@ import { PageHeader } from "@/components/PageHeader";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { getCurrentUser } from "@/lib/auth";
-import { Users, Clock, CheckCircle2, DollarSign, Plus } from "lucide-react";
+import { Users, Clock, CheckCircle2, DollarSign, Plus, Edit, Trash2, Wallet, AlertTriangle } from "lucide-react";
 import {
   Select,
   SelectContent,
@@ -26,6 +26,7 @@ import { useToast } from "@/hooks/use-toast";
 import jsPDF from "jspdf";
 import localforage from "localforage";
 import api from "@/lib/api";
+import { upsertExpense } from "@/lib/db";
 import { servicePackages, addOns } from "@/lib/services";
 
 interface Employee {
@@ -47,6 +48,8 @@ interface JobRecord {
   totalTime?: string;
   finishedAt: string;
   totalRevenue?: number;
+  status?: string;
+  paid?: boolean;
 }
 
 const CompanyEmployees = () => {
@@ -58,6 +61,10 @@ const CompanyEmployees = () => {
   const [payrollHistory, setPayrollHistory] = useState<Array<{ employee?: string; amount?: number; status?: string }>>([]);
   const [owedMap, setOwedMap] = useState<Record<string, number>>({}); // key by employee email
   const [modalOpen, setModalOpen] = useState(false);
+  const [payDialogOpen, setPayDialogOpen] = useState(false);
+  const [payAmount, setPayAmount] = useState("");
+  const [payEmployee, setPayEmployee] = useState<Employee | null>(null);
+  const [isEditMode, setIsEditMode] = useState(false);
   const [form, setForm] = useState<{
     name: string;
     email: string;
@@ -206,8 +213,111 @@ const CompanyEmployees = () => {
     }
   };
 
+  const handlePay = async () => {
+    if (!payEmployee) return;
+    const amt = parseFloat(payAmount);
+    if (isNaN(amt) || amt <= 0) {
+      toast({ title: "Invalid Amount", description: "Please enter a valid positive amount.", variant: "destructive" });
+      return;
+    }
+
+    // 1. Add to payroll history
+    const newHistory = {
+      employee: payEmployee.email,
+      amount: amt,
+      date: new Date().toISOString(),
+      status: 'Paid'
+    };
+    const currentHistory = await localforage.getItem<any[]>('payroll-history') || [];
+    const updatedHistory = [...currentHistory, newHistory];
+    await localforage.setItem('payroll-history', updatedHistory);
+    setPayrollHistory(updatedHistory);
+
+    // 2. Add to expenses (Budget/Accounting)
+    await upsertExpense({
+      amount: amt,
+      category: 'Payroll',
+      description: `Payroll: ${payEmployee.name}`,
+      createdAt: new Date().toISOString()
+    } as any);
+
+    // 3. Update employee lastPaid (if we want to track it on the employee object)
+    const updatedEmployee = { ...payEmployee, lastPaid: new Date().toLocaleDateString() };
+    const updatedEmployees = employees.map(e => e.email === payEmployee.email ? updatedEmployee : e);
+    await saveEmployees(updatedEmployees);
+
+    setPayDialogOpen(false);
+    setPayAmount("");
+    setPayEmployee(null);
+    toast({ title: "Payment Recorded", description: `Paid $${amt.toFixed(2)} to ${payEmployee.name}` });
+  };
+
+  const handleDelete = async (email: string) => {
+    const empToDelete = employees.find(e => e.email === email);
+    if (!empToDelete) return;
+
+    if (!confirm(`Are you sure you want to delete ${empToDelete.name}? This will also remove all payroll history and expense records for this employee.`)) return;
+
+    // 1. Remove employee from employees list
+    const updated = employees.filter(e => e.email !== email);
+    await saveEmployees(updated);
+
+    // 2. Remove payroll history for this employee
+    const currentHistory = await localforage.getItem<any[]>('payroll-history') || [];
+    const updatedHistory = currentHistory.filter(h =>
+      String(h.employee) !== empToDelete.email &&
+      String(h.employee) !== empToDelete.name
+    );
+    await localforage.setItem('payroll-history', updatedHistory);
+    setPayrollHistory(updatedHistory);
+
+    // 3. Remove expenses (payroll) for this employee from accounting
+    const { getExpenses, deleteExpense } = await import('@/lib/db');
+    const allExpenses = await getExpenses<any>();
+    const expensesToDelete = allExpenses.filter(exp =>
+      exp.category === 'Payroll' &&
+      (exp.description?.includes(empToDelete.name) || exp.description?.includes(empToDelete.email))
+    );
+    for (const exp of expensesToDelete) {
+      if (exp.id) await deleteExpense(exp.id);
+    }
+
+    // 4. Clear any owed adjustments for this employee
+    try {
+      const adjRaw = localStorage.getItem('payroll_owed_adjustments') || '{}';
+      const adj = JSON.parse(adjRaw);
+      delete adj[empToDelete.name];
+      delete adj[empToDelete.email];
+      localStorage.setItem('payroll_owed_adjustments', JSON.stringify(adj));
+    } catch { }
+
+    toast({ title: "Employee Deleted", description: `${empToDelete.name} and all associated payroll records have been removed.` });
+  };
+
+  const openEdit = (emp: Employee) => {
+    setForm({
+      name: emp.name,
+      email: emp.email,
+      role: emp.role,
+      flatRate: emp.flatRate?.toString() || "",
+      bonuses: emp.bonuses?.toString() || "",
+      paymentByJob: !!emp.paymentByJob,
+      jobRates: Object.fromEntries(Object.entries(emp.jobRates || {}).map(([k, v]) => [k, String(v)]))
+    });
+    setIsEditMode(true);
+    setModalOpen(true);
+  };
+
+  const clearMockEmployees = async () => {
+    if (!confirm("Remove all mock employees?")) return;
+    const realEmployees = employees.filter(e => !e.email.startsWith('mock+') && !e.name.startsWith('Mock'));
+    await saveEmployees(realEmployees);
+    toast({ title: "Mock Employees Cleared" });
+  };
+
   const openAdd = () => {
     setForm({ name: "", email: "", role: "Employee", flatRate: "", bonuses: "", paymentByJob: false, jobRates: {} });
+    setIsEditMode(false);
     setModalOpen(true);
   };
 
@@ -260,6 +370,9 @@ const CompanyEmployees = () => {
             <Button onClick={generatePDF} variant="outline">
               Download Report
             </Button>
+            <Button onClick={clearMockEmployees} variant="destructive" className="ml-2">
+              <AlertTriangle className="h-4 w-4 mr-2" /> Clear Mock Employees
+            </Button>
           </div>
 
           {/* Employee Selector */}
@@ -309,22 +422,60 @@ const CompanyEmployees = () => {
           {/* All Employees */}
           <Card className="p-6 bg-gradient-card border-border">
             <h2 className="text-xl font-bold text-foreground mb-4">All Employees</h2>
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
               {employees.map((emp) => (
-                <div key={emp.email} className="p-3 rounded border border-border">
-                  <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
-                    <div className="flex-1 min-w-0">
-                      <p className="font-medium text-foreground truncate">{emp.name}</p>
-                      <p className="text-sm text-muted-foreground truncate">{emp.email}</p>
-                      <p className="text-xs text-muted-foreground">Role: {emp.role}</p>
-                    </div>
+                <div key={emp.email} className="p-4 rounded border border-border flex flex-col gap-3">
+                  <div className="flex-1 min-w-0">
+                    <p className="font-medium text-foreground truncate">{emp.name}</p>
+                    <p className="text-sm text-muted-foreground truncate">{emp.email}</p>
+                    <p className="text-xs text-muted-foreground">Role: {emp.role}</p>
+                  </div>
+
+                  <div className="flex flex-col gap-2">
                     <Button
                       size="sm"
-                      className="bg-red-700 hover:bg-red-800 w-full sm:w-auto whitespace-nowrap shrink-0"
+                      className="bg-red-700 hover:bg-red-800 w-full"
                       onClick={() => impersonateEmployee(emp)}
                     >
                       Impersonate
                     </Button>
+
+                    <div className="flex gap-2 w-full">
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        className="flex-1"
+                        onClick={() => openEdit(emp)}
+                        title="Edit Employee"
+                      >
+                        <Edit className="h-4 w-4 mr-1" />
+                        Edit
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        className="flex-1 text-destructive hover:text-destructive"
+                        onClick={() => handleDelete(emp.email)}
+                        title="Delete Employee"
+                      >
+                        <Trash2 className="h-4 w-4 mr-1" />
+                        Delete
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        className="flex-1 text-green-600 hover:text-green-700"
+                        onClick={() => {
+                          setPayEmployee(emp);
+                          setPayAmount(owedMap[emp.email] ? String(owedMap[emp.email].toFixed(2)) : "");
+                          setPayDialogOpen(true);
+                        }}
+                        title="Pay Employee"
+                      >
+                        <Wallet className="h-4 w-4 mr-1" />
+                        Pay
+                      </Button>
+                    </div>
                   </div>
                 </div>
               ))}
@@ -463,7 +614,7 @@ const CompanyEmployees = () => {
       <Dialog open={modalOpen} onOpenChange={setModalOpen}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Add Employee</DialogTitle>
+            <DialogTitle>{isEditMode ? "Edit Employee" : "Add Employee"}</DialogTitle>
           </DialogHeader>
           <div className="space-y-3 py-2">
             <div className="space-y-1">
@@ -472,7 +623,7 @@ const CompanyEmployees = () => {
             </div>
             <div className="space-y-1">
               <Label>Email</Label>
-              <Input type="email" value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} />
+              <Input type="email" value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} disabled={isEditMode} />
             </div>
             <div className="space-y-1">
               <Label>Role</Label>
@@ -515,6 +666,34 @@ const CompanyEmployees = () => {
           </div>
           <DialogFooter className="button-group-responsive">
             <Button className="bg-gradient-hero" onClick={handleSave}>Save</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Pay Employee Dialog */}
+      <Dialog open={payDialogOpen} onOpenChange={setPayDialogOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Pay Employee</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4 py-2">
+            <p>Recording payment for <strong>{payEmployee?.name}</strong>.</p>
+            <div className="space-y-2">
+              <Label>Amount</Label>
+              <Input
+                type="number"
+                step="0.01"
+                value={payAmount}
+                onChange={(e) => setPayAmount(e.target.value)}
+                placeholder="0.00"
+              />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setPayDialogOpen(false)}>Cancel</Button>
+            <Button className="bg-green-600 hover:bg-green-700" onClick={handlePay}>
+              <DollarSign className="h-4 w-4 mr-2" /> Confirm Payment
+            </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>

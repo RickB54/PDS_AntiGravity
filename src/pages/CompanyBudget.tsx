@@ -40,7 +40,7 @@ import localforage from "localforage";
 import { toast } from "sonner";
 
 interface Expense {
-    id?: string;
+    id: string;
     amount: number;
     category?: string;
     description: string;
@@ -540,19 +540,59 @@ const CompanyBudget = () => {
                                             </div>
                                         </div>
 
-                                        {/* Legend */}
+                                        {/* Legend with Tooltips */}
                                         <div className="flex-1 max-w-md">
                                             <div className="space-y-2">
-                                                {filteredCategories.map((cat, idx) => (
-                                                    <div key={idx} className="flex items-center justify-between p-2 rounded hover:bg-muted/50">
-                                                        <div className="flex items-center gap-2">
-                                                            <div className="w-4 h-4 rounded" style={{ backgroundColor: cat.color }} />
-                                                            <span className="text-sm font-medium">{cat.name}</span>
-                                                            <span className="text-xs text-muted-foreground">({cat.type})</span>
+                                                {filteredCategories.map((cat, idx) => {
+                                                    // Get transactions for this category
+                                                    const transactions = cat.type === 'income'
+                                                        ? incomeList.filter(i => filterByDate(i.date || i.createdAt || '') && (i.category || "Other Income") === cat.name)
+                                                        : expenseList.filter(e => filterByDate(e.createdAt) && (e.category || "Other Expenses") === cat.name);
+
+                                                    return (
+                                                        <div key={idx} className="group relative flex items-center justify-between p-2 rounded hover:bg-muted/50 cursor-pointer">
+                                                            <div className="flex items-center gap-2">
+                                                                <div className="w-4 h-4 rounded" style={{ backgroundColor: cat.color }} />
+                                                                <span className="text-sm font-medium">{cat.name}</span>
+                                                                <span className="text-xs text-muted-foreground">({cat.type})</span>
+                                                            </div>
+                                                            <span className="text-sm font-bold">${cat.amount.toFixed(2)}</span>
+
+                                                            {/* Tooltip - positioned above legend item */}
+                                                            <div className="absolute left-0 bottom-full mb-2 hidden group-hover:block z-[100] w-full sm:w-96 max-w-[calc(100vw-2rem)]">
+                                                                <div className="bg-popover border border-border rounded-lg shadow-xl p-4 max-h-80 overflow-y-auto">
+                                                                    <div className="space-y-2">
+                                                                        <div className="flex items-center justify-between border-b border-border pb-2">
+                                                                            <h4 className="font-semibold text-sm">{cat.name} Transactions</h4>
+                                                                            <span className="text-xs text-muted-foreground">{transactions.length} items</span>
+                                                                        </div>
+                                                                        {transactions.length === 0 ? (
+                                                                            <p className="text-xs text-muted-foreground">No transactions</p>
+                                                                        ) : (
+                                                                            <div className="space-y-2">
+                                                                                {transactions.map((trans: any, tidx: number) => (
+                                                                                    <div key={tidx} className="text-xs p-2 bg-muted/50 rounded">
+                                                                                        <div className="flex justify-between items-start gap-2">
+                                                                                            <div className="flex-1 min-w-0">
+                                                                                                <p className="font-medium truncate">{trans.description || trans.customerName || 'No description'}</p>
+                                                                                                <p className="text-muted-foreground text-[10px]">
+                                                                                                    {new Date(trans.date || trans.createdAt).toLocaleString()}
+                                                                                                </p>
+                                                                                            </div>
+                                                                                            <span className="font-semibold whitespace-nowrap">
+                                                                                                ${(trans.amount || 0).toFixed(2)}
+                                                                                            </span>
+                                                                                        </div>
+                                                                                    </div>
+                                                                                ))}
+                                                                            </div>
+                                                                        )}
+                                                                    </div>
+                                                                </div>
+                                                            </div>
                                                         </div>
-                                                        <span className="text-sm font-bold">${cat.amount.toFixed(2)}</span>
-                                                    </div>
-                                                ))}
+                                                    );
+                                                })}
                                             </div>
                                         </div>
                                     </div>
@@ -565,15 +605,20 @@ const CompanyBudget = () => {
                                             const maxAmount = Math.max(...filteredCategories.map(c => c.amount), 1);
                                             const percentage = (cat.amount / maxAmount) * 100;
 
+                                            // Get transactions for this category
+                                            const transactions = cat.type === 'income'
+                                                ? incomeList.filter(i => filterByDate(i.date || i.createdAt || '') && (i.category || "Other Income") === cat.name)
+                                                : expenseList.filter(e => filterByDate(e.createdAt) && (e.category || "Other Expenses") === cat.name);
+
                                             return (
-                                                <div key={idx} className="space-y-1">
+                                                <div key={idx} className="space-y-1 group relative">
                                                     <div className="flex justify-between text-sm">
                                                         <span className="font-medium">{cat.name}</span>
                                                         <span className="font-bold">${cat.amount.toFixed(2)}</span>
                                                     </div>
-                                                    <div className="w-full bg-muted rounded-full h-6 overflow-hidden">
+                                                    <div className="w-full bg-muted rounded-full h-6 overflow-hidden relative">
                                                         <div
-                                                            className="h-full flex items-center px-2 text-xs text-white font-medium transition-all"
+                                                            className="h-full flex items-center px-2 text-xs text-white font-medium transition-all cursor-pointer"
                                                             style={{
                                                                 width: `${percentage}%`,
                                                                 backgroundColor: cat.color,
@@ -581,6 +626,39 @@ const CompanyBudget = () => {
                                                             }}
                                                         >
                                                             {percentage > 10 && `${percentage.toFixed(0)}%`}
+                                                        </div>
+
+                                                        {/* Tooltip - positioned above bar */}
+                                                        <div className="absolute left-0 bottom-full mb-2 hidden group-hover:block z-[100] w-full sm:w-96 max-w-[calc(100vw-2rem)]">
+                                                            <div className="bg-popover border border-border rounded-lg shadow-xl p-4 max-h-80 overflow-y-auto">
+                                                                <div className="space-y-2">
+                                                                    <div className="flex items-center justify-between border-b border-border pb-2">
+                                                                        <h4 className="font-semibold text-sm">{cat.name} Transactions</h4>
+                                                                        <span className="text-xs text-muted-foreground">{transactions.length} items</span>
+                                                                    </div>
+                                                                    {transactions.length === 0 ? (
+                                                                        <p className="text-xs text-muted-foreground">No transactions</p>
+                                                                    ) : (
+                                                                        <div className="space-y-2">
+                                                                            {transactions.map((trans: any, tidx: number) => (
+                                                                                <div key={tidx} className="text-xs p-2 bg-muted/50 rounded">
+                                                                                    <div className="flex justify-between items-start gap-2">
+                                                                                        <div className="flex-1 min-w-0">
+                                                                                            <p className="font-medium truncate">{trans.description || trans.customerName || 'No description'}</p>
+                                                                                            <p className="text-muted-foreground text-[10px]">
+                                                                                                {new Date(trans.date || trans.createdAt).toLocaleString()}
+                                                                                            </p>
+                                                                                        </div>
+                                                                                        <span className="font-semibold whitespace-nowrap">
+                                                                                            ${(trans.amount || 0).toFixed(2)}
+                                                                                        </span>
+                                                                                    </div>
+                                                                                </div>
+                                                                            ))}
+                                                                        </div>
+                                                                    )}
+                                                                </div>
+                                                            </div>
                                                         </div>
                                                     </div>
                                                 </div>

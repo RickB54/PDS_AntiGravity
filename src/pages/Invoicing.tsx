@@ -4,9 +4,9 @@ import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { FileText, Printer, Save, Trash2, FileBarChart, DollarSign } from "lucide-react";
+import { FileText, Printer, Save, Trash2, FileBarChart, DollarSign, Plus } from "lucide-react";
 import { Link } from "react-router-dom";
-import { getInvoices, upsertInvoice, getCustomers, deleteInvoice } from "@/lib/db";
+import { getInvoices, upsertInvoice, getCustomers, deleteInvoice, getEstimates, addEstimate } from "@/lib/db";
 import { Customer } from "@/components/customers/CustomerModal";
 import { useToast } from "@/hooks/use-toast";
 import jsPDF from "jspdf";
@@ -60,23 +60,26 @@ const Invoicing = () => {
   const [paymentAmount, setPaymentAmount] = useState<string>("");
   const [selectedInvoice, setSelectedInvoice] = useState<Invoice | null>(null);
   const [filterCustomerId, setFilterCustomerId] = useState("");
+  const [estimates, setEstimates] = useState<any[]>([]);
+  const [viewMode, setViewMode] = useState<'invoices' | 'estimates'>('invoices');
+  const [createType, setCreateType] = useState<'invoice' | 'estimate'>('invoice');
 
   useEffect(() => {
     loadData();
   }, []);
 
   const loadData = async () => {
-    const invs = await getInvoices();
-    const custs = await getCustomers();
-    
+    const [invs, custs, ests] = await Promise.all([getInvoices(), getCustomers(), getEstimates()]);
+
     // Assign invoice numbers starting from 100
     const invoicesWithNumbers = (invs as Invoice[]).map((inv, idx) => ({
       ...inv,
       invoiceNumber: inv.invoiceNumber || 100 + idx
     }));
-    
+
     setInvoices(invoicesWithNumbers);
     setCustomers(custs as Customer[]);
+    setEstimates(ests || []);
   };
 
   const addService = () => {
@@ -117,8 +120,15 @@ const Invoicing = () => {
       paidAmount: 0,
     };
 
-    await upsertInvoice(invoice);
-    toast({ title: "Success", description: "Invoice created successfully" });
+    if (createType === 'estimate') {
+      await addEstimate({ ...invoice, status: 'Open', invoiceNumber: undefined });
+      toast({ title: "Success", description: "Estimate created successfully" });
+      setViewMode('estimates');
+    } else {
+      await upsertInvoice(invoice);
+      toast({ title: "Success", description: "Invoice created successfully" });
+      setViewMode('invoices');
+    }
     setSelectedCustomer("");
     setServices([]);
     setShowCreateForm(false);
@@ -135,7 +145,7 @@ const Invoicing = () => {
     doc.text(`Date: ${invoice.date}`, 20, 50);
     doc.text(`Customer: ${invoice.customerName}`, 20, 60);
     doc.text(`Vehicle: ${invoice.vehicle}`, 20, 70);
-    
+
     let y = 85;
     doc.text("Services:", 20, y);
     y += 10;
@@ -143,11 +153,11 @@ const Invoicing = () => {
       doc.text(`${s.name}: $${s.price.toFixed(2)}`, 30, y);
       y += 8;
     });
-    
+
     y += 5;
     doc.setFontSize(14);
     doc.text(`Total: $${invoice.total.toFixed(2)}`, 20, y);
-    
+
     y += 10;
     doc.setFontSize(10);
     const status = invoice.paymentStatus || "unpaid";
@@ -171,18 +181,19 @@ const Invoicing = () => {
     loadData();
   };
 
-  const filterInvoices = () => {
+  const filterItems = () => {
+    const source = viewMode === 'estimates' ? estimates : invoices;
     const now = new Date();
-    return invoices.filter(inv => {
-      const invDate = new Date(inv.createdAt);
+    return source.filter(inv => {
+      const invDate = new Date(inv.createdAt || inv.date);
       let passQuick = true;
       if (dateFilter === "daily") passQuick = invDate.toDateString() === now.toDateString();
       else if (dateFilter === "weekly") passQuick = invDate >= new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
       else if (dateFilter === "monthly") passQuick = invDate.getMonth() === now.getMonth() && invDate.getFullYear() === now.getFullYear();
 
       let passRange = true;
-      if (dateRange.from) passRange = invDate >= new Date(dateRange.from.setHours(0,0,0,0));
-      if (passRange && dateRange.to) passRange = invDate <= new Date(dateRange.to.setHours(23,59,59,999));
+      if (dateRange.from) passRange = invDate >= new Date(dateRange.from.setHours(0, 0, 0, 0));
+      if (passRange && dateRange.to) passRange = invDate <= new Date(dateRange.to.setHours(23, 59, 59, 999));
 
       let passCustomer = true;
       if (filterCustomerId) passCustomer = inv.customerId === filterCustomerId;
@@ -191,7 +202,7 @@ const Invoicing = () => {
     });
   };
 
-  const totalOutstanding = filterInvoices()
+  const totalOutstanding = filterItems()
     .filter(inv => (inv.paymentStatus || "unpaid") !== "paid")
     .reduce((sum, inv) => sum + (inv.total - (inv.paidAmount || 0)), 0);
 
@@ -217,14 +228,14 @@ const Invoicing = () => {
     doc.setFontSize(10);
     doc.text(`Generated: ${new Date().toLocaleString()}`, 20, 28);
     let y = 40;
-    filterInvoices().forEach((inv) => {
+    filterItems().forEach((inv) => {
       doc.setFontSize(10);
       const status = inv.paymentStatus || "unpaid";
       doc.text(`#${inv.invoiceNumber} | ${inv.customerName} | $${inv.total.toFixed(2)} | ${status.toUpperCase()} | ${inv.date}`, 20, y);
       y += 7;
       if (y > 280) { doc.addPage(); y = 20; }
     });
-    if (download) doc.save(`Invoices_${new Date().toISOString().split('T')[0]}.pdf`); 
+    if (download) doc.save(`Invoices_${new Date().toISOString().split('T')[0]}.pdf`);
     else window.open(doc.output('bloburl'), '_blank');
   };
 
@@ -234,7 +245,27 @@ const Invoicing = () => {
       <main className="container mx-auto px-4 py-6 max-w-6xl">
         <div className="space-y-6 animate-fade-in">
           <div className="flex justify-between items-center flex-wrap gap-3">
-            <h1 className="text-3xl font-bold text-foreground">Invoices</h1>
+            <div className="flex items-center gap-4">
+              <h1 className="text-3xl font-bold text-foreground">Invoicing</h1>
+              <div className="flex bg-muted rounded-lg p-1">
+                <Button
+                  variant={viewMode === 'invoices' ? 'default' : 'ghost'}
+                  size="sm"
+                  onClick={() => setViewMode('invoices')}
+                  className="rounded-md"
+                >
+                  Invoices
+                </Button>
+                <Button
+                  variant={viewMode === 'estimates' ? 'default' : 'ghost'}
+                  size="sm"
+                  onClick={() => setViewMode('estimates')}
+                  className="rounded-md"
+                >
+                  Estimates
+                </Button>
+              </div>
+            </div>
             <div className="flex gap-3 items-center flex-wrap w-full md:w-auto">
               <Link to="/reports">
                 <Button variant="outline" size="sm">
@@ -259,10 +290,16 @@ const Invoicing = () => {
               <Button variant="outline" size="sm" onClick={() => generateListPDF(true)}>
                 <Save className="h-4 w-4 mr-2" />Save PDF
               </Button>
-              <Button onClick={() => setShowCreateForm(!showCreateForm)} className="bg-gradient-hero w-full md:w-auto">
-                <FileText className="h-4 w-4 mr-2" />
-                {showCreateForm ? "Cancel" : "Create Invoice"}
-              </Button>
+              <div className="flex gap-2">
+                <Button onClick={() => { setCreateType('invoice'); setShowCreateForm(!showCreateForm); }} className="bg-gradient-hero">
+                  <Plus className="h-4 w-4 mr-2" />
+                  Create Invoice
+                </Button>
+                <Button onClick={() => { setCreateType('estimate'); setShowCreateForm(!showCreateForm); }} variant="outline">
+                  <FileText className="h-4 w-4 mr-2" />
+                  Create Estimate
+                </Button>
+              </div>
             </div>
           </div>
 
@@ -304,7 +341,7 @@ const Invoicing = () => {
 
           {showCreateForm && (
             <Card className="p-6 bg-gradient-card border-border">
-              <h2 className="text-xl font-bold text-foreground mb-4">New Invoice</h2>
+              <h2 className="text-xl font-bold text-foreground mb-4">New {createType === 'estimate' ? 'Estimate' : 'Invoice'}</h2>
               <div className="space-y-4">
                 <div>
                   <Label htmlFor="customer">Select Customer</Label>
@@ -325,14 +362,14 @@ const Invoicing = () => {
                 <div className="border-t border-border pt-4">
                   <Label>Add Services</Label>
                   <div className="flex gap-2 mt-2">
-                    <Input 
-                      placeholder="Service name" 
+                    <Input
+                      placeholder="Service name"
                       value={newService.name}
                       onChange={(e) => setNewService({ ...newService, name: e.target.value })}
                     />
-                    <Input 
-                      type="number" 
-                      placeholder="Price" 
+                    <Input
+                      type="number"
+                      placeholder="Price"
                       value={newService.price}
                       onChange={(e) => setNewService({ ...newService, price: e.target.value })}
                       className="w-32"
@@ -361,31 +398,30 @@ const Invoicing = () => {
                 )}
 
                 <Button onClick={createInvoice} className="w-full bg-gradient-hero">
-                  Create Invoice
+                  Create {createType === 'estimate' ? 'Estimate' : 'Invoice'}
                 </Button>
               </div>
             </Card>
           )}
 
           <div className="grid gap-4">
-            {filterInvoices().map((inv) => (
-              <Card 
-                key={inv.id} 
+            {filterItems().map((inv) => (
+              <Card
+                key={inv.id}
                 className="p-4 bg-gradient-card border-border cursor-pointer hover:border-primary/50 transition-colors"
                 onClick={() => setSelectedInvoice(inv)}
               >
                 <div className="flex justify-between items-start">
                   <div>
-                    <h3 className="font-bold text-foreground">Invoice #{inv.invoiceNumber}</h3>
+                    <h3 className="font-bold text-foreground">{viewMode === 'estimates' ? 'Estimate' : 'Invoice'} #{inv.invoiceNumber || 'N/A'}</h3>
                     <p className="text-sm text-muted-foreground">{inv.customerName}</p>
                     <p className="text-sm text-muted-foreground">{inv.vehicle}</p>
                     <p className="text-sm text-muted-foreground">Date: {inv.date}</p>
                     <p className="text-lg font-bold text-primary mt-2">Total: ${inv.total.toFixed(2)}</p>
-                    <p className={`text-sm font-medium mt-1 ${
-                      (inv.paymentStatus || "unpaid") === "paid" ? "text-success" :
+                    <p className={`text-sm font-medium mt-1 ${(inv.paymentStatus || "unpaid") === "paid" ? "text-success" :
                       (inv.paymentStatus || "unpaid") === "partially-paid" ? "text-yellow-500" :
-                      "text-destructive"
-                    }`}>
+                        "text-destructive"
+                      }`}>
                       {(inv.paymentStatus || "unpaid").replace("-", " ").toUpperCase()}
                       {inv.paidAmount && inv.paidAmount > 0 ? ` ($${inv.paidAmount.toFixed(2)} paid)` : ""}
                     </p>
@@ -404,6 +440,7 @@ const Invoicing = () => {
                     </div>
                     <Button
                       variant="outline"
+                      disabled={viewMode === 'estimates'}
                       onClick={() => {
                         setSelectedInvoice(inv);
                         const remaining = inv.total - (inv.paidAmount || 0);
@@ -429,10 +466,10 @@ const Invoicing = () => {
               This action cannot be undone.
             </AlertDialogDescription>
           </AlertDialogHeader>
-<AlertDialogFooter className="button-group-responsive">
+          <AlertDialogFooter className="button-group-responsive">
             <AlertDialogCancel>Cancel</AlertDialogCancel>
             <AlertDialogAction onClick={() => deleteId && handleDeleteInvoice(deleteId)}>Delete</AlertDialogAction>
-</AlertDialogFooter>
+          </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
 
@@ -457,7 +494,7 @@ const Invoicing = () => {
                 </div>
                 <Button variant="ghost" size="sm" onClick={() => setSelectedInvoice(null)}>✕</Button>
               </div>
-              
+
               <div className="border-t border-border pt-4 space-y-3">
                 <div>
                   <Label className="text-sm font-semibold">Customer</Label>
@@ -491,11 +528,10 @@ const Invoicing = () => {
                   <span className="text-primary">${selectedInvoice.total.toFixed(2)}</span>
                 </div>
                 <div className="mt-2">
-                  <p className={`text-sm font-medium ${
-                    (selectedInvoice.paymentStatus || "unpaid") === "paid" ? "text-success" :
+                  <p className={`text-sm font-medium ${(selectedInvoice.paymentStatus || "unpaid") === "paid" ? "text-success" :
                     (selectedInvoice.paymentStatus || "unpaid") === "partially-paid" ? "text-yellow-500" :
-                    "text-destructive"
-                  }`}>
+                      "text-destructive"
+                    }`}>
                     Status: {(selectedInvoice.paymentStatus || "unpaid").replace("-", " ").toUpperCase()}
                   </p>
                   {selectedInvoice.paidAmount && selectedInvoice.paidAmount > 0 && (
