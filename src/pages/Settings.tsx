@@ -1015,7 +1015,18 @@ const Settings = () => {
                       materials_count: materialsLF.length,
                       mode: 'Local only — Not Linked to Supabase',
                     };
-                    setMockReport((prev: any) => ({ ...(prev || {}), customers: tracker.customers, employees: tracker.employees, inventory: tracker.inventory, summary }));
+                    setMockReport((prev: any) => ({
+                      ...(prev || {}),
+                      customers: tracker.customers,
+                      employees: tracker.employees,
+                      inventory: tracker.inventory,
+                      income: tracker.income,
+                      expenses: tracker.expenses,
+                      payroll: tracker.payroll,
+                      invoices: tracker.invoices,
+                      categories: tracker.categories,
+                      summary
+                    }));
                     try {
                       window.dispatchEvent(new CustomEvent('content-changed', { detail: { kind: 'users' } }));
                       window.dispatchEvent(new CustomEvent('content-changed', { detail: { kind: 'customers' } }));

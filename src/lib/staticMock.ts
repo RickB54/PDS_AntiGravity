@@ -43,22 +43,31 @@ async function addStaticInventory(): Promise<MockInventoryItem[]> {
   const mockChemicals = [
     { id: genId('chem_apc'), name: 'All-Purpose Cleaner', bottleSize: '32 oz', costPerBottle: 12.99, currentStock: 8, threshold: 2, isStaticMock: true },
     { id: genId('chem_glass'), name: 'Glass Cleaner', bottleSize: '16 oz', costPerBottle: 7.49, currentStock: 5, threshold: 2, isStaticMock: true },
-    { id: genId('chem_deg'), name: 'Wheel Degreaser', bottleSize: '24 oz', costPerBottle: 9.99, currentStock: 4, threshold: 2, isStaticMock: true },
+    { id: genId('chem_degreaser'), name: 'Wheel Degreaser', bottleSize: '24 oz', costPerBottle: 15.99, currentStock: 3, threshold: 1, isStaticMock: true },
   ];
-  const chemNames = new Set(chemicals.map(c => String(c.name || '').toLowerCase()));
-  for (const c of mockChemicals) { if (!chemNames.has(c.name.toLowerCase())) chemicals.push(c); }
+  chemicals.push(...mockChemicals);
   await localforage.setItem("chemicals", chemicals);
 
   const materials = (await localforage.getItem<any[]>("materials")) || [];
-  const nowIso = new Date().toISOString();
   const mockMaterials = [
-    { id: genId('mat_rag'), name: 'Microfiber Rag', category: 'Rag', subtype: 'Large', quantity: 30, costPerItem: 1.25, lowThreshold: 10, createdAt: nowIso, isStaticMock: true },
-    { id: genId('mat_brush'), name: 'Soft Brush', category: 'Brush', subtype: 'Soft', quantity: 12, costPerItem: 4.99, lowThreshold: 3, createdAt: nowIso, isStaticMock: true },
-    { id: genId('mat_clay'), name: 'Detailing Clay', category: 'Clay', subtype: 'Fine', quantity: 6, costPerItem: 7.50, lowThreshold: 2, createdAt: nowIso, isStaticMock: true },
+    { id: genId('mat_rag'), name: 'Microfiber Rag', size: 'Standard', costPerUnit: 2.99, currentStock: 25, threshold: 10, isStaticMock: true },
+    { id: genId('mat_brush'), name: 'Soft Brush', size: 'Medium', costPerUnit: 8.99, currentStock: 10, threshold: 3, isStaticMock: true },
+    { id: genId('mat_clay'), name: 'Detailing Clay', size: '200g', costPerUnit: 19.99, currentStock: 6, threshold: 2, isStaticMock: true },
   ];
-  const matNames = new Set(materials.map(m => String(m.name || '').toLowerCase()));
-  for (const m of mockMaterials) { if (!matNames.has(m.name.toLowerCase())) materials.push(m); }
+  materials.push(...mockMaterials);
   await localforage.setItem("materials", materials);
+
+  // Add Tools
+  const tools = (await localforage.getItem<any[]>("tools")) || [];
+  const mockTools = [
+    { id: genId('tool_buffer'), name: 'Dual Action Buffer', brand: 'ProDetail', model: 'DA-3000', purchasePrice: 199.99, currentCondition: 'Excellent', maintenanceDate: new Date().toISOString(), isStaticMock: true },
+    { id: genId('tool_vacuum'), name: 'Wet/Dry Vacuum', brand: 'ShopVac', model: 'SV-500', purchasePrice: 149.99, currentCondition: 'Good', maintenanceDate: new Date().toISOString(), isStaticMock: true },
+    { id: genId('tool_steamer'), name: 'Steam Cleaner', brand: 'VaporMax', model: 'VM-2500', purchasePrice: 249.99, currentCondition: 'Excellent', maintenanceDate: new Date().toISOString(), isStaticMock: true },
+    { id: genId('tool_extractor'), name: 'Carpet Extractor', brand: 'Detail King', model: 'EX-1200', purchasePrice: 399.99, currentCondition: 'Good', maintenanceDate: new Date().toISOString(), isStaticMock: true },
+    { id: genId('tool_aircomp'), name: 'Air Compressor', brand: 'Porter-Cable', model: 'PC-600', purchasePrice: 179.99, currentCondition: 'Very Good', maintenanceDate: new Date().toISOString(), isStaticMock: true },
+  ];
+  tools.push(...mockTools);
+  await localforage.setItem("tools", tools);
 
   const inv: MockInventoryItem[] = [
     { name: 'All-Purpose Cleaner', category: 'Chemical' },
@@ -242,16 +251,63 @@ export async function insertStaticMockBasic(
   const custNames = ['Alex Green', 'Casey Brown', 'Drew White', 'Evan Blue', 'Finn Gray'];
   const empNames = ['Harper Quinn', 'Jesse Lane', 'Kai Morgan', 'Logan Reese', 'Milan Avery'];
 
-  // Create customers
-  report('Creating static customers…');
+  // Vehicle data for customers
+  const vehicleData = [
+    { year: '2023', make: 'Tesla', model: 'Model Y', type: 'SUV' },
+    { year: '2022', make: 'Honda', model: 'Accord', type: 'Sedan' },
+    { year: '2024', make: 'Ford', model: 'F-150', type: 'Truck' },
+    { year: '2021', make: 'BMW', model: 'X5', type: 'Luxury SUV' },
+    { year: '2023', make: 'Toyota', model: 'Camry', type: 'Sedan' }
+  ];
+
+  const addresses = [
+    '123 Oak Street, Springfield, IL 62701',
+    '456 Maple Avenue, Chicago, IL 60601',
+    '789 Pine Road, Naperville, IL 60540',
+    '321 Elm Drive, Aurora, IL 60505',
+    '654 Cedar Lane, Joliet, IL 60435'
+  ];
+
+  // Create customers with full details
+  report('Creating static customers with complete details…');
+  const customersData = [] as any[];
+
   for (let i = 0; i < (opts.customers || 5); i++) {
     const name = custNames[i % custNames.length];
-    const email = mockEmail(name.split(' ')[0].toLowerCase(), 'customer', i + 1);
+    const firstName = name.split(' ')[0].toLowerCase();
+    const email = mockEmail(firstName, 'customer', i + 1);
+    const phone = `(555) ${String(100 + i).padStart(3, '0')}-${String(1000 + i * 111).slice(0, 4)}`;
+    const vehicle = vehicleData[i % vehicleData.length];
+    const address = addresses[i % addresses.length];
+
     const u: CreatedUser = { id: genId('static_cust'), name, email, role: 'customer' };
     await addLocalUserRecord(u);
+
+    // Create full customer record with vehicle and contact details
+    const fullCustomer = {
+      id: u.id,
+      name: u.name,
+      email: u.email,
+      phone,
+      address,
+      year: vehicle.year,
+      vehicle: vehicle.make,
+      model: vehicle.model,
+      vehicleType: vehicle.type,
+      notes: `Mock customer - ${vehicle.year} ${vehicle.make} ${vehicle.model}`,
+      createdAt: new Date().toISOString()
+    };
+
+    customersData.push(fullCustomer);
     tracker.customers.push(u);
-    report(`Customer created: ${u.name} (${u.email})`);
+    report(`Customer created: ${u.name} (${u.email}) - ${vehicle.year} ${vehicle.make} ${vehicle.model}`);
   }
+
+  // Save complete customer data to customers store
+  report('Saving customer details to customers store…');
+  const existingCustomers = (await localforage.getItem<any[]>('customers')) || [];
+  await localforage.setItem('customers', [...existingCustomers, ...customersData]);
+  report(`Saved ${customersData.length} customers with complete details`);
 
   // Create employees
   report('Creating static employees…');
@@ -392,6 +448,12 @@ export async function insertStaticMockBasic(
     window.dispatchEvent(new CustomEvent('accounting-changed'));
     window.dispatchEvent(new CustomEvent('payroll-changed'));
   } catch { }
+
+  // Track categories for report
+  tracker.categories = {
+    income: incomeCategories,
+    expense: expenseCategories
+  };
 
   report('Static mock data insertion complete with accounting, payroll, invoices, and categories!');
   return tracker;

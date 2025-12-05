@@ -9,7 +9,12 @@ export interface Booking {
   date: string; // ISO date
   status: BookingStatus;
   createdAt?: string;
-  vehicle?: string;
+  vehicle?: string; // Vehicle Type (Sedan, SUV, etc.)
+  vehicleYear?: string;
+  vehicleMake?: string;
+  vehicleModel?: string;
+  address?: string;
+  assignedEmployee?: string;
   notes?: string;
   price?: number;
 }

@@ -8,6 +8,7 @@ import { FileText, Printer, Save, Trash2, FileBarChart, DollarSign, Plus } from 
 import { Link } from "react-router-dom";
 import { getInvoices, upsertInvoice, getCustomers, deleteInvoice, getEstimates, addEstimate } from "@/lib/db";
 import { Customer } from "@/components/customers/CustomerModal";
+import { servicePackages, addOns } from "@/lib/services";
 import { useToast } from "@/hooks/use-toast";
 import jsPDF from "jspdf";
 import { PaymentDialog } from "@/components/invoicing/PaymentDialog";
@@ -63,6 +64,9 @@ const Invoicing = () => {
   const [estimates, setEstimates] = useState<any[]>([]);
   const [viewMode, setViewMode] = useState<'invoices' | 'estimates'>('invoices');
   const [createType, setCreateType] = useState<'invoice' | 'estimate'>('invoice');
+  const [selectedPackage, setSelectedPackage] = useState("");
+  const [selectedVehicleType, setSelectedVehicleType] = useState<"compact" | "midsize" | "truck" | "luxury">("midsize");
+  const [selectedAddons, setSelectedAddons] = useState<string[]>([]);
 
   useEffect(() => {
     loadData();
@@ -359,24 +363,82 @@ const Invoicing = () => {
                   </Select>
                 </div>
 
-                <div className="border-t border-border pt-4">
-                  <Label>Add Services</Label>
-                  <div className="flex gap-2 mt-2">
-                    <Input
-                      placeholder="Service name"
-                      value={newService.name}
-                      onChange={(e) => setNewService({ ...newService, name: e.target.value })}
-                    />
-                    <Input
-                      type="number"
-                      placeholder="Price"
-                      value={newService.price}
-                      onChange={(e) => setNewService({ ...newService, price: e.target.value })}
-                      className="w-32"
-                    />
-                    <Button onClick={addService} variant="outline">Add</Button>
+                {/* Estimates: Service Package & Addons Selection */}
+                {createType === 'estimate' && (
+                  <>
+                    <div className="border-t border-border pt-4">
+                      <Label>Select Service Package</Label>
+                      <div className="grid grid-cols-2 gap-2 mt-2">
+                        <Select value={selectedPackage} onValueChange={(val) => {
+                          setSelectedPackage(val);
+                          const pkg = servicePackages.find(p => p.id === val);
+                          if (pkg) {
+                            const price = pkg.pricing[selectedVehicleType] || 0;
+                            setServices([{ name: pkg.name, price }]);
+                            setSelectedAddons([]); // Clear addons when changing package
+                          }
+                        }}>
+                          <SelectTrigger>
+                            <SelectValue placeholder="Choose package..." />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {servicePackages.map(pkg => {
+                              const price = pkg.pricing[selectedVehicleType] || 0;
+                              return (
+                                <SelectItem key={pkg.id} value={pkg.id}>
+                                  {pkg.name} - ${price}
+                                </SelectItem>
+                              );
+                            })}
+                          </SelectContent>
+                        </Select>
+                        <Select value={selectedVehicleType} onValueChange={(val: any) => {
+                          setSelectedVehicleType(val);
+                          if (selectedPackage) {
+                            const pkg = servicePackages.find(p => p.id === selectedPackage);
+                            if (pkg) {
+                              const price = pkg.pricing[val] || 0;
+                              setServices([{ name: pkg.name, price }]);
+                            }
+                          }
+                        }}>
+                          <SelectTrigger>
+                            <SelectValue placeholder="Vehicle type..." />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="compact">Compact (Cars, Small Sedans)</SelectItem>
+                            <SelectItem value="midsize">Midsize (Sedans, Small SUVs)</SelectItem>
+                            <SelectItem value="truck">Truck/SUV (Large Vehicles)</SelectItem>
+                            <SelectItem value="luxury">Luxury (Premium Vehicles)</SelectItem>
+                          </SelectContent>
+                        </Select>
+                      </div>
+                    </div>
+
+                  </>
+                )}
+
+                {/* Manual Service Entry for Invoices */}
+                {createType === 'invoice' && (
+                  <div className="border-t border-border pt-4">
+                    <Label>Add Services</Label>
+                    <div className="flex gap-2 mt-2">
+                      <Input
+                        placeholder="Service name"
+                        value={newService.name}
+                        onChange={(e) => setNewService({ ...newService, name: e.target.value })}
+                      />
+                      <Input
+                        type="number"
+                        placeholder="Price"
+                        value={newService.price}
+                        onChange={(e) => setNewService({ ...newService, price: e.target.value })}
+                        className="w-32"
+                      />
+                      <Button onClick={addService} variant="outline">Add</Button>
+                    </div>
                   </div>
-                </div>
+                )}
 
                 {services.length > 0 && (
                   <div className="space-y-2">
@@ -427,7 +489,7 @@ const Invoicing = () => {
                     </p>
                   </div>
                   <div className="flex flex-col gap-2" onClick={(e) => e.stopPropagation()}>
-                    <div className="flex gap-2">
+                    <div className="flex gap-2" onClick={(e) => e.stopPropagation()}>
                       <Button size="icon" variant="outline" onClick={() => generatePDF(inv, false)}>
                         <Printer className="h-4 w-4" />
                       </Button>
@@ -441,11 +503,14 @@ const Invoicing = () => {
                     <Button
                       variant="outline"
                       disabled={viewMode === 'estimates'}
-                      onClick={() => {
-                        setSelectedInvoice(inv);
-                        const remaining = inv.total - (inv.paidAmount || 0);
-                        setPaymentAmount(remaining > 0 ? String(remaining.toFixed(2)) : "");
-                        setPaymentDialogOpen(true);
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        if (viewMode !== 'estimates' && inv.services && Array.isArray(inv.services)) {
+                          setSelectedInvoice(inv);
+                          const remaining = inv.total - (inv.paidAmount || 0);
+                          setPaymentAmount(remaining > 0 ? String(remaining.toFixed(2)) : "");
+                          setPaymentDialogOpen(true);
+                        }
                       }}
                     >
                       Record Payment
@@ -513,7 +578,7 @@ const Invoicing = () => {
               <div className="border-t border-border pt-4">
                 <Label className="text-sm font-semibold mb-2 block">Services</Label>
                 <div className="space-y-2">
-                  {selectedInvoice.services.map((s, i) => (
+                  {(selectedInvoice.services || []).map((s, i) => (
                     <div key={i} className="flex justify-between items-center p-2 bg-muted/30 rounded">
                       <span>{s.name}</span>
                       <span className="font-semibold">${s.price.toFixed(2)}</span>

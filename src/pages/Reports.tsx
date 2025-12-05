@@ -104,7 +104,8 @@ const Reports = () => {
     doc.text(`Generated: ${new Date().toLocaleString()}`, 105, 28, { align: "center" });
 
     let y = 40;
-    const filteredCustomers = filterByDate(customers);
+    // Customers don't have dates, so show all customers
+    const filteredCustomers = customers;
 
     filteredCustomers.forEach((cust) => {
       if (y > 270) { doc.addPage(); y = 20; }
@@ -255,13 +256,13 @@ const Reports = () => {
     filteredJobs.forEach(job => {
       if (y > 270) { doc.addPage(); y = 20; }
       doc.setFontSize(10);
-      doc.text(`Employee: ${job.employee || 'N/A'}`, 20, y);
+      doc.text(`Employee: ${job.employeeId || job.employee || job.employeeName || 'N/A'}`, 20, y);
       y += 5;
-      doc.text(`Customer: ${job.customer || 'N/A'} | Vehicle: ${job.vehicle || 'N/A'}`, 20, y);
+      doc.text(`Customer: ${job.customerName || job.customer || 'N/A'} | Vehicle: ${job.vehicleType || job.vehicle || 'N/A'}`, 20, y);
       y += 5;
-      doc.text(`Service: ${job.service || 'N/A'} | Time: ${job.totalTime || 'N/A'}`, 20, y);
+      doc.text(`Service: ${job.packageId || job.service || 'N/A'} | Time: ${job.estimatedTime || job.totalTime || 'N/A'}`, 20, y);
       y += 5;
-      doc.text(`Date: ${job.finishedAt ? new Date(job.finishedAt).toLocaleString() : 'N/A'}`, 20, y);
+      doc.text(`Date: ${job.createdAt || job.finishedAt ? new Date(job.createdAt || job.finishedAt).toLocaleString() : 'N/A'}`, 20, y);
       y += 8;
     });
 
@@ -447,7 +448,7 @@ const Reports = () => {
                 </div>
                 <div className="space-y-3">
                   <p className="text-sm text-muted-foreground">
-                    Total Customers: <span className="font-semibold text-foreground">{filterByDate(customers).length}</span>
+                    Total Customers: <span className="font-semibold text-foreground">{customers.length}</span>
                   </p>
 
                   {/* Customer-Specific Report */}
