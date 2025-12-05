@@ -161,6 +161,7 @@ export function AppSidebar() {
 
           {(isAdmin || isEmployee) && (
             <>
+              {/* --- Admin & Web --- */}
               {isAdmin && !isHidden('admin-dashboard') && (
                 <SidebarMenuItem>
                   <SidebarMenuButton asChild onClick={handleNavClick}>
@@ -171,19 +172,7 @@ export function AppSidebar() {
                   </SidebarMenuButton>
                 </SidebarMenuItem>
               )}
-              {isAdmin && (
-                <SidebarMenuItem>
-                  <SidebarMenuButton asChild onClick={handleNavClick}>
-                    <NavLink to="/admin/users" className={linkClass}>
-                      <Users className="h-4 w-4" />
-                      <span>Users & Roles</span>
-                    </NavLink>
-                  </SidebarMenuButton>
-                </SidebarMenuItem>
-              )}
-              {/* Cheat Sheet moved to Admin Dashboard; removing from slide-out menu */}
-              {/* Removed redundant admin-only Todo under Admin Dashboard */}
-              {/* Always-visible Website Administration entry (cannot be hidden) */}
+
               {isAdmin && (
                 <SidebarMenuItem>
                   <SidebarMenuButton asChild onClick={handleNavClick}>
@@ -198,7 +187,7 @@ export function AppSidebar() {
                   </SidebarMenuButton>
                 </SidebarMenuItem>
               )}
-              {/* Removed Home (redundant) */}
+
               <SidebarMenuItem>
                 <SidebarMenuButton asChild onClick={handleNavClick}>
                   <Link to="/">
@@ -207,6 +196,29 @@ export function AppSidebar() {
                   </Link>
                 </SidebarMenuButton>
               </SidebarMenuItem>
+
+              {isAdmin && (
+                <SidebarMenuItem>
+                  <SidebarMenuButton asChild onClick={handleNavClick}>
+                    <NavLink to="/admin/users" className={linkClass}>
+                      <Users className="h-4 w-4" />
+                      <span>Users & Roles</span>
+                    </NavLink>
+                  </SidebarMenuButton>
+                </SidebarMenuItem>
+              )}
+
+              {/* --- Operations --- */}
+              {!isHidden('bookings') && (
+                <SidebarMenuItem>
+                  <SidebarMenuButton asChild onClick={handleNavClick}>
+                    <NavLink to="/bookings" className={linkClass}>
+                      <CalendarDays className="h-4 w-4" />
+                      <span>Bookings</span>
+                    </NavLink>
+                  </SidebarMenuButton>
+                </SidebarMenuItem>
+              )}
 
               {!isHidden('service-checklist') && (
                 <SidebarMenuItem>
@@ -219,19 +231,6 @@ export function AppSidebar() {
                 </SidebarMenuItem>
               )}
 
-              {/* Bookings module */}
-              {!isHidden('bookings') && (
-                <SidebarMenuItem>
-                  <SidebarMenuButton asChild onClick={handleNavClick}>
-                    <NavLink to="/bookings" className={linkClass}>
-                      <CalendarDays className="h-4 w-4" />
-                      <span>Bookings</span>
-                    </NavLink>
-                  </SidebarMenuButton>
-                </SidebarMenuItem>
-              )}
-
-              {/* Todo module */}
               <SidebarMenuItem>
                 <SidebarMenuButton asChild onClick={handleNavClick}>
                   <NavLink to="/tasks" className={linkClass}>
@@ -244,12 +243,47 @@ export function AppSidebar() {
                 )}
               </SidebarMenuItem>
 
+              {/* --- Customer & Sales --- */}
               {!isHidden('search-customer') && (
                 <SidebarMenuItem>
                   <SidebarMenuButton asChild onClick={handleNavClick}>
                     <NavLink to="/search-customer" className={linkClass}>
                       <Users className="h-4 w-4" />
                       <span>Customer Profiles</span>
+                    </NavLink>
+                  </SidebarMenuButton>
+                </SidebarMenuItem>
+              )}
+
+              {isAdmin && (
+                <SidebarMenuItem>
+                  <SidebarMenuButton asChild onClick={handleNavClick}>
+                    <NavLink to="/estimates" className={({ isActive }: { isActive: boolean }) =>
+                      `flex items-center gap-2 ${isActive ? 'text-green-500 font-semibold' : 'text-green-600'} hover:text-green-700`}>
+                      <FileText className="h-4 w-4" />
+                      <span>Estimates</span>
+                    </NavLink>
+                  </SidebarMenuButton>
+                </SidebarMenuItem>
+              )}
+
+              {isAdmin && !isHidden('invoicing') && (
+                <SidebarMenuItem>
+                  <SidebarMenuButton asChild onClick={handleNavClick}>
+                    <NavLink to="/invoicing" className={linkClass}>
+                      <FileText className="h-4 w-4" />
+                      <span>Invoicing</span>
+                    </NavLink>
+                  </SidebarMenuButton>
+                </SidebarMenuItem>
+              )}
+
+              {isAdmin && !isHidden('discount-coupons') && (
+                <SidebarMenuItem>
+                  <SidebarMenuButton asChild onClick={handleNavClick}>
+                    <NavLink to="/discount-coupons" className={linkClass}>
+                      <TicketPercent className="h-4 w-4" />
+                      <span>Discount Coupons</span>
                     </NavLink>
                   </SidebarMenuButton>
                 </SidebarMenuItem>
@@ -266,78 +300,8 @@ export function AppSidebar() {
                 </SidebarMenuItem>
               )}
 
-              {isAdmin && (
-                <SidebarMenuItem>
-                  <SidebarMenuButton asChild onClick={handleNavClick}>
-                    <NavLink to="/package-selection" className={linkClass}>
-                      <Package className="h-4 w-4" />
-                      <span>Package Comparison Guide</span>
-                    </NavLink>
-                  </SidebarMenuButton>
-                </SidebarMenuItem>
-              )}
-
-              {!isHidden('training-manual') && (
-                <SidebarMenuItem>
-                  <SidebarMenuButton asChild onClick={handleNavClick}>
-                    <NavLink to="/training-manual" className={linkClass}>
-                      <BookOpen className="h-4 w-4" />
-                      <span>Quick Detailing Manual</span>
-                    </NavLink>
-                  </SidebarMenuButton>
-                </SidebarMenuItem>
-              )}
-
-              {!isHidden('employee-dashboard') && (
-                <SidebarMenuItem>
-                  <SidebarMenuButton asChild onClick={handleNavClick}>
-                    <NavLink to="/employee-dashboard" className={linkClass}>
-                      <LayoutDashboard className="h-4 w-4" />
-                      <span>Employee Dashboard</span>
-                    </NavLink>
-                  </SidebarMenuButton>
-                </SidebarMenuItem>
-              )}
-              {isAdmin && !isHidden('discount-coupons') && (
-                <SidebarMenuItem>
-                  <SidebarMenuButton asChild onClick={handleNavClick}>
-                    <NavLink to="/discount-coupons" className={linkClass}>
-                      <TicketPercent className="h-4 w-4" />
-                      <span>Discount Coupons</span>
-                    </NavLink>
-                  </SidebarMenuButton>
-                </SidebarMenuItem>
-              )}
-              {/* Bookings menu removed */}
-              {isEmployee && !isHidden('employee-training') && (
-                <SidebarMenuItem>
-                  <SidebarMenuButton asChild onClick={handleNavClick}>
-                    <NavLink to="/employee-training" className={linkClass}>
-                      <GraduationCap className="h-4 w-4" />
-                      <span>Employee Training Course</span>
-                    </NavLink>
-                  </SidebarMenuButton>
-                </SidebarMenuItem>
-              )}
-            </>
-          )}
-
-          {isAdmin && (
-            <>
-
-
-              {!isHidden('invoicing') && (
-                <SidebarMenuItem>
-                  <SidebarMenuButton asChild onClick={handleNavClick}>
-                    <NavLink to="/invoicing" className={linkClass}>
-                      <FileText className="h-4 w-4" />
-                      <span>Invoicing</span>
-                    </NavLink>
-                  </SidebarMenuButton>
-                </SidebarMenuItem>
-              )}
-
-              {!isHidden('accounting') && (
+              {/* --- Finance --- */}
+              {isAdmin && !isHidden('accounting') && (
                 <SidebarMenuItem>
                   <SidebarMenuButton asChild onClick={handleNavClick}>
                     <NavLink to="/accounting" className={linkClass}>
@@ -348,7 +312,7 @@ export function AppSidebar() {
                 </SidebarMenuItem>
               )}
 
-              {!isHidden('company-budget') && (
+              {isAdmin && !isHidden('company-budget') && (
                 <SidebarMenuItem>
                   <SidebarMenuButton asChild onClick={handleNavClick}>
                     <NavLink to="/company-budget" className={linkClass}>
@@ -359,7 +323,7 @@ export function AppSidebar() {
                 </SidebarMenuItem>
               )}
 
-              {!isHidden('payroll') && (
+              {isAdmin && !isHidden('payroll') && (
                 <SidebarMenuItem>
                   <SidebarMenuButton asChild onClick={handleNavClick}>
                     <NavLink to="/payroll" className={linkClass}>
@@ -373,7 +337,8 @@ export function AppSidebar() {
                 </SidebarMenuItem>
               )}
 
-              {!isHidden('inventory-control') && (
+              {/* --- Inventory & Assets --- */}
+              {isAdmin && !isHidden('inventory-control') && (
                 <SidebarMenuItem>
                   <SidebarMenuButton asChild onClick={handleNavClick}>
                     <NavLink to="/inventory-control" className={linkClass}>
@@ -384,17 +349,6 @@ export function AppSidebar() {
                   {inventoryCount > 0 && (
                     <SidebarMenuBadge className="bg-red-600 text-white">{inventoryCount}</SidebarMenuBadge>
                   )}
-                </SidebarMenuItem>
-              )}
-
-              {!isHidden('company-employees') && (
-                <SidebarMenuItem>
-                  <SidebarMenuButton asChild onClick={handleNavClick}>
-                    <NavLink to="/company-employees" className={linkClass}>
-                      <Users className="h-4 w-4" />
-                      <span>Company Employees</span>
-                    </NavLink>
-                  </SidebarMenuButton>
                 </SidebarMenuItem>
               )}
 
@@ -412,9 +366,64 @@ export function AppSidebar() {
                 </SidebarMenuItem>
               )}
 
-              {/* Jobs Completed removed from slide-out menu per request (still available on Admin Dashboard) */}
+              {/* --- Staff --- */}
+              {isAdmin && !isHidden('company-employees') && (
+                <SidebarMenuItem>
+                  <SidebarMenuButton asChild onClick={handleNavClick}>
+                    <NavLink to="/company-employees" className={linkClass}>
+                      <Users className="h-4 w-4" />
+                      <span>Company Employees</span>
+                    </NavLink>
+                  </SidebarMenuButton>
+                </SidebarMenuItem>
+              )}
 
-              {!isHidden('reports') && (
+              {!isHidden('employee-dashboard') && (
+                <SidebarMenuItem>
+                  <SidebarMenuButton asChild onClick={handleNavClick}>
+                    <NavLink to="/employee-dashboard" className={linkClass}>
+                      <LayoutDashboard className="h-4 w-4" />
+                      <span>Employee Dashboard</span>
+                    </NavLink>
+                  </SidebarMenuButton>
+                </SidebarMenuItem>
+              )}
+
+              {!isHidden('training-manual') && (
+                <SidebarMenuItem>
+                  <SidebarMenuButton asChild onClick={handleNavClick}>
+                    <NavLink to="/training-manual" className={linkClass}>
+                      <BookOpen className="h-4 w-4" />
+                      <span>Quick Detailing Manual</span>
+                    </NavLink>
+                  </SidebarMenuButton>
+                </SidebarMenuItem>
+              )}
+
+              {isEmployee && !isHidden('employee-training') && (
+                <SidebarMenuItem>
+                  <SidebarMenuButton asChild onClick={handleNavClick}>
+                    <NavLink to="/employee-training" className={linkClass}>
+                      <GraduationCap className="h-4 w-4" />
+                      <span>Employee Training Course</span>
+                    </NavLink>
+                  </SidebarMenuButton>
+                </SidebarMenuItem>
+              )}
+
+              {isAdmin && (
+                <SidebarMenuItem>
+                  <SidebarMenuButton asChild onClick={handleNavClick}>
+                    <NavLink to="/package-selection" className={linkClass}>
+                      <Package className="h-4 w-4" />
+                      <span>Package Comparison Guide</span>
+                    </NavLink>
+                  </SidebarMenuButton>
+                </SidebarMenuItem>
+              )}
+
+              {/* --- System --- */}
+              {isAdmin && !isHidden('reports') && (
                 <SidebarMenuItem>
                   <SidebarMenuButton asChild onClick={handleNavClick}>
                     <NavLink to="/reports" className={linkClass}>

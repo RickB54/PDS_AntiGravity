@@ -91,6 +91,12 @@ export async function addEstimate<T>(estimate: T): Promise<GenericWithId & T> {
   return saved;
 }
 
+export async function deleteEstimate(id: string): Promise<void> {
+  const estimates = await getEstimates();
+  const filtered = estimates.filter((e: any) => e.id !== id);
+  await setArray(KEYS.estimates, filtered);
+}
+
 // Invoices (placeholders for future pages to use)
 export async function getInvoices<T extends GenericWithId>(): Promise<T[]> {
   return getArray<T>(KEYS.invoices);

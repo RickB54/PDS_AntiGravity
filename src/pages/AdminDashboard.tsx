@@ -817,6 +817,7 @@ export default function AdminDashboard() {
                 {!isMenuHidden('customer-profiles') && (
                   <RedBox accent="purple" title="Customer Profiles" href="/search-customer" Icon={Users} badgeCount={alertsAll.filter(a => a.payload?.recordType === 'Customer' && !a.read).length} />
                 )}
+                <RedBox accent="green" title="Estimates" href="/estimates" Icon={FileText} />
               </div>
             </Card>
           </Card>

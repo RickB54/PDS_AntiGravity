@@ -16,6 +16,7 @@ import ServiceChecklist from "./pages/ServiceChecklist";
 import SearchCustomer from "./pages/SearchCustomer";
 import InventoryControl from "./pages/InventoryControl";
 import Invoicing from "./pages/Invoicing";
+import Estimates from "./pages/Estimates";
 import Accounting from "./pages/Accounting";
 import CompanyBudget from "./pages/CompanyBudget";
 import Reports from "./pages/Reports";
@@ -198,6 +199,11 @@ const App = () => {
                     <Route path="/invoicing" element={
                       <ProtectedRoute allowedRoles={['admin']}>
                         <Invoicing />
+                      </ProtectedRoute>
+                    } />
+                    <Route path="/estimates" element={
+                      <ProtectedRoute allowedRoles={['admin']}>
+                        <Estimates />
                       </ProtectedRoute>
                     } />
                     <Route path="/accounting" element={

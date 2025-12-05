@@ -612,7 +612,19 @@ const Invoicing = () => {
                 <Button variant="outline" onClick={() => generatePDF(selectedInvoice, true)}>
                   <Save className="h-4 w-4 mr-2" />Save PDF
                 </Button>
-                {/* Record Payment removed */}
+                {viewMode === 'invoices' && (selectedInvoice.paymentStatus || 'unpaid') !== 'paid' && (
+                  <Button
+                    onClick={() => {
+                      const remaining = selectedInvoice.total - (selectedInvoice.paidAmount || 0);
+                      setPaymentAmount(remaining > 0 ? String(remaining.toFixed(2)) : "");
+                      setPaymentDialogOpen(true);
+                    }}
+                    className="bg-gradient-hero"
+                  >
+                    <DollarSign className="h-4 w-4 mr-2" />
+                    Record Payment
+                  </Button>
+                )}
               </div>
             </div>
           </Card>

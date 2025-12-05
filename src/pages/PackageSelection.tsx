@@ -576,115 +576,137 @@ export default function PackageSelection() {
 
             {/* Comparison View (Sticky or Top if active) */}
             {comparisonData && (
-                <Card className="border-2 border-primary/20 shadow-lg animate-in fade-in slide-in-from-top-4">
-                    <CardHeader className="bg-muted/30 pb-4">
-                        <div className="flex items-center justify-between">
-                            <CardTitle className="text-xl flex items-center gap-2">
+                <Accordion type="single" collapsible defaultValue="summary" className="w-full">
+                    <AccordionItem value="summary" className="border-none">
+                        <AccordionTrigger className="hover:no-underline py-2">
+                            <div className="flex items-center gap-2">
                                 <FileText className="h-5 w-5 text-primary" />
-                                Comparison Summary
-                            </CardTitle>
-                            <div className="flex items-center gap-4">
-                                <div className="flex items-center space-x-2">
-                                    <Switch
-                                        id="diff-mode"
-                                        checked={showDifferencesOnly}
-                                        onCheckedChange={setShowDifferencesOnly}
-                                    />
-                                    <Label htmlFor="diff-mode">Show Differences Only</Label>
-                                </div>
-                                <Button onClick={handleGeneratePDF} variant="default">
-                                    <Download className="mr-2 h-4 w-4" />
-                                    Save as PDF
-                                </Button>
+                                <span className="text-xl font-bold">Comparison Summary</span>
                             </div>
-                        </div>
-                    </CardHeader>
-                    <CardContent className="p-0 overflow-x-auto">
-                        <table className="w-full text-sm text-left">
-                            <thead className="text-xs uppercase bg-muted/50 text-muted-foreground">
-                                <tr>
-                                    <th className="px-6 py-3 font-bold">Feature</th>
-                                    {comparisonData.selected.map(p => (
-                                        <th key={p.id} className="px-6 py-3 font-bold text-foreground">{p.name}</th>
-                                    ))}
-                                </tr>
-                            </thead>
-                            <tbody className="divide-y divide-border">
-                                {comparisonData.rows
-                                    .filter(r => !showDifferencesOnly || r.isDifferent)
-                                    .map((row, idx) => (
-                                        <tr key={idx} className={`hover:bg-muted/20 ${row.isDifferent ? 'bg-red-50/50 dark:bg-red-900/10' : ''}`}>
-                                            <td className="px-6 py-3 font-medium">{row.feature}</td>
-                                            {row.status.map((included, i) => (
-                                                <td key={i} className="px-6 py-3">
-                                                    {included ? (
-                                                        <span className="inline-flex items-center justify-center w-6 h-6 rounded-full bg-green-100 text-green-700 dark:bg-green-900 dark:text-green-300">
-                                                            ✓
-                                                        </span>
-                                                    ) : (
-                                                        <span className="text-muted-foreground">-</span>
-                                                    )}
-                                                </td>
-                                            ))}
-                                        </tr>
-                                    ))}
-                                {comparisonData.rows.filter(r => !showDifferencesOnly || r.isDifferent).length === 0 && (
-                                    <tr>
-                                        <td colSpan={comparisonData.selected.length + 1} className="px-6 py-8 text-center text-muted-foreground">
-                                            No differences found between selected packages.
-                                        </td>
-                                    </tr>
-                                )}
-                            </tbody>
-                        </table>
-                    </CardContent>
-                </Card>
+                        </AccordionTrigger>
+                        <AccordionContent>
+                            <Card className="border-2 border-primary/20 shadow-lg animate-in fade-in slide-in-from-top-4 mt-2">
+                                <CardHeader className="bg-muted/30 pb-4">
+                                    <div className="flex items-center justify-end">
+                                        <div className="flex items-center gap-4">
+                                            <div className="flex items-center space-x-2">
+                                                <Switch
+                                                    id="diff-mode"
+                                                    checked={showDifferencesOnly}
+                                                    onCheckedChange={setShowDifferencesOnly}
+                                                />
+                                                <Label htmlFor="diff-mode">Show Differences Only</Label>
+                                            </div>
+                                            <Button onClick={handleGeneratePDF} variant="default">
+                                                <Download className="mr-2 h-4 w-4" />
+                                                Save as PDF
+                                            </Button>
+                                        </div>
+                                    </div>
+                                </CardHeader>
+                                <CardContent className="p-0 overflow-x-auto">
+                                    <table className="w-full text-sm text-left">
+                                        <thead className="text-xs uppercase bg-muted/50 text-muted-foreground">
+                                            <tr>
+                                                <th className="px-6 py-3 font-bold">Feature</th>
+                                                {comparisonData.selected.map(p => (
+                                                    <th key={p.id} className="px-6 py-3 font-bold text-foreground">{p.name}</th>
+                                                ))}
+                                            </tr>
+                                        </thead>
+                                        <tbody className="divide-y divide-border">
+                                            {comparisonData.rows
+                                                .filter(r => !showDifferencesOnly || r.isDifferent)
+                                                .map((row, idx) => (
+                                                    <tr key={idx} className={`hover:bg-muted/20 ${row.isDifferent ? 'bg-red-50/50 dark:bg-red-900/10' : ''}`}>
+                                                        <td className="px-6 py-3 font-medium">{row.feature}</td>
+                                                        {row.status.map((included, i) => (
+                                                            <td key={i} className="px-6 py-3">
+                                                                {included ? (
+                                                                    <span className="inline-flex items-center justify-center w-6 h-6 rounded-full bg-green-100 text-green-700 dark:bg-green-900 dark:text-green-300">
+                                                                        ✓
+                                                                    </span>
+                                                                ) : (
+                                                                    <span className="text-muted-foreground">-</span>
+                                                                )}
+                                                            </td>
+                                                        ))}
+                                                    </tr>
+                                                ))}
+                                            {comparisonData.rows.filter(r => !showDifferencesOnly || r.isDifferent).length === 0 && (
+                                                <tr>
+                                                    <td colSpan={comparisonData.selected.length + 1} className="px-6 py-8 text-center text-muted-foreground">
+                                                        No differences found between selected packages.
+                                                    </td>
+                                                </tr>
+                                            )}
+                                        </tbody>
+                                    </table>
+                                </CardContent>
+                            </Card>
+                        </AccordionContent>
+                    </AccordionItem>
+                </Accordion>
             )}
 
             {/* Package Explanations Section */}
             {comparisonData && (
-                <section className="space-y-4">
-                    <div className="flex items-center gap-2 mb-4">
-                        <FileText className="h-6 w-6 text-primary" />
-                        <h2 className="text-2xl font-bold text-primary">Package Explanations</h2>
-                    </div>
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                        {comparisonData.selected.map(pkg => (
-                            <Card key={pkg.id} className="border shadow-sm hover:shadow-md transition-shadow">
-                                <CardHeader className="bg-muted/10 pb-3">
-                                    <CardTitle className="text-lg font-bold text-primary">{pkg.name}</CardTitle>
-                                </CardHeader>
-                                <CardContent className="pt-4 space-y-4">
-                                    <div>
-                                        <h4 className="text-sm font-semibold text-muted-foreground uppercase tracking-wider mb-1">Summary</h4>
-                                        <p className="text-foreground">{pkg.description}</p>
-                                    </div>
-                                    <div>
-                                        <h4 className="text-sm font-semibold text-muted-foreground uppercase tracking-wider mb-2">Detailed Breakdown</h4>
-                                        <ul className="space-y-2">
-                                            {pkg.includes.map((item, idx) => (
-                                                <li key={idx} className="flex items-start gap-2 text-sm">
-                                                    <span className="text-green-600 mt-0.5">✓</span>
-                                                    <span>{item}</span>
-                                                </li>
-                                            ))}
-                                        </ul>
-                                    </div>
-                                </CardContent>
-                            </Card>
-                        ))}
-                    </div>
-                </section>
+                <Accordion type="single" collapsible defaultValue="explanations" className="w-full">
+                    <AccordionItem value="explanations" className="border-none">
+                        <AccordionTrigger className="hover:no-underline py-2">
+                            <div className="flex items-center gap-2">
+                                <FileText className="h-6 w-6 text-primary" />
+                                <span className="text-2xl font-bold text-primary">Package Explanations</span>
+                            </div>
+                        </AccordionTrigger>
+                        <AccordionContent>
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mt-4">
+                                {comparisonData.selected.map(pkg => (
+                                    <Card key={pkg.id} className="border shadow-sm hover:shadow-md transition-shadow">
+                                        <CardHeader className="bg-muted/10 pb-3">
+                                            <CardTitle className="text-lg font-bold text-primary">{pkg.name}</CardTitle>
+                                        </CardHeader>
+                                        <CardContent className="pt-4 space-y-4">
+                                            <div>
+                                                <h4 className="text-sm font-semibold text-muted-foreground uppercase tracking-wider mb-1">Summary</h4>
+                                                <p className="text-foreground">{pkg.description}</p>
+                                            </div>
+                                            <div>
+                                                <h4 className="text-sm font-semibold text-muted-foreground uppercase tracking-wider mb-2">Detailed Breakdown</h4>
+                                                <ul className="space-y-2">
+                                                    {pkg.includes.map((item, idx) => (
+                                                        <li key={idx} className="flex items-start gap-2 text-sm">
+                                                            <span className="text-green-600 mt-0.5">✓</span>
+                                                            <span>{item}</span>
+                                                        </li>
+                                                    ))}
+                                                </ul>
+                                            </div>
+                                        </CardContent>
+                                    </Card>
+                                ))}
+                            </div>
+                        </AccordionContent>
+                    </AccordionItem>
+                </Accordion>
             )}
 
             {/* Actual Packages Section */}
-            <section>
-                <div className="flex items-center justify-between mb-4">
-                    <h2 className="text-2xl font-bold text-primary">Actual Packages</h2>
-                    <span className="text-muted-foreground text-sm">Currently live on your site</span>
-                </div>
-                {renderPackageList(actualPackages, "actual")}
-            </section>
+            <Accordion type="single" collapsible className="w-full">
+                <AccordionItem value="actual" className="border-none">
+                    <AccordionTrigger className="hover:no-underline py-2">
+                        <div className="flex items-center justify-between w-full pr-4">
+                            <span className="text-2xl font-bold text-primary">Actual Packages</span>
+                            <span className="text-muted-foreground text-sm font-normal">Currently live on your site</span>
+                        </div>
+                    </AccordionTrigger>
+                    <AccordionContent>
+                        <div className="mt-4">
+                            {renderPackageList(actualPackages, "actual")}
+                        </div>
+                    </AccordionContent>
+                </AccordionItem>
+            </Accordion>
 
             {/* Colorful Divider */}
             <div className="relative py-8">
@@ -701,15 +723,23 @@ export default function PackageSelection() {
             </div>
 
             {/* Other Packages Section */}
-            <section>
-                <div className="flex items-center justify-between mb-4">
-                    <h2 className="text-2xl font-bold text-purple-600">Other Packages</h2>
-                    <Button onClick={handleAdd} className="bg-purple-600 hover:bg-purple-700">
-                        <Plus className="mr-2 h-4 w-4" /> Add Custom Package
-                    </Button>
-                </div>
-                {renderPackageList(otherPackages, "other")}
-            </section>
+            <Accordion type="single" collapsible className="w-full">
+                <AccordionItem value="other" className="border-none">
+                    <AccordionTrigger className="hover:no-underline py-2">
+                        <span className="text-2xl font-bold text-purple-600">Other Packages</span>
+                    </AccordionTrigger>
+                    <AccordionContent>
+                        <div className="space-y-4 mt-4">
+                            <div className="flex justify-end">
+                                <Button onClick={handleAdd} className="bg-purple-600 hover:bg-purple-700">
+                                    <Plus className="mr-2 h-4 w-4" /> Add Custom Package
+                                </Button>
+                            </div>
+                            {renderPackageList(otherPackages, "other")}
+                        </div>
+                    </AccordionContent>
+                </AccordionItem>
+            </Accordion>
 
             {/* Edit/Add Modal */}
             <Dialog open={isModalOpen} onOpenChange={setIsModalOpen}>
