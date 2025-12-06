@@ -670,7 +670,7 @@ const Settings = () => {
           {/* Danger Zone — locked overlay / gated by PIN */}
           <Card
             className="p-6 bg-gradient-card border-destructive border-2 cursor-pointer"
-            onClick={() => { if (!dangerUnlocked) setPinModalOpen(true); }}
+            onClick={() => { if (!dangerUnlocked) { setPinInput(""); setPinModalOpen(true); } }}
           >
             <h2 className="text-2xl font-bold text-destructive mb-2">⚠️ Danger Zone</h2>
             {!dangerUnlocked && (
@@ -753,7 +753,7 @@ const Settings = () => {
                         variant="destructive"
                         size="lg"
                         className="bg-destructive text-destructive-foreground font-bold min-w-[200px]"
-                        onClick={() => setDeleteDialog("all")}
+                        onClick={() => { setPinInput(""); setDeleteDialog("all"); }}
                       >
                         <Trash2 className="h-5 w-5 mr-2" />
                         DELETE EVERYTHING
@@ -912,6 +912,7 @@ const Settings = () => {
             <Input
               inputMode="numeric"
               pattern="[0-9]*"
+              type="password"
               placeholder="Enter PIN"
               value={pinInput}
               onChange={(e) => setPinInput(e.target.value.replace(/\D/g, ''))}

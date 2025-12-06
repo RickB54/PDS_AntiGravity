@@ -24,6 +24,7 @@ import {
 import { useToast } from "@/hooks/use-toast";
 import DateRangeFilter, { DateRangeValue } from "@/components/filters/DateRangeFilter";
 import jsPDF from "jspdf";
+import autoTable from "jspdf-autotable";
 
 interface Customer {
   id?: string;
@@ -173,16 +174,108 @@ const SearchCustomer = () => {
 
   const generatePDF = (download = false) => {
     const doc = new jsPDF();
-    doc.setFontSize(16);
-    doc.text("Customer List", 20, 20);
-    let y = 35;
-    filteredCustomers.forEach((c) => {
-      doc.setFontSize(12);
-      doc.text(`${c.name} | ${c.phone} | ${c.email || '-'} | ${c.year} ${c.vehicle} ${c.model}`, 20, y);
-      y += 7;
-      if (y > 280) { doc.addPage(); y = 20; }
+    const pageWidth = doc.internal.pageSize.getWidth();
+    let y = 20;
+
+    // Report Header
+    doc.setFontSize(22);
+    doc.setTextColor(40, 40, 40);
+    doc.text("Customer List Report", 14, y);
+    y += 8;
+    doc.setFontSize(10);
+    doc.setTextColor(100);
+    doc.text(`Generated on: ${new Date().toLocaleDateString()} | Filter: ${dateFilter.toUpperCase()}`, 14, y);
+    y += 15;
+
+    filteredCustomers.forEach((c, index) => {
+      // Check space
+      if (y > 250) {
+        doc.addPage();
+        y = 20;
+      }
+
+      // Customer Header (Blue Background)
+      doc.setFillColor(59, 130, 246); // Blue-500
+      doc.rect(14, y, pageWidth - 28, 10, 'F');
+
+      doc.setFontSize(14);
+      doc.setTextColor(255, 255, 255);
+      doc.setFont("helvetica", "bold");
+      doc.text(c.name || "Unknown Customer", 18, y + 7);
+
+      y += 15;
+
+      // Reset Font
+      doc.setTextColor(40, 40, 40);
+      doc.setFont("helvetica", "normal");
+      doc.setFontSize(10);
+
+      // Data Grid Layout
+      const leftX = 18;
+      const rightX = 110;
+      const rowHeight = 6;
+      const startY = y;
+
+      // Contact Info (Left Column)
+      doc.setFont("helvetica", "bold"); doc.text("Contact Info", leftX, y); y += rowHeight;
+      doc.setFont("helvetica", "normal");
+      doc.text(`Phone: ${c.phone || "N/A"}`, leftX, y); y += rowHeight;
+      doc.text(`Email: ${c.email || "N/A"}`, leftX, y); y += rowHeight;
+      doc.text(`Address: ${c.address || "N/A"}`, leftX, y); y += rowHeight;
+      doc.text(`How Found: ${c.howFound === 'other' ? c.howFoundOther : c.howFound || "N/A"}`, leftX, y); y += rowHeight;
+
+      // Vehicle Info (Right Column) - Reset Y to start
+      let rightY = startY;
+      doc.setFont("helvetica", "bold"); doc.text("Vehicle Details", rightX, rightY); rightY += rowHeight;
+      doc.setFont("helvetica", "normal");
+      doc.text(`Vehicle: ${c.year || ''} ${c.vehicle || ''} ${c.model || ''}`, rightX, rightY); rightY += rowHeight;
+      doc.text(`Type/Color: ${c.vehicleType || '-'} / ${c.color || '-'}`, rightX, rightY); rightY += rowHeight;
+      doc.text(`Mileage: ${c.mileage || 'N/A'}`, rightX, rightY); rightY += rowHeight;
+      doc.text(`Condition (In/Out): ${c.conditionInside || '-'} / ${c.conditionOutside || '-'}`, rightX, rightY); rightY += rowHeight;
+
+      // Sync Y
+      y = Math.max(y, rightY) + 5;
+
+      // Service Info
+      doc.setFont("helvetica", "bold"); doc.text("Service History", leftX, y); y += rowHeight;
+      doc.setFont("helvetica", "normal");
+      doc.text(`Last Service: ${c.lastService || "N/A"}`, leftX, y); y += rowHeight;
+      doc.text(`Duration: ${c.duration || "N/A"}`, leftX, y); y += rowHeight;
+
+      const services = Array.isArray(c.services) ? c.services.join(", ") : "";
+      if (services) {
+        const splitServices = doc.splitTextToSize(`Services: ${services}`, pageWidth - 40);
+        doc.text(splitServices, leftX, y);
+        y += (splitServices.length * rowHeight);
+      } else {
+        doc.text("Services: None recorded", leftX, y);
+        y += rowHeight;
+      }
+
+      // Notes
+      if (c.notes) {
+        y += 2;
+        doc.setFont("helvetica", "bold"); doc.text("Notes:", leftX, y); y += rowHeight;
+        doc.setFont("helvetica", "normal");
+        const splitNotes = doc.splitTextToSize(c.notes, pageWidth - 40);
+        doc.text(splitNotes, leftX, y);
+        y += (splitNotes.length * rowHeight);
+      }
+
+      // Separator
+      y += 5;
+      doc.setDrawColor(200);
+      doc.line(14, y, pageWidth - 14, y);
+      y += 10;
     });
-    if (download) doc.save("customers.pdf"); else window.open(doc.output('bloburl'), '_blank');
+
+    if (download) {
+      doc.save(`customers_report_${new Date().toISOString().slice(0, 10)}.pdf`);
+      toast({ title: "PDF Saved", description: "Customer report downloaded." });
+    } else {
+      doc.autoPrint();
+      window.open(doc.output('bloburl'), '_blank');
+    }
   };
 
   const [expandedCustomers, setExpandedCustomers] = useState<string[]>([]);
