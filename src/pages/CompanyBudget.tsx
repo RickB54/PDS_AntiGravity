@@ -32,12 +32,14 @@ import {
     CollapsibleContent,
     CollapsibleTrigger,
 } from "@/components/ui/collapsible";
-import { Download, PieChart as PieChartIcon, BarChart3, TrendingUp, Plus, Filter, ChevronDown, Trash2, Pencil } from "lucide-react";
+import { Download, PieChart as PieChartIcon, BarChart3, TrendingUp, Plus, Filter, ChevronDown, Trash2, Pencil, Printer, FileText } from "lucide-react";
 import { getReceivables, Receivable, upsertReceivable } from "@/lib/receivables";
 import { getExpenses, upsertExpense } from "@/lib/db";
 import DateRangeFilter, { DateRangeValue } from "@/components/filters/DateRangeFilter";
 import localforage from "localforage";
 import { toast } from "sonner";
+import jsPDF from "jspdf";
+import autoTable from "jspdf-autotable";
 
 interface Expense {
     id: string;
@@ -90,6 +92,16 @@ const CATEGORY_COLORS = [
     "#6366f1", // indigo
     "#84cc16", // lime
 ];
+
+// Helper to convert hex to rgb
+const hexToRgb = (hex: string) => {
+    const result = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex);
+    return result ? {
+        r: parseInt(result[1], 16),
+        g: parseInt(result[2], 16),
+        b: parseInt(result[3], 16)
+    } : { r: 0, g: 0, b: 0 };
+};
 
 const CompanyBudget = () => {
     const [incomeList, setIncomeList] = useState<Receivable[]>([]);
@@ -330,6 +342,214 @@ const CompanyBudget = () => {
         toast.success("Category updated");
     };
 
+    const generatePDF = (action: 'save' | 'print') => {
+        const doc = new jsPDF();
+        const pageWidth = doc.internal.pageSize.getWidth();
+
+        // Title
+        doc.setFontSize(22);
+        doc.setTextColor(40, 40, 40);
+        doc.text("Company Budget Report", 14, 20);
+        doc.setFontSize(10);
+        doc.setTextColor(100);
+        doc.text(`Generated on: ${new Date().toLocaleDateString()} | Filter: ${dateFilter.toUpperCase()}`, 14, 26);
+
+        // Financial Summary Box
+        doc.setFillColor(248, 250, 252);
+        doc.setDrawColor(226, 232, 240);
+        doc.roundedRect(14, 35, pageWidth - 28, 45, 3, 3, 'FD');
+
+        const net = totalIncome - totalExpense;
+        const netColor = net >= 0 ? [22, 163, 74] : [220, 38, 38];
+
+        // Summary Statistics
+        doc.setFontSize(12);
+        doc.setTextColor(100);
+        doc.text("Total Income", 30, 50);
+        doc.setFontSize(16);
+        doc.setTextColor(22, 163, 74);
+        doc.text(`$${totalIncome.toFixed(2)}`, 30, 60);
+
+        doc.setFontSize(12);
+        doc.setTextColor(100);
+        doc.text("Total Expenses", 85, 50);
+        doc.setFontSize(16);
+        doc.setTextColor(220, 38, 38);
+        doc.text(`$${totalExpense.toFixed(2)}`, 85, 60);
+
+        doc.setFontSize(12);
+        doc.setTextColor(100);
+        doc.text("Net Profit", 140, 50);
+        doc.setFontSize(16);
+        doc.setTextColor(netColor[0], netColor[1], netColor[2]);
+        doc.text(`$${Math.abs(net).toFixed(2)}`, 140, 60);
+
+        let yPos = 90;
+
+        // Category Breakdown with Colors
+        doc.setFontSize(14);
+        doc.setTextColor(0);
+        doc.text("Overview & Categories", 14, yPos);
+        yPos += 8;
+
+        const catRows = filteredCategories.map(c => {
+            const pct = (c.amount / (c.type === 'income' ? totalIncome : totalExpense)) * 100;
+            return [
+                "", // Color dot placeholder
+                c.name,
+                c.type.toUpperCase(),
+                `$${c.amount.toFixed(2)}`,
+                `${pct.toFixed(1)}%`
+            ];
+        });
+
+        autoTable(doc, {
+            startY: yPos,
+            head: [['', 'Category', 'Type', 'Amount', 'Share']],
+            body: catRows,
+            theme: 'grid',
+            headStyles: { fillColor: [241, 245, 249], textColor: [71, 85, 105], fontStyle: 'bold' },
+            columnStyles: {
+                0: { cellWidth: 10 },
+                1: { cellWidth: 'auto', fontStyle: 'bold' },
+                3: { halign: 'right' },
+                4: { halign: 'right' }
+            },
+            didDrawCell: (data) => {
+                if (data.section === 'body' && data.column.index === 0) {
+                    const cat = filteredCategories[data.row.index];
+                    if (cat) {
+                        const rgb = hexToRgb(cat.color);
+                        doc.setFillColor(rgb.r, rgb.g, rgb.b);
+                        const dim = data.cell.height - 6;
+                        doc.circle(data.cell.x + data.cell.width / 2, data.cell.y + data.cell.height / 2, 3, 'F');
+                    }
+                }
+            }
+        });
+
+        // @ts-ignore
+        yPos = doc.lastAutoTable.finalY + 15;
+
+        // Income Breakdown
+        if (yPos > 250) { doc.addPage(); yPos = 20; }
+        doc.setFontSize(14);
+        doc.text("Income Breakdown", 14, yPos);
+        yPos += 8;
+
+        const incomeRows = incomeList.filter(i => filterByDate(i.date || i.createdAt || '')).map(i => [
+            (i.date || i.createdAt || '').slice(0, 10),
+            i.category || 'General',
+            i.description || '-',
+            `$${i.amount.toFixed(2)}`
+        ]);
+
+        autoTable(doc, {
+            startY: yPos,
+            head: [['Date', 'Category', 'Description', 'Amount']],
+            body: incomeRows,
+            theme: 'striped',
+            headStyles: { fillColor: [22, 163, 74] },
+            columnStyles: { 3: { halign: 'right', fontStyle: 'bold' } }
+        });
+
+        // @ts-ignore
+        yPos = doc.lastAutoTable.finalY + 15;
+
+        // Expense Breakdown
+        if (yPos > 250) { doc.addPage(); yPos = 20; }
+        doc.text("Expense Breakdown", 14, yPos);
+        yPos += 8;
+
+        const expenseRows = expenseList.filter(e => filterByDate(e.createdAt)).map(e => [
+            (e.createdAt || '').slice(0, 10),
+            e.category || 'General',
+            e.description || '-',
+            `$${e.amount.toFixed(2)}`
+        ]);
+
+        autoTable(doc, {
+            startY: yPos,
+            head: [['Date', 'Category', 'Description', 'Amount']],
+            body: expenseRows,
+            theme: 'striped',
+            headStyles: { fillColor: [220, 38, 38] },
+            columnStyles: { 3: { halign: 'right', fontStyle: 'bold' } }
+        });
+
+        // Budget Planning Data
+        doc.addPage();
+        yPos = 20;
+        doc.setFontSize(14);
+        doc.text("Budget Planning Data (This Month)", 14, yPos);
+        yPos += 10;
+
+        const budgetRows: any[] = [];
+
+        // Income Targets
+        const uniqueIncomeCats = [...DEFAULT_CATEGORIES.income, ...customIncomeCategories, ...customCategories.filter(c => !DEFAULT_CATEGORIES.expense.includes(c))];
+        uniqueIncomeCats.forEach(cat => {
+            const actual = incomeList.filter(i => {
+                const d = new Date(i.date || i.createdAt || '');
+                const now = new Date();
+                return d.getMonth() === now.getMonth() && d.getFullYear() === now.getFullYear() && (i.category === cat);
+            }).reduce((sum, i) => sum + (i.amount || 0), 0);
+
+            const targetObj = budgetTargets.find(t => t.category === cat && t.type === 'income');
+            const target = targetObj?.target || 0;
+            const variance = actual - target;
+
+            budgetRows.push([cat, 'Income', `$${target.toFixed(2)}`, `$${actual.toFixed(2)}`, `${variance >= 0 ? '+' : ''}${variance.toFixed(2)}`]);
+        });
+
+        // Expense Targets
+        const uniqueExpenseCats = [...DEFAULT_CATEGORIES.expense, ...customExpenseCategories];
+        uniqueExpenseCats.forEach(cat => {
+            const actual = expenseList.filter(e => {
+                const d = new Date(e.createdAt);
+                const now = new Date();
+                return d.getMonth() === now.getMonth() && d.getFullYear() === now.getFullYear() && (e.category === cat);
+            }).reduce((sum, e) => sum + (e.amount || 0), 0);
+
+            const targetObj = budgetTargets.find(t => t.category === cat && t.type === 'expense');
+            const target = targetObj?.target || 0;
+            const variance = target - actual;
+
+            budgetRows.push([cat, 'Expense', `$${target.toFixed(2)}`, `$${actual.toFixed(2)}`, `${variance >= 0 ? '+' : ''}${variance.toFixed(2)}`]);
+        });
+
+        autoTable(doc, {
+            startY: yPos,
+            head: [['Category', 'Type', 'Target', 'Actual', 'Variance']],
+            body: budgetRows,
+            theme: 'grid',
+            headStyles: { fillColor: [59, 130, 246] },
+            columnStyles: {
+                2: { halign: 'right' },
+                3: { halign: 'right' },
+                4: { halign: 'right', fontStyle: 'bold' }
+            },
+            didParseCell: (data) => {
+                if (data.section === 'body' && data.column.index === 4) {
+                    const text = data.cell.text[0];
+                    if (text.startsWith('+') || (data.row.raw[1] === 'Expense' && !text.startsWith('-'))) {
+                        data.cell.styles.textColor = [22, 163, 74];
+                    } else {
+                        data.cell.styles.textColor = [220, 38, 38];
+                    }
+                }
+            }
+        });
+
+        if (action === 'save') {
+            doc.save(`Company_Budget_Report_${new Date().toISOString().slice(0, 10)}.pdf`);
+            toast.success("PDF saved successfully");
+        } else {
+            doc.autoPrint();
+            window.open(doc.output('bloburl'));
+        }
+    };
+
     const exportData = (format: 'json' | 'csv') => {
         if (format === 'json') {
             const data = {
@@ -396,6 +616,14 @@ const CompanyBudget = () => {
                                 </SelectContent>
                             </Select>
                             <DateRangeFilter value={dateRange} onChange={setDateRange} storageKey="budget-range" />
+                            <Button variant="outline" size="sm" onClick={() => generatePDF('save')}>
+                                <FileText className="h-4 w-4 mr-2" />
+                                Save PDF
+                            </Button>
+                            <Button variant="outline" size="sm" onClick={() => generatePDF('print')}>
+                                <Printer className="h-4 w-4 mr-2" />
+                                Print
+                            </Button>
                             <Button variant="outline" size="sm" onClick={() => exportData('csv')}>
                                 <Download className="h-4 w-4 mr-2" />
                                 CSV

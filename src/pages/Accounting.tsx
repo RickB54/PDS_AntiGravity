@@ -41,6 +41,7 @@ import { useToast } from "@/hooks/use-toast";
 import { getInvoices, getExpenses, upsertExpense } from "@/lib/db";
 import { getReceivables, upsertReceivable, Receivable } from "@/lib/receivables";
 import jsPDF from "jspdf";
+import autoTable from "jspdf-autotable";
 import DateRangeFilter, { DateRangeValue } from "@/components/filters/DateRangeFilter";
 import localforage from "localforage";
 import { getCategoryColors } from "@/lib/categoryColors";
@@ -283,34 +284,171 @@ const Accounting = () => {
     toast({ title: "Category Created", description: `"${trimmedName}" has been added` });
   };
 
-  const generatePDF = (download = false) => {
+  const generatePDF = (action: 'save' | 'print') => {
     const doc = new jsPDF();
-    doc.setFontSize(18);
-    doc.text("Prime Detail Solutions", 105, 20, { align: "center" });
+    const pageWidth = doc.internal.pageSize.getWidth();
+
+    // Helper to convert hex/color string to rgb
+    const getRgb = (color: string) => {
+      // Create a temporary element to compute color
+      const el = document.createElement('div');
+      el.style.color = color;
+      document.body.appendChild(el);
+      const computed = window.getComputedStyle(el).color;
+      document.body.removeChild(el);
+      const match = computed.match(/\d+/g);
+      return match ? { r: Number(match[0]), g: Number(match[1]), b: Number(match[2]) } : { r: 0, g: 0, b: 0 };
+    };
+
+    // Title
+    doc.setFontSize(22);
+    doc.setTextColor(40, 40, 40);
+    doc.text("Accounting Report", 14, 20);
+    doc.setFontSize(10);
+    doc.setTextColor(100);
+    doc.text(`Generated on: ${new Date().toLocaleDateString()} | Filter: ${dateFilter.toUpperCase()}`, 14, 26);
+
+    // Financial Summary Box
+    doc.setFillColor(248, 250, 252);
+    doc.setDrawColor(226, 232, 240);
+    doc.roundedRect(14, 35, pageWidth - 28, 55, 3, 3, 'FD');
+
+    const profitVal = calculateProfit();
+    const netColor = profitVal >= 0 ? [22, 163, 74] : [220, 38, 38];
+    const totalRevenue = dailyRevenue + weeklyRevenue + monthlyRevenue; // This logic in original code assumes non-overlapping which is display-only, let's use actual calculated totals for report consistency
+
+    // Recalculate totals for report to be precise based on current view
+    // Compute totals using the same filter logic as calculateProfit for consistency
+    const now = new Date();
+    const startQuick = dateFilter === 'daily' ? new Date(now.setHours(0, 0, 0, 0))
+      : dateFilter === 'weekly' ? new Date(Date.now() - 7 * 24 * 60 * 60 * 1000)
+        : dateFilter === 'monthly' ? new Date(new Date().getFullYear(), new Date().getMonth(), 1)
+          : null;
+
+    const within = (dStr: string) => {
+      const d = new Date(dStr);
+      if (startQuick && d < startQuick) return false;
+      if (dateRange.from && d < new Date(dateRange.from.setHours(0, 0, 0, 0))) return false;
+      if (dateRange.to && d > new Date(dateRange.to.setHours(23, 59, 59, 999))) return false;
+      return true;
+    };
+
+    const revenueInvoices = invoiceList.filter(inv => within(inv.createdAt)).reduce((sum, i) => sum + (i.total || 0), 0);
+    const revenueIncome = incomeList.filter(rcv => within(rcv.date || rcv.createdAt)).reduce((sum, r) => sum + (r.amount || 0), 0);
+    const totalRev = revenueInvoices + revenueIncome;
+    const totalExp = expenseList.filter(ex => within(ex.createdAt)).reduce((sum, e) => sum + (e.amount || 0), 0);
+    const netProfit = totalRev - totalExp;
+
+    // Summary Statistics
     doc.setFontSize(12);
-    doc.text("Accounting Report", 105, 30, { align: "center" });
-    doc.text(`Date: ${new Date().toLocaleDateString()}`, 20, 45);
+    doc.setTextColor(100);
+    doc.text("Total Revenue", 30, 50);
+    doc.setFontSize(16);
+    doc.setTextColor(22, 163, 74);
+    doc.text(`$${totalRev.toFixed(2)}`, 30, 60);
 
-    doc.text("Revenue:", 20, 60);
-    doc.text(`Daily: $${dailyRevenue.toFixed(2)}`, 30, 70);
-    doc.text(`Weekly: $${weeklyRevenue.toFixed(2)}`, 30, 78);
-    doc.text(`Monthly: $${monthlyRevenue.toFixed(2)}`, 30, 86);
+    doc.setFontSize(12);
+    doc.setTextColor(100);
+    doc.text("Total Expenses", 85, 50);
+    doc.setFontSize(16);
+    doc.setTextColor(220, 38, 38);
+    doc.text(`$${totalExp.toFixed(2)}`, 85, 60);
 
-    doc.text(`Total Expenses: $${totalSpent.toFixed(2)}`, 20, 100);
+    doc.setFontSize(12);
+    doc.setTextColor(100);
+    doc.text("Net Profit", 140, 50);
+    doc.setFontSize(16);
+    doc.setTextColor(netColor[0], netColor[1], netColor[2]);
+    doc.text(`$${Math.abs(netProfit).toFixed(2)}`, 140, 60);
+    doc.setFontSize(10);
+    doc.text(netProfit >= 0 ? "Profit" : "Loss", 140, 66);
 
-    const profit = calculateProfit();
+    // Revenue Tracking Details
+    doc.setFontSize(10);
+    doc.setTextColor(100);
+    doc.text("Revenue Tracking (Current Period)", 30, 80);
+    doc.setFontSize(10);
+    doc.setTextColor(40);
+    doc.text(`Daily: $${dailyRevenue.toFixed(2)}  |  Weekly: $${weeklyRevenue.toFixed(2)}  |  Monthly: $${monthlyRevenue.toFixed(2)}`, 30, 86);
+
+    let yPos = 100;
+
+    // Transaction Ledger - Income
     doc.setFontSize(14);
-    doc.text(`${profit >= 0 ? 'Profit' : 'Loss'}: $${Math.abs(profit).toFixed(2)}`, 20, 115);
+    doc.setTextColor(0);
+    doc.text("Transaction Ledger", 14, yPos);
+    yPos += 8;
+    doc.setFontSize(12);
+    doc.setTextColor(22, 163, 74);
+    doc.text("Income (Credits)", 14, yPos);
+    yPos += 6;
 
+    const incomeRows = incomeList.filter(i => within(i.date || i.createdAt || '')).map(i => [
+      (i.date || i.createdAt || '').slice(0, 10),
+      i.category || 'General',
+      i.description || i.customerName || '-',
+      `$${i.amount.toFixed(2)}`
+    ]);
+
+    autoTable(doc, {
+      startY: yPos,
+      head: [['Date', 'Category', 'Description', 'Amount']],
+      body: incomeRows,
+      theme: 'striped',
+      headStyles: { fillColor: [22, 163, 74] },
+      columnStyles: { 3: { halign: 'right', fontStyle: 'bold' } }
+    });
+
+    // @ts-ignore
+    yPos = doc.lastAutoTable.finalY + 15;
+
+    // Transaction Ledger - Expenses
+    if (yPos > 250) { doc.addPage(); yPos = 20; }
+    doc.setFontSize(12);
+    doc.setTextColor(220, 38, 38);
+    doc.text("Expenses (Debits)", 14, yPos);
+    yPos += 6;
+
+    const expenseRows = expenseList.filter(e => within(e.createdAt)).map(e => [
+      (e.createdAt || '').slice(0, 10),
+      e.category || 'General',
+      e.description || '-',
+      `$${e.amount.toFixed(2)}`
+    ]);
+
+    autoTable(doc, {
+      startY: yPos,
+      head: [['Date', 'Category', 'Description', 'Amount']],
+      body: expenseRows,
+      theme: 'striped',
+      headStyles: { fillColor: [220, 38, 38] },
+      columnStyles: { 3: { halign: 'right', fontStyle: 'bold' } }
+    });
+
+    // Notes Section
     if (notes) {
+      // @ts-ignore
+      yPos = doc.lastAutoTable.finalY + 20;
+      if (yPos > 250) { doc.addPage(); yPos = 20; }
+
+      doc.setFillColor(254, 252, 232); // yellow-50
+      doc.setDrawColor(253, 224, 71); // yellow-300
+      doc.roundedRect(14, yPos, pageWidth - 28, 30, 3, 3, 'FD');
+
+      doc.setFontSize(12);
+      doc.setTextColor(40);
+      doc.text("Notes", 20, yPos + 10);
       doc.setFontSize(10);
-      doc.text("Notes:", 20, 130);
-      doc.text(notes, 20, 138, { maxWidth: 170 });
+      doc.setTextColor(80);
+      const splitNotes = doc.splitTextToSize(notes, pageWidth - 40);
+      doc.text(splitNotes, 20, yPos + 18);
     }
 
-    if (download) {
-      doc.save(`accounting-${new Date().toISOString().split('T')[0]}.pdf`);
+    if (action === 'save') {
+      doc.save(`accounting-report-${new Date().toISOString().slice(0, 10)}.pdf`);
+      toast({ title: "PDF Saved", description: "Report downloaded successfully." });
     } else {
+      doc.autoPrint();
       window.open(doc.output('bloburl'), '_blank');
     }
   };
@@ -337,10 +475,10 @@ const Accounting = () => {
               </Select>
               <DateRangeFilter value={dateRange} onChange={setDateRange} storageKey="accounting-range" />
               <Button variant="outline" onClick={() => { try { window.location.href = '/reports?tab=accounting'; } catch { } }}>Report</Button>
-              <Button size="icon" variant="outline" onClick={() => generatePDF(false)}>
+              <Button size="icon" variant="outline" onClick={() => generatePDF('print')}>
                 <Printer className="h-4 w-4" />
               </Button>
-              <Button size="icon" variant="outline" onClick={() => generatePDF(true)}>
+              <Button size="icon" variant="outline" onClick={() => generatePDF('save')}>
                 <Save className="h-4 w-4" />
               </Button>
               <Button variant="outline" onClick={() => { try { window.location.href = '/reports?tab=accounting'; } catch { } }}>View Accounting Report</Button>
