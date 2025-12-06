@@ -24,12 +24,12 @@ export default function AboutDialog({ open, onOpenChange }: AboutDialogProps) {
           <p className="text-muted-foreground">
             We specialize in high-quality interior and exterior detailing, paint correction,
             ceramic coatings, and mobile-ready services. With transparent pricing and expert
-            craftsmanship, we deliver showroom results at our optimized detailing facility.
+            craftsmanship, we deliver showroom results at our optimized detailing facility or onsite.
           </p>
           <div className="pt-4 border-t">
             <p className="text-sm text-muted-foreground">
-              Website: <a href="https://prime-detail-solutions.netlify.app/" className="text-primary hover:underline">
-                prime-detail-solutions.netlify.app
+              Email: <a href="mailto:primedetailsolutions.ma.nh@gmail.com?subject=Inquiry from Website" className="text-primary hover:underline">
+                primedetailsolutions.ma.nh@gmail.com
               </a>
             </p>
             <p className="text-xs text-muted-foreground mt-2">
@@ -41,7 +41,7 @@ export default function AboutDialog({ open, onOpenChange }: AboutDialogProps) {
           Close
         </Button>
       </DialogContent>
-    </Dialog>
+    </Dialog >
   );
 }
 

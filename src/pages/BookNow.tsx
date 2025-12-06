@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { Navbar } from "@/components/Navbar";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
+import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
@@ -56,7 +57,7 @@ const BookNow = () => {
   const [couponError, setCouponError] = useState<string>('');
 
   // Live pricing + meta state
-  const [savedPricesLive, setSavedPricesLive] = useState<Record<string,string>>({});
+  const [savedPricesLive, setSavedPricesLive] = useState<Record<string, string>>({});
   const [packageMetaLive, setPackageMetaLive] = useState<Record<string, any>>({});
   const [addOnMetaLive, setAddOnMetaLive] = useState<Record<string, any>>({});
   const [customPackagesLive, setCustomPackagesLive] = useState<any[]>([]);
@@ -69,9 +70,9 @@ const BookNow = () => {
     truck: "Truck/Van/Large SUV",
     luxury: "Luxury/High-End",
   });
-  const [vehicleOptions, setVehicleOptions] = useState<string[]>(['compact','midsize','truck','luxury']);
+  const [vehicleOptions, setVehicleOptions] = useState<string[]>(['compact', 'midsize', 'truck', 'luxury']);
 
-  const getKey = (type: 'package'|'addon', id: string, size: string) => `${type}:${id}:${size}`;
+  const getKey = (type: 'package' | 'addon', id: string, size: string) => `${type}:${id}:${size}`;
 
   const fetchLive = async () => {
     try {
@@ -89,7 +90,7 @@ const BookNow = () => {
           return;
         }
       }
-    } catch {}
+    } catch { }
     try {
       const snapshot = await buildFullSyncPayload();
       setSavedPricesLive(snapshot.savedPrices || {});
@@ -98,7 +99,7 @@ const BookNow = () => {
       setCustomPackagesLive(snapshot.customPackages || []);
       setCustomAddOnsLive(snapshot.customAddOns || []);
       setLastSyncTs(Date.now());
-    } catch {}
+    } catch { }
   };
 
   useEffect(() => {
@@ -123,12 +124,12 @@ const BookNow = () => {
               if (id && name) { map[id] = name; opts.push(id); }
             });
             setVehicleLabels(map);
-            setVehicleOptions(opts.length ? opts : ['compact','midsize','truck','luxury']);
+            setVehicleOptions(opts.length ? opts : ['compact', 'midsize', 'truck', 'luxury']);
             // ensure current selection is valid
             if (!opts.includes(vehicleType)) setVehicleType(opts[0] || 'compact');
           }
         }
-      } catch {}
+      } catch { }
     };
     loadVehicleTypes();
     const onChanged = (e: any) => {
@@ -227,7 +228,7 @@ const BookNow = () => {
       localStorage.removeItem('selectedVehicleType');
       localStorage.removeItem('selectedPackage');
       localStorage.removeItem('selectedAddOns');
-    } catch {}
+    } catch { }
   }, []);
 
   // Apply coupon against live coupons
@@ -254,12 +255,12 @@ const BookNow = () => {
       setAppliedDiscount(discount);
       setAppliedCouponCode(match.code);
       setCouponError('');
-    } catch {}
+    } catch { }
   };
 
   const validateForm = () => {
     const newErrors: Record<string, string> = {};
-    
+
     if (!formData.name.trim()) newErrors.name = "Name is required";
     if (!formData.email.trim()) {
       newErrors.email = "Email is required";
@@ -275,7 +276,7 @@ const BookNow = () => {
     if (!formData.model.trim()) newErrors.model = "Vehicle model is required";
     if (!formData.year.trim()) newErrors.year = "Year is required";
     if (!formData.package) newErrors.package = "Please select a package";
-    
+
     setErrors(newErrors);
     return Object.keys(newErrors).length === 0;
   };
@@ -300,7 +301,7 @@ const BookNow = () => {
       const autoPassword = `PDS${Math.random().toString(36).slice(2, 10)}`;
       console.log(`Customer account created: ${formData.email} / ${autoPassword}`);
       console.log(`Portal link: ${window.location.origin}/portal?token=auto-${Date.now()}`);
-    } catch {}
+    } catch { }
 
     // 1) Save booking to API and local store for instant calendar
     const dateIso = formData.datetime ? new Date(formData.datetime).toISOString() : new Date().toISOString();
@@ -318,7 +319,7 @@ const BookNow = () => {
     };
     try {
       await api('/api/bookings', { method: 'POST', body: JSON.stringify(bookingPayload) });
-    } catch {}
+    } catch { }
     try {
       if (isSupabaseEnabled()) {
         await bookingsSvc.create({
@@ -334,7 +335,7 @@ const BookNow = () => {
           status: 'pending'
         });
       }
-    } catch {}
+    } catch { }
     const localBookingId = `booking_${Date.now()}`;
     addBooking({ id: localBookingId, title: bookingPayload.service || "Booking", customer: formData.name, date: dateIso, status: "pending" });
 
@@ -352,23 +353,23 @@ const BookNow = () => {
       const monthName = d.toLocaleString(undefined, { month: "long" });
       const path = `Bookings ${year}/${monthName}/`;
       uploadToFileManager(pdfDataUrl, path, bookingForPdf, { service: bookingPayload.service, price: discountedTotal });
-    } catch {}
+    } catch { }
 
     // 3) Hidden admin email
     try {
       await api('/api/email/admin', { method: 'POST', body: JSON.stringify({ ...bookingPayload, pdfDataUrl }) });
-    } catch {}
+    } catch { }
 
     // 4) Customer email
     try {
       await api('/api/email/customer', { method: 'POST', body: JSON.stringify({ to: formData.email, ...bookingPayload, pdfDataUrl }) });
-    } catch {}
+    } catch { }
 
     // 5) Admin toast + sound (local only)
     try {
       toast({ title: `NEW BOOKING! $${discountedTotal} — ${formData.name}`, description: `${new Date(dateIso).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`, duration: 8000 });
       const audio = new Audio('/sounds/cash-register.mp3');
-      audio.play().catch(() => {});
+      audio.play().catch(() => { });
       if (typeof Notification !== 'undefined') {
         if (Notification.permission === 'granted') {
           new Notification('New Booking', { body: `${formData.name} — $${total}`, icon: '/favicon.ico' });
@@ -376,10 +377,10 @@ const BookNow = () => {
           Notification.requestPermission().then((p) => { if (p === 'granted') new Notification('New Booking', { body: `${formData.name} — $${total}`, icon: '/favicon.ico' }); });
         }
       }
-    } catch {}
+    } catch { }
 
     // Allow normal browser POST so Netlify can capture the submission
-    try { formEl.submit(); } catch {}
+    try { formEl.submit(); } catch { }
 
     // 6) Redirect to thank you
     window.location.href = `/thank-you?total=${encodeURIComponent(discountedTotal)}&name=${encodeURIComponent(formData.name)}&time=${encodeURIComponent(new Date(dateIso).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }))}&date=${encodeURIComponent(new Date(dateIso).toLocaleDateString())}`;
@@ -402,7 +403,7 @@ const BookNow = () => {
   };
 
   const toggleAddOn = (addonId: string) => {
-    setAddOns(prev => 
+    setAddOns(prev =>
       prev.includes(addonId) ? prev.filter(a => a !== addonId) : [...prev, addonId]
     );
   };
@@ -410,7 +411,7 @@ const BookNow = () => {
   return (
     <div className="min-h-screen bg-background">
       <Navbar />
-      
+
       <main className="container mx-auto px-4 py-8 max-w-3xl">
         <Button variant="ghost" asChild className="mb-6">
           <Link to="/">
@@ -574,27 +575,35 @@ const BookNow = () => {
               </div>
 
               <div className="space-y-2">
-                <Label>Add-Ons (Optional)</Label>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-3 p-4 border border-border rounded-md">
-                  {liveAddOns.map((addon: any) => {
-                    const isSelected = addOns.includes(addon.id);
-                    return (
-                      <Card
-                        key={addon.id}
-                        className={`p-3 cursor-pointer transition-all ${isSelected ? 'border-primary ring-2 ring-primary/40 bg-primary/5' : 'border-border hover:border-primary/30'}`}
-                        onClick={() => toggleAddOn(addon.id)}
-                      >
-                        <div className="flex items-center justify-between">
-                          <div>
-                            <div className="text-sm font-semibold text-foreground">{addon.name}</div>
-                            <div className="text-primary font-bold">${addon.pricing[vehicleType]}</div>
-                          </div>
-                          {isSelected && <div className="bg-primary rounded-full px-2 py-1 text-xs text-white">✓</div>}
-                        </div>
-                      </Card>
-                    );
-                  })}
-                </div>
+                <Accordion type="single" collapsible className="w-full">
+                  <AccordionItem value="addons" className="border border-border rounded-md px-4">
+                    <AccordionTrigger className="hover:no-underline py-4">
+                      <Label className="cursor-pointer text-base">Add-Ons (Optional)</Label>
+                    </AccordionTrigger>
+                    <AccordionContent className="pt-2 pb-4">
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                        {liveAddOns.map((addon: any) => {
+                          const isSelected = addOns.includes(addon.id);
+                          return (
+                            <Card
+                              key={addon.id}
+                              className={`p-3 cursor-pointer transition-all ${isSelected ? 'border-primary ring-2 ring-primary/40 bg-primary/5' : 'border-border hover:border-primary/30'}`}
+                              onClick={() => toggleAddOn(addon.id)}
+                            >
+                              <div className="flex items-center justify-between">
+                                <div>
+                                  <div className="text-sm font-semibold text-foreground">{addon.name}</div>
+                                  <div className="text-primary font-bold">${addon.pricing[vehicleType]}</div>
+                                </div>
+                                {isSelected && <div className="bg-primary rounded-full px-2 py-1 text-xs text-white">✓</div>}
+                              </div>
+                            </Card>
+                          );
+                        })}
+                      </div>
+                    </AccordionContent>
+                  </AccordionItem>
+                </Accordion>
               </div>
 
               <div className="space-y-2">
@@ -611,29 +620,29 @@ const BookNow = () => {
               {/* === LIVE COUPONS FROM ADMIN === */}
               <div className="mt-8 p-6 bg-zinc-900 border border-zinc-700 rounded-xl">
                 <h3 className="text-xl font-bold text-white mb-4">Coupon Code</h3>
-                
+
                 <div className="flex gap-3">
-                  <Input 
-                    type="text" 
-                    placeholder="Enter code" 
-                    className="flex-1 px-5 py-4 bg-black border border-zinc-600 rounded-lg text-white focus:border-red-500 focus:outline-none" 
-                    value={couponCode} 
-                    onChange={(e) => setCouponCode(e.target.value.toUpperCase())} 
-                    onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); applyCoupon(); } }} 
-                  /> 
-                  <Button 
-                    className="bg-red-600 hover:bg-red-700 font-bold px-8" 
+                  <Input
+                    type="text"
+                    placeholder="Enter code"
+                    className="flex-1 px-5 py-4 bg-black border border-zinc-600 rounded-lg text-white focus:border-red-500 focus:outline-none"
+                    value={couponCode}
+                    onChange={(e) => setCouponCode(e.target.value.toUpperCase())}
+                    onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); applyCoupon(); } }}
+                  />
+                  <Button
+                    className="bg-red-600 hover:bg-red-700 font-bold px-8"
                     type="button"
-                    onClick={applyCoupon} 
-                  > 
-                    Apply 
-                  </Button> 
+                    onClick={applyCoupon}
+                  >
+                    Apply
+                  </Button>
                 </div>
 
                 {appliedDiscount > 0 && (
-                  <div className="mt-4 text-green-400 font-bold text-lg"> 
-                    ✓ {appliedCouponCode} applied — You saved ${appliedDiscount.toFixed(2)}! 
-                  </div> 
+                  <div className="mt-4 text-green-400 font-bold text-lg">
+                    ✓ {appliedCouponCode} applied — You saved ${appliedDiscount.toFixed(2)}!
+                  </div>
                 )}
 
                 {couponError && (
@@ -668,10 +677,41 @@ const BookNow = () => {
                         preferredDate: dateIso,
                         notes: formData.message,
                       };
-                      await fetch("http://localhost:6061/api/email/admin", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(estimatePayload) });
+
+                      // 1. Send email (simulated locally)
+                      await api('/api/email/admin', { method: 'POST', body: JSON.stringify(estimatePayload) });
+
+                      // 2. Generate PDF and save to File Manager
+                      const pdfDataUrl = generateBookingPDF({
+                        id: `est_${Date.now()}`,
+                        customer: formData.name,
+                        date: dateIso,
+                        title: "Estimate Request",
+                        status: "pending"
+                      } as any, {
+                        vehicle: `${formData.year} ${formData.make} ${formData.model}`,
+                        service: `Estimate: ${formData.package}`,
+                        price: discountedTotal,
+                        notes: formData.message
+                      });
+
+                      const d = new Date();
+                      const year = d.getFullYear();
+                      const monthName = d.toLocaleString(undefined, { month: 'long' });
+                      const path = `Estimates/${year}/${monthName}/`;
+
+                      savePDFToArchive(
+                        "Estimate",
+                        formData.name,
+                        `est_${Date.now()}`,
+                        pdfDataUrl,
+                        { fileName: `Estimate_${formData.name.replace(/\s/g, '_')}_${Date.now()}.pdf`, path }
+                      );
+
                       toast({ title: "Your estimate request has been sent.", description: "Rick will reach out to confirm.", duration: 4000 });
-                    } catch {
-                      toast({ title: "Estimate request queued", description: "We’ll try sending again shortly.", duration: 4000 });
+                    } catch (err) {
+                      console.error("Estimate error:", err);
+                      toast({ title: "Error sending estimate", description: "Please try again or contact us directly.", variant: "destructive", duration: 4000 });
                     }
                   }}
                 >

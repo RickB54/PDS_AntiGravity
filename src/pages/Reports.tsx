@@ -406,9 +406,9 @@ const Reports = () => {
         <div className="space-y-6 animate-fade-in">
           {/* Date Filters */}
           <Card className="p-4 bg-gradient-card border-border">
-            <div className="flex gap-4 items-center flex-wrap">
+            <div className="flex flex-col sm:flex-row gap-4 items-start sm:items-center flex-wrap">
               <Select value={dateFilter} onValueChange={(v) => setDateFilter(v as any)}>
-                <SelectTrigger className="w-40">
+                <SelectTrigger className="w-full sm:w-40">
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent className="bg-popover border-border z-50">
@@ -577,69 +577,30 @@ const Reports = () => {
                 </div>
 
                 <h3 className="text-lg font-semibold mb-2 text-red-600">Chemicals</h3>
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead>Item</TableHead>
-                      <TableHead>Size</TableHead>
-                      <TableHead>Stock</TableHead>
-                      <TableHead>Cost</TableHead>
-                      <TableHead>Value</TableHead>
-                      <TableHead>Status</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {chemicalsSorted.map(chem => (
-                      <TableRow key={chem.id}>
-                        <TableCell className="font-medium">{chem.name}</TableCell>
-                        <TableCell>{chem.bottleSize}</TableCell>
-                        <TableCell className={chem.currentStock <= chem.threshold ? 'text-destructive font-bold' : ''}>
-                          {chem.currentStock}
-                        </TableCell>
-                        <TableCell>${(chem.costPerBottle || 0).toFixed(2)}</TableCell>
-                        <TableCell>${((chem.costPerBottle || 0) * (chem.currentStock || 0)).toFixed(2)}</TableCell>
-                        <TableCell>
-                          {chem.currentStock <= chem.threshold ? (
-                            <span className="text-destructive font-semibold">⚠️ LOW STOCK</span>
-                          ) : (
-                            <span className="text-success">✓ OK</span>
-                          )}
-                        </TableCell>
-                      </TableRow>
-                    ))}
-                    <TableRow className="bg-muted/50 font-bold">
-                      <TableCell colSpan={4} className="text-right">Subtotal:</TableCell>
-                      <TableCell>${totalInventoryValue.toFixed(2)}</TableCell>
-                      <TableCell></TableCell>
-                    </TableRow>
-                  </TableBody>
-                </Table>
-
-                <div className="mt-6">
-                  <h3 className="text-lg font-semibold mb-2 text-red-600">Materials</h3>
+                <div className="overflow-x-auto">
                   <Table>
                     <TableHeader>
                       <TableRow>
                         <TableHead>Item</TableHead>
-                        <TableHead>Subtype</TableHead>
-                        <TableHead>Quantity</TableHead>
+                        <TableHead>Size</TableHead>
+                        <TableHead>Stock</TableHead>
                         <TableHead>Cost</TableHead>
                         <TableHead>Value</TableHead>
                         <TableHead>Status</TableHead>
                       </TableRow>
                     </TableHeader>
                     <TableBody>
-                      {materialsSorted.map(mat => (
-                        <TableRow key={mat.id}>
-                          <TableCell className="font-medium">{mat.name}</TableCell>
-                          <TableCell>{mat.subtype || mat.type || '—'}</TableCell>
-                          <TableCell className={(mat.quantity || 0) <= (mat.threshold || mat.lowThreshold || 0) ? 'text-destructive font-bold' : ''}>
-                            {mat.quantity || 0}
+                      {chemicalsSorted.map(chem => (
+                        <TableRow key={chem.id}>
+                          <TableCell className="font-medium">{chem.name}</TableCell>
+                          <TableCell>{chem.bottleSize}</TableCell>
+                          <TableCell className={chem.currentStock <= chem.threshold ? 'text-destructive font-bold' : ''}>
+                            {chem.currentStock}
                           </TableCell>
-                          <TableCell>${(mat.costPerItem || 0).toFixed(2)}</TableCell>
-                          <TableCell>${((mat.costPerItem || 0) * (mat.quantity || 0)).toFixed(2)}</TableCell>
+                          <TableCell>${(chem.costPerBottle || 0).toFixed(2)}</TableCell>
+                          <TableCell>${((chem.costPerBottle || 0) * (chem.currentStock || 0)).toFixed(2)}</TableCell>
                           <TableCell>
-                            {(mat.quantity || 0) <= (mat.threshold || mat.lowThreshold || 0) ? (
+                            {chem.currentStock <= chem.threshold ? (
                               <span className="text-destructive font-semibold">⚠️ LOW STOCK</span>
                             ) : (
                               <span className="text-success">✓ OK</span>
@@ -647,14 +608,9 @@ const Reports = () => {
                           </TableCell>
                         </TableRow>
                       ))}
-                      {materialsSorted.length === 0 && (
-                        <TableRow>
-                          <TableCell colSpan={6} className="text-center text-muted-foreground py-6">No materials tracked.</TableCell>
-                        </TableRow>
-                      )}
                       <TableRow className="bg-muted/50 font-bold">
                         <TableCell colSpan={4} className="text-right">Subtotal:</TableCell>
-                        <TableCell>${totalMaterialsValue.toFixed(2)}</TableCell>
+                        <TableCell>${totalInventoryValue.toFixed(2)}</TableCell>
                         <TableCell></TableCell>
                       </TableRow>
                     </TableBody>
@@ -662,51 +618,101 @@ const Reports = () => {
                 </div>
 
                 <div className="mt-6">
-                  <h3 className="text-lg font-semibold mb-2 text-red-600">Tools</h3>
-                  <Table>
-                    <TableHeader>
-                      <TableRow>
-                        <TableHead>Item</TableHead>
-                        <TableHead>Category</TableHead>
-                        <TableHead>Quantity</TableHead>
-                        <TableHead>Cost</TableHead>
-                        <TableHead>Value</TableHead>
-                        <TableHead>Threshold</TableHead>
-                        <TableHead>Status</TableHead>
-                      </TableRow>
-                    </TableHeader>
-                    <TableBody>
-                      {toolsSorted.map(tool => (
-                        <TableRow key={tool.id}>
-                          <TableCell className="font-medium">{tool.name}</TableCell>
-                          <TableCell>{tool.category || '—'}</TableCell>
-                          <TableCell className={(tool.quantity || 0) <= (tool.threshold || 0) ? 'text-destructive font-bold' : ''}>
-                            {tool.quantity || 0}
-                          </TableCell>
-                          <TableCell>${(tool.cost || 0).toFixed(2)}</TableCell>
-                          <TableCell>${((tool.cost || 0) * (tool.quantity || 1)).toFixed(2)}</TableCell>
-                          <TableCell>{tool.threshold || 0}</TableCell>
-                          <TableCell>
-                            {(tool.quantity || 0) <= (tool.threshold || 0) ? (
-                              <span className="text-destructive font-semibold">⚠️ LOW STOCK</span>
-                            ) : (
-                              <span className="text-success">✓ OK</span>
-                            )}
-                          </TableCell>
-                        </TableRow>
-                      ))}
-                      {toolsSorted.length === 0 && (
+                  <h3 className="text-lg font-semibold mb-2 text-red-600">Materials</h3>
+                  <div className="overflow-x-auto">
+                    <Table>
+                      <TableHeader>
                         <TableRow>
-                          <TableCell colSpan={7} className="text-center text-muted-foreground py-6">No tools tracked.</TableCell>
+                          <TableHead>Item</TableHead>
+                          <TableHead>Subtype</TableHead>
+                          <TableHead>Quantity</TableHead>
+                          <TableHead>Cost</TableHead>
+                          <TableHead>Value</TableHead>
+                          <TableHead>Status</TableHead>
                         </TableRow>
-                      )}
-                      <TableRow className="bg-muted/50 font-bold">
-                        <TableCell colSpan={4} className="text-right">Subtotal:</TableCell>
-                        <TableCell>${totalToolsValue.toFixed(2)}</TableCell>
-                        <TableCell colSpan={2}></TableCell>
-                      </TableRow>
-                    </TableBody>
-                  </Table>
+                      </TableHeader>
+                      <TableBody>
+                        {materialsSorted.map(mat => (
+                          <TableRow key={mat.id}>
+                            <TableCell className="font-medium">{mat.name}</TableCell>
+                            <TableCell>{mat.subtype || mat.type || '—'}</TableCell>
+                            <TableCell className={(mat.quantity || 0) <= (mat.threshold || mat.lowThreshold || 0) ? 'text-destructive font-bold' : ''}>
+                              {mat.quantity || 0}
+                            </TableCell>
+                            <TableCell>${(mat.costPerItem || 0).toFixed(2)}</TableCell>
+                            <TableCell>${((mat.costPerItem || 0) * (mat.quantity || 0)).toFixed(2)}</TableCell>
+                            <TableCell>
+                              {(mat.quantity || 0) <= (mat.threshold || mat.lowThreshold || 0) ? (
+                                <span className="text-destructive font-semibold">⚠️ LOW STOCK</span>
+                              ) : (
+                                <span className="text-success">✓ OK</span>
+                              )}
+                            </TableCell>
+                          </TableRow>
+                        ))}
+                        {materialsSorted.length === 0 && (
+                          <TableRow>
+                            <TableCell colSpan={6} className="text-center text-muted-foreground py-6">No materials tracked.</TableCell>
+                          </TableRow>
+                        )}
+                        <TableRow className="bg-muted/50 font-bold">
+                          <TableCell colSpan={4} className="text-right">Subtotal:</TableCell>
+                          <TableCell>${totalMaterialsValue.toFixed(2)}</TableCell>
+                          <TableCell></TableCell>
+                        </TableRow>
+                      </TableBody>
+                    </Table>
+                  </div>
+                </div>
+
+                <div className="mt-6">
+                  <h3 className="text-lg font-semibold mb-2 text-red-600">Tools</h3>
+                  <div className="overflow-x-auto">
+                    <Table>
+                      <TableHeader>
+                        <TableRow>
+                          <TableHead>Item</TableHead>
+                          <TableHead>Category</TableHead>
+                          <TableHead>Quantity</TableHead>
+                          <TableHead>Cost</TableHead>
+                          <TableHead>Value</TableHead>
+                          <TableHead>Threshold</TableHead>
+                          <TableHead>Status</TableHead>
+                        </TableRow>
+                      </TableHeader>
+                      <TableBody>
+                        {toolsSorted.map(tool => (
+                          <TableRow key={tool.id}>
+                            <TableCell className="font-medium">{tool.name}</TableCell>
+                            <TableCell>{tool.category || '—'}</TableCell>
+                            <TableCell className={(tool.quantity || 0) <= (tool.threshold || 0) ? 'text-destructive font-bold' : ''}>
+                              {tool.quantity || 0}
+                            </TableCell>
+                            <TableCell>${(tool.cost || 0).toFixed(2)}</TableCell>
+                            <TableCell>${((tool.cost || 0) * (tool.quantity || 1)).toFixed(2)}</TableCell>
+                            <TableCell>{tool.threshold || 0}</TableCell>
+                            <TableCell>
+                              {(tool.quantity || 0) <= (tool.threshold || 0) ? (
+                                <span className="text-destructive font-semibold">⚠️ LOW STOCK</span>
+                              ) : (
+                                <span className="text-success">✓ OK</span>
+                              )}
+                            </TableCell>
+                          </TableRow>
+                        ))}
+                        {toolsSorted.length === 0 && (
+                          <TableRow>
+                            <TableCell colSpan={7} className="text-center text-muted-foreground py-6">No tools tracked.</TableCell>
+                          </TableRow>
+                        )}
+                        <TableRow className="bg-muted/50 font-bold">
+                          <TableCell colSpan={4} className="text-right">Subtotal:</TableCell>
+                          <TableCell>${totalToolsValue.toFixed(2)}</TableCell>
+                          <TableCell colSpan={2}></TableCell>
+                        </TableRow>
+                      </TableBody>
+                    </Table>
+                  </div>
                 </div>
               </Card>
             </TabsContent>
@@ -757,74 +763,78 @@ const Reports = () => {
                   );
                 })()}
 
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead>Employee</TableHead>
-                      <TableHead>Customer</TableHead>
-                      <TableHead>Service</TableHead>
-                      <TableHead>Time</TableHead>
-                      <TableHead>Date</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {filterByDate(jobs, 'finishedAt').map((job, idx) => (
-                      <TableRow key={idx}>
-                        <TableCell className="font-medium">
-                          <span
-                            className="text-primary underline cursor-pointer"
-                            onClick={() => { setSelectedJob(job); setChecklistOpen(true); }}
-                          >
-                            {job.employee || 'N/A'}
-                          </span>
-                        </TableCell>
-                        <TableCell>{job.customer || 'N/A'}</TableCell>
-                        <TableCell>{job.service || 'N/A'}</TableCell>
-                        <TableCell>{job.totalTime || 'N/A'}</TableCell>
-                        <TableCell>{job.finishedAt ? new Date(job.finishedAt).toLocaleDateString() : 'N/A'}</TableCell>
-                      </TableRow>
-                    ))}
-                    {filterByDate(jobs, 'finishedAt').length === 0 && (
-                      <TableRow>
-                        <TableCell colSpan={5} className="text-center text-muted-foreground py-8">
-                          No completed jobs for the selected period.
-                        </TableCell>
-                      </TableRow>
-                    )}
-                  </TableBody>
-                </Table>
-
-                <div className="mt-6">
-                  <h3 className="text-lg font-semibold mb-2">Payroll Payments</h3>
+                <div className="overflow-x-auto">
                   <Table>
                     <TableHeader>
                       <TableRow>
-                        <TableHead>Date</TableHead>
                         <TableHead>Employee</TableHead>
-                        <TableHead>Type</TableHead>
-                        <TableHead>Description</TableHead>
-                        <TableHead>Amount</TableHead>
+                        <TableHead>Customer</TableHead>
+                        <TableHead>Service</TableHead>
+                        <TableHead>Time</TableHead>
+                        <TableHead>Date</TableHead>
                       </TableRow>
                     </TableHeader>
                     <TableBody>
-                      {filterByDate(payrollHistory, 'date').map((p, idx) => (
+                      {filterByDate(jobs, 'finishedAt').map((job, idx) => (
                         <TableRow key={idx}>
-                          <TableCell>{p.date ? new Date(p.date).toLocaleDateString() : 'N/A'}</TableCell>
-                          <TableCell className="font-medium">{p.employee || 'N/A'}</TableCell>
-                          <TableCell>{p.type || 'N/A'}</TableCell>
-                          <TableCell>{p.description || '—'}</TableCell>
-                          <TableCell className="text-primary font-semibold">${Number(p.amount || 0).toFixed(2)}</TableCell>
+                          <TableCell className="font-medium">
+                            <span
+                              className="text-primary underline cursor-pointer"
+                              onClick={() => { setSelectedJob(job); setChecklistOpen(true); }}
+                            >
+                              {job.employee || 'N/A'}
+                            </span>
+                          </TableCell>
+                          <TableCell>{job.customer || 'N/A'}</TableCell>
+                          <TableCell>{job.service || 'N/A'}</TableCell>
+                          <TableCell>{job.totalTime || 'N/A'}</TableCell>
+                          <TableCell>{job.finishedAt ? new Date(job.finishedAt).toLocaleDateString() : 'N/A'}</TableCell>
                         </TableRow>
                       ))}
-                      {filterByDate(payrollHistory, 'date').length === 0 && (
+                      {filterByDate(jobs, 'finishedAt').length === 0 && (
                         <TableRow>
                           <TableCell colSpan={5} className="text-center text-muted-foreground py-8">
-                            No payroll payments for the selected period.
+                            No completed jobs for the selected period.
                           </TableCell>
                         </TableRow>
                       )}
                     </TableBody>
                   </Table>
+                </div>
+
+                <div className="mt-6">
+                  <h3 className="text-lg font-semibold mb-2">Payroll Payments</h3>
+                  <div className="overflow-x-auto">
+                    <Table>
+                      <TableHeader>
+                        <TableRow>
+                          <TableHead>Date</TableHead>
+                          <TableHead>Employee</TableHead>
+                          <TableHead>Type</TableHead>
+                          <TableHead>Description</TableHead>
+                          <TableHead>Amount</TableHead>
+                        </TableRow>
+                      </TableHeader>
+                      <TableBody>
+                        {filterByDate(payrollHistory, 'date').map((p, idx) => (
+                          <TableRow key={idx}>
+                            <TableCell>{p.date ? new Date(p.date).toLocaleDateString() : 'N/A'}</TableCell>
+                            <TableCell className="font-medium">{p.employee || 'N/A'}</TableCell>
+                            <TableCell>{p.type || 'N/A'}</TableCell>
+                            <TableCell>{p.description || '—'}</TableCell>
+                            <TableCell className="text-primary font-semibold">${Number(p.amount || 0).toFixed(2)}</TableCell>
+                          </TableRow>
+                        ))}
+                        {filterByDate(payrollHistory, 'date').length === 0 && (
+                          <TableRow>
+                            <TableCell colSpan={5} className="text-center text-muted-foreground py-8">
+                              No payroll payments for the selected period.
+                            </TableCell>
+                          </TableRow>
+                        )}
+                      </TableBody>
+                    </Table>
+                  </div>
                 </div>
               </Card>
             </TabsContent>
@@ -850,44 +860,46 @@ const Reports = () => {
                   </p>
                 </div>
 
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead>ID</TableHead>
-                      <TableHead>Customer</TableHead>
-                      <TableHead>Service</TableHead>
-                      <TableHead>Amount</TableHead>
-                      <TableHead>Status</TableHead>
-                      <TableHead>Date</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {filterByDate(estimates).map((est) => (
-                      <TableRow key={est.id}>
-                        <TableCell className="font-medium">#{est.id || 'N/A'}</TableCell>
-                        <TableCell>{est.customerName || 'N/A'}</TableCell>
-                        <TableCell>{est.service || 'N/A'}</TableCell>
-                        <TableCell className="text-primary font-semibold">${est.total || 0}</TableCell>
-                        <TableCell>
-                          <span className={`px-2 py-1 rounded text-xs font-semibold 
-                            ${est.status === 'Accepted' ? 'bg-success/20 text-success' :
-                              est.status === 'Sent' ? 'bg-primary/20 text-primary' :
-                                'bg-muted text-muted-foreground'}`}>
-                            {est.status || 'Draft'}
-                          </span>
-                        </TableCell>
-                        <TableCell>{est.createdAt ? new Date(est.createdAt).toLocaleDateString() : 'N/A'}</TableCell>
-                      </TableRow>
-                    ))}
-                    {filterByDate(estimates).length === 0 && (
+                <div className="overflow-x-auto">
+                  <Table>
+                    <TableHeader>
                       <TableRow>
-                        <TableCell colSpan={6} className="text-center text-muted-foreground py-8">
-                          No estimates for the selected period.
-                        </TableCell>
+                        <TableHead>ID</TableHead>
+                        <TableHead>Customer</TableHead>
+                        <TableHead>Service</TableHead>
+                        <TableHead>Amount</TableHead>
+                        <TableHead>Status</TableHead>
+                        <TableHead>Date</TableHead>
                       </TableRow>
-                    )}
-                  </TableBody>
-                </Table>
+                    </TableHeader>
+                    <TableBody>
+                      {filterByDate(estimates).map((est) => (
+                        <TableRow key={est.id}>
+                          <TableCell className="font-medium">#{est.id || 'N/A'}</TableCell>
+                          <TableCell>{est.customerName || 'N/A'}</TableCell>
+                          <TableCell>{est.service || 'N/A'}</TableCell>
+                          <TableCell className="text-primary font-semibold">${est.total || 0}</TableCell>
+                          <TableCell>
+                            <span className={`px-2 py-1 rounded text-xs font-semibold 
+                            ${est.status === 'Accepted' ? 'bg-success/20 text-success' :
+                                est.status === 'Sent' ? 'bg-primary/20 text-primary' :
+                                  'bg-muted text-muted-foreground'}`}>
+                              {est.status || 'Draft'}
+                            </span>
+                          </TableCell>
+                          <TableCell>{est.createdAt ? new Date(est.createdAt).toLocaleDateString() : 'N/A'}</TableCell>
+                        </TableRow>
+                      ))}
+                      {filterByDate(estimates).length === 0 && (
+                        <TableRow>
+                          <TableCell colSpan={6} className="text-center text-muted-foreground py-8">
+                            No estimates for the selected period.
+                          </TableCell>
+                        </TableRow>
+                      )}
+                    </TableBody>
+                  </Table>
+                </div>
               </Card>
             </TabsContent>
 
@@ -956,65 +968,69 @@ const Reports = () => {
                 {/* Income Table */}
                 <div className="mb-6">
                   <h3 className="font-semibold mb-2">Income</h3>
-                  <Table>
-                    <TableHeader>
-                      <TableRow>
-                        <TableHead>Date</TableHead>
-                        <TableHead>Amount</TableHead>
-                        <TableHead>Category</TableHead>
-                        <TableHead>Description</TableHead>
-                        <TableHead>Customer</TableHead>
-                        <TableHead>Method</TableHead>
-                      </TableRow>
-                    </TableHeader>
-                    <TableBody>
-                      {income.filter(i => filterByDate([i], i.date ? 'date' : 'createdAt').length).map((i, idx) => (
-                        <TableRow key={idx}>
-                          <TableCell>{(i.date || i.createdAt || '').slice(0, 10)}</TableCell>
-                          <TableCell>${(i.amount || 0).toFixed(2)}</TableCell>
-                          <TableCell>{i.category || 'General'}</TableCell>
-                          <TableCell>{i.description || ''}</TableCell>
-                          <TableCell>{i.customerName || ''}</TableCell>
-                          <TableCell>{i.paymentMethod || ''}</TableCell>
-                        </TableRow>
-                      ))}
-                      {income.filter(i => filterByDate([i], i.date ? 'date' : 'createdAt').length).length === 0 && (
+                  <div className="overflow-x-auto">
+                    <Table>
+                      <TableHeader>
                         <TableRow>
-                          <TableCell colSpan={6} className="text-center text-muted-foreground py-8">No income records.</TableCell>
+                          <TableHead>Date</TableHead>
+                          <TableHead>Amount</TableHead>
+                          <TableHead>Category</TableHead>
+                          <TableHead>Description</TableHead>
+                          <TableHead>Customer</TableHead>
+                          <TableHead>Method</TableHead>
                         </TableRow>
-                      )}
-                    </TableBody>
-                  </Table>
+                      </TableHeader>
+                      <TableBody>
+                        {income.filter(i => filterByDate([i], i.date ? 'date' : 'createdAt').length).map((i, idx) => (
+                          <TableRow key={idx}>
+                            <TableCell>{(i.date || i.createdAt || '').slice(0, 10)}</TableCell>
+                            <TableCell>${(i.amount || 0).toFixed(2)}</TableCell>
+                            <TableCell>{i.category || 'General'}</TableCell>
+                            <TableCell>{i.description || ''}</TableCell>
+                            <TableCell>{i.customerName || ''}</TableCell>
+                            <TableCell>{i.paymentMethod || ''}</TableCell>
+                          </TableRow>
+                        ))}
+                        {income.filter(i => filterByDate([i], i.date ? 'date' : 'createdAt').length).length === 0 && (
+                          <TableRow>
+                            <TableCell colSpan={6} className="text-center text-muted-foreground py-8">No income records.</TableCell>
+                          </TableRow>
+                        )}
+                      </TableBody>
+                    </Table>
+                  </div>
                 </div>
 
                 {/* Expense Table */}
                 <div>
                   <h3 className="font-semibold mb-2">Expenses</h3>
-                  <Table>
-                    <TableHeader>
-                      <TableRow>
-                        <TableHead>Date</TableHead>
-                        <TableHead>Amount</TableHead>
-                        <TableHead>Category</TableHead>
-                        <TableHead>Description</TableHead>
-                      </TableRow>
-                    </TableHeader>
-                    <TableBody>
-                      {expenses.filter(e => filterByDate([e]).length).map((e, idx) => (
-                        <TableRow key={idx}>
-                          <TableCell>{(e.createdAt || '').slice(0, 10)}</TableCell>
-                          <TableCell>${(e.amount || 0).toFixed(2)}</TableCell>
-                          <TableCell>{e.category || 'General'}</TableCell>
-                          <TableCell>{e.description || ''}</TableCell>
-                        </TableRow>
-                      ))}
-                      {expenses.filter(e => filterByDate([e]).length).length === 0 && (
+                  <div className="overflow-x-auto">
+                    <Table>
+                      <TableHeader>
                         <TableRow>
-                          <TableCell colSpan={4} className="text-center text-muted-foreground py-8">No expense records.</TableCell>
+                          <TableHead>Date</TableHead>
+                          <TableHead>Amount</TableHead>
+                          <TableHead>Category</TableHead>
+                          <TableHead>Description</TableHead>
                         </TableRow>
-                      )}
-                    </TableBody>
-                  </Table>
+                      </TableHeader>
+                      <TableBody>
+                        {expenses.filter(e => filterByDate([e]).length).map((e, idx) => (
+                          <TableRow key={idx}>
+                            <TableCell>{(e.createdAt || '').slice(0, 10)}</TableCell>
+                            <TableCell>${(e.amount || 0).toFixed(2)}</TableCell>
+                            <TableCell>{e.category || 'General'}</TableCell>
+                            <TableCell>{e.description || ''}</TableCell>
+                          </TableRow>
+                        ))}
+                        {expenses.filter(e => filterByDate([e]).length).length === 0 && (
+                          <TableRow>
+                            <TableCell colSpan={4} className="text-center text-muted-foreground py-8">No expense records.</TableCell>
+                          </TableRow>
+                        )}
+                      </TableBody>
+                    </Table>
+                  </div>
                 </div>
               </Card>
             </TabsContent>
@@ -1129,35 +1145,37 @@ const Reports = () => {
                   </div>
                 </div>
 
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead>Date</TableHead>
-                      <TableHead>Employee</TableHead>
-                      <TableHead>Service</TableHead>
-                      <TableHead>Add-ons</TableHead>
-                      <TableHead>Time</TableHead>
-                      <TableHead>Total</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {customerJobs.map((job, idx) => (
-                      <TableRow key={idx}>
-                        <TableCell>{job.finishedAt ? new Date(job.finishedAt).toLocaleString() : '—'}</TableCell>
-                        <TableCell>{job.employee?.name || job.employee || job.employeeName || '—'}</TableCell>
-                        <TableCell>{job.service || job.package || '—'}</TableCell>
-                        <TableCell>{Array.isArray(job.addOns) ? job.addOns.join(', ') : (job.addOns || '—')}</TableCell>
-                        <TableCell>{job.totalTime || job.duration || '—'}</TableCell>
-                        <TableCell>${Number(job.totalRevenue || job.total || 0).toFixed(2)}</TableCell>
-                      </TableRow>
-                    ))}
-                    {customerJobs.length === 0 && (
+                <div className="overflow-x-auto">
+                  <Table>
+                    <TableHeader>
                       <TableRow>
-                        <TableCell colSpan={6} className="text-center text-muted-foreground py-8">No jobs found for this customer.</TableCell>
+                        <TableHead>Date</TableHead>
+                        <TableHead>Employee</TableHead>
+                        <TableHead>Service</TableHead>
+                        <TableHead>Add-ons</TableHead>
+                        <TableHead>Time</TableHead>
+                        <TableHead>Total</TableHead>
                       </TableRow>
-                    )}
-                  </TableBody>
-                </Table>
+                    </TableHeader>
+                    <TableBody>
+                      {customerJobs.map((job, idx) => (
+                        <TableRow key={idx}>
+                          <TableCell>{job.finishedAt ? new Date(job.finishedAt).toLocaleString() : '—'}</TableCell>
+                          <TableCell>{job.employee?.name || job.employee || job.employeeName || '—'}</TableCell>
+                          <TableCell>{job.service || job.package || '—'}</TableCell>
+                          <TableCell>{Array.isArray(job.addOns) ? job.addOns.join(', ') : (job.addOns || '—')}</TableCell>
+                          <TableCell>{job.totalTime || job.duration || '—'}</TableCell>
+                          <TableCell>${Number(job.totalRevenue || job.total || 0).toFixed(2)}</TableCell>
+                        </TableRow>
+                      ))}
+                      {customerJobs.length === 0 && (
+                        <TableRow>
+                          <TableCell colSpan={6} className="text-center text-muted-foreground py-8">No jobs found for this customer.</TableCell>
+                        </TableRow>
+                      )}
+                    </TableBody>
+                  </Table>
+                </div>
               </div>
             )}
           </DialogContent>

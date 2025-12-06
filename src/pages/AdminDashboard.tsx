@@ -640,6 +640,9 @@ export default function AdminDashboard() {
                   <Tag className="w-3.5 h-3.5 text-red-600" />
                   <span>Mock Data System</span>
                 </button>
+                {!isMenuHidden('file-manager') && (
+                  <RedBox accent="yellow" title="File Manager" href="/file-manager" Icon={Folder} badgeCount={unviewedFilesCount} />
+                )}
               </div>
             </Card>
           </Card>
@@ -661,6 +664,7 @@ export default function AdminDashboard() {
                 {!isMenuHidden('book-new-job') && (
                   <RedBox accent="orange" title="Book A New Job" href="/book-now" Icon={ClipboardCheck} />
                 )}
+                <RedBox accent="orange" title="Bookings" href="/bookings?add=true" Icon={CalendarDays} />
                 <button
                   onClick={() => setSubContractorsOpen(true)}
                   className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md border border-blue-600 text-blue-600 hover:bg-blue-600/10 w-fit"
@@ -771,9 +775,7 @@ export default function AdminDashboard() {
                 {!isMenuHidden('inventory-control') && (
                   <RedBox accent="yellow" title="Material Updates" href="/inventory-control?updates=true" Icon={FileText} />
                 )}
-                {!isMenuHidden('file-manager') && (
-                  <RedBox accent="yellow" title="File Manager" href="/file-manager" Icon={Folder} badgeCount={unviewedFilesCount} />
-                )}
+
               </div>
             </Card>
           </Card>

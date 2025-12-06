@@ -32,7 +32,7 @@ import {
     CollapsibleContent,
     CollapsibleTrigger,
 } from "@/components/ui/collapsible";
-import { Download, PieChart as PieChartIcon, BarChart3, TrendingUp, Plus, Filter, ChevronDown } from "lucide-react";
+import { Download, PieChart as PieChartIcon, BarChart3, TrendingUp, Plus, Filter, ChevronDown, Trash2, Pencil } from "lucide-react";
 import { getReceivables, Receivable, upsertReceivable } from "@/lib/receivables";
 import { getExpenses, upsertExpense } from "@/lib/db";
 import DateRangeFilter, { DateRangeValue } from "@/components/filters/DateRangeFilter";
@@ -106,6 +106,9 @@ const CompanyBudget = () => {
     const [addCategoryOpen, setAddCategoryOpen] = useState(false);
     const [newCategory, setNewCategory] = useState("");
     const [newCategoryType, setNewCategoryType] = useState<'income' | 'expense'>('income');
+    const [editCategoryOpen, setEditCategoryOpen] = useState(false);
+    const [editCategoryName, setEditCategoryName] = useState("");
+    const [editingCategory, setEditingCategory] = useState<{ name: string; type: 'income' | 'expense'; isDefault: boolean } | null>(null);
 
     // Add Income/Expense form states
     const [incomeFormOpen, setIncomeFormOpen] = useState(false);
@@ -265,6 +268,68 @@ const CompanyBudget = () => {
         toast.success(`Expense of $${amt.toFixed(2)} added successfully`);
     };
 
+    const handleDeleteCategory = async (category: string, type: 'income' | 'expense') => {
+        const isDefault = type === 'income' ? DEFAULT_CATEGORIES.income.includes(category) : DEFAULT_CATEGORIES.expense.includes(category);
+
+        if (isDefault) {
+            toast.error("Cannot delete default categories");
+            return;
+        }
+
+        if (confirm(`Are you sure you want to delete category "${category}"?`)) {
+            if (type === 'income') {
+                const updated = customIncomeCategories.filter(c => c !== category);
+                const updatedLegacy = customCategories.filter(c => c !== category);
+                await localforage.setItem("customIncomeCategories", updated);
+                await localforage.setItem("customCategories", updatedLegacy);
+                setCustomIncomeCategories(updated);
+                setCustomCategories(updatedLegacy);
+            } else {
+                const updated = customExpenseCategories.filter(c => c !== category);
+                await localforage.setItem("customExpenseCategories", updated);
+                setCustomExpenseCategories(updated);
+            }
+            toast.success("Category deleted");
+        }
+    };
+
+    const openEditCategory = (category: string, type: 'income' | 'expense') => {
+        const isDefault = type === 'income' ? DEFAULT_CATEGORIES.income.includes(category) : DEFAULT_CATEGORIES.expense.includes(category);
+        setEditingCategory({ name: category, type, isDefault });
+        setEditCategoryName(category);
+        setEditCategoryOpen(true);
+    };
+
+    const handleUpdateCategory = async () => {
+        if (!editingCategory || !editCategoryName.trim()) return;
+
+        if (editingCategory.isDefault) {
+            toast.error("Cannot edit default categories");
+            return;
+        }
+
+        const oldName = editingCategory.name;
+        const newName = editCategoryName.trim();
+        const type = editingCategory.type;
+
+        if (type === 'income') {
+            const updated = customIncomeCategories.map(c => c === oldName ? newName : c);
+            const updatedLegacy = customCategories.map(c => c === oldName ? newName : c);
+            await localforage.setItem("customIncomeCategories", updated);
+            await localforage.setItem("customCategories", updatedLegacy);
+            setCustomIncomeCategories(updated);
+            setCustomCategories(updatedLegacy);
+        } else {
+            const updated = customExpenseCategories.map(c => c === oldName ? newName : c);
+            await localforage.setItem("customExpenseCategories", updated);
+            setCustomExpenseCategories(updated);
+        }
+
+        setEditCategoryOpen(false);
+        setEditingCategory(null);
+        toast.success("Category updated");
+    };
+
     const exportData = (format: 'json' | 'csv') => {
         if (format === 'json') {
             const data = {
@@ -316,9 +381,9 @@ const CompanyBudget = () => {
             <main className="container mx-auto px-4 py-6 max-w-7xl">
                 <div className="space-y-6 animate-fade-in">
                     {/* Header with filters */}
-                    <div className="flex justify-between items-center flex-wrap gap-4">
+                    <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
                         <h1 className="text-3xl font-bold text-foreground">Financial Dashboard</h1>
-                        <div className="flex gap-2 items-center flex-wrap">
+                        <div className="flex gap-2 items-center flex-wrap w-full sm:w-auto">
                             <Select value={dateFilter} onValueChange={setDateFilter}>
                                 <SelectTrigger className="w-40">
                                     <SelectValue />
@@ -452,12 +517,12 @@ const CompanyBudget = () => {
                         </Card>
 
                         {/* Net Profit Card */}
-                        <Card className={`p-6 ${netProfit >= 0 ? 'bg-gradient-to-br from-blue-500/10 to-blue-600/10 border-blue-500/20' : 'bg-gradient-to-br from-orange-500/10 to-orange-600/10 border-orange-500/20'}`}>
-                            <Label className="text-sm text-muted-foreground">Net Profit/Loss</Label>
-                            <p className={`text-3xl font-bold mt-2 ${netProfit >= 0 ? 'text-blue-600' : 'text-orange-600'}`}>
+                        <Card className={`p-6 ${netProfit > 0 ? 'bg-green-600' : netProfit < 0 ? 'bg-red-600' : 'bg-blue-600'}`}>
+                            <Label className="text-sm text-white/80">Net Profit/Loss</Label>
+                            <p className="text-3xl font-bold mt-2 text-white">
                                 ${Math.abs(netProfit).toFixed(2)}
                             </p>
-                            <p className="text-sm text-muted-foreground mt-1">{netProfit >= 0 ? 'Profit' : 'Loss'}</p>
+                            <p className="text-sm text-white/80 mt-1">{netProfit > 0 ? 'Profit' : netProfit < 0 ? 'Loss' : 'Break-Even'}</p>
                         </Card>
                     </div>
 
@@ -669,7 +734,7 @@ const CompanyBudget = () => {
 
                                 {/* Line Chart - Monthly Timeline */}
                                 {viewMode === 'line' && (
-                                    <div className="overflow-x-auto">
+                                    <div className="overflow-x-auto w-full pb-4">
                                         {(() => {
                                             // Build monthly data
                                             const months: string[] = [];
@@ -810,22 +875,52 @@ const CompanyBudget = () => {
                                     <div>
                                         <h3 className="font-semibold mb-3 text-green-600">Income Categories</h3>
                                         <div className="space-y-2">
-                                            {[...DEFAULT_CATEGORIES.income, ...customIncomeCategories, ...customCategories.filter(c => !DEFAULT_CATEGORIES.expense.includes(c))].map((cat, idx) => (
-                                                <div key={idx} className="p-3 bg-green-50 dark:bg-green-950/20 rounded border border-green-200 dark:border-green-800">
-                                                    <span className="font-medium text-green-900 dark:text-green-100">{cat}</span>
-                                                </div>
-                                            ))}
+                                            {[...DEFAULT_CATEGORIES.income, ...customIncomeCategories, ...customCategories.filter(c => !DEFAULT_CATEGORIES.expense.includes(c))].map((cat, idx) => {
+                                                const isDefault = DEFAULT_CATEGORIES.income.includes(cat);
+                                                return (
+                                                    <div key={idx} className="p-3 bg-green-50 dark:bg-green-950/20 rounded border border-green-200 dark:border-green-800 flex justify-between items-center group">
+                                                        <span className="font-medium text-green-900 dark:text-green-100">{cat}</span>
+                                                        <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                                                            {!isDefault && (
+                                                                <>
+                                                                    <Button variant="ghost" size="icon" className="h-6 w-6" onClick={() => openEditCategory(cat, 'income')}>
+                                                                        <Pencil className="h-3 w-3 text-green-700" />
+                                                                    </Button>
+                                                                    <Button variant="ghost" size="icon" className="h-6 w-6" onClick={() => handleDeleteCategory(cat, 'income')}>
+                                                                        <Trash2 className="h-3 w-3 text-red-600" />
+                                                                    </Button>
+                                                                </>
+                                                            )}
+                                                        </div>
+                                                    </div>
+                                                );
+                                            })}
                                         </div>
                                     </div>
 
                                     <div>
                                         <h3 className="font-semibold mb-3 text-red-600">Expense Categories</h3>
                                         <div className="space-y-2">
-                                            {[...DEFAULT_CATEGORIES.expense, ...customExpenseCategories].map((cat, idx) => (
-                                                <div key={idx} className="p-3 bg-red-50 dark:bg-red-950/20 rounded border border-red-200 dark:border-red-800">
-                                                    <span className="font-medium text-red-900 dark:text-red-100">{cat}</span>
-                                                </div>
-                                            ))}
+                                            {[...DEFAULT_CATEGORIES.expense, ...customExpenseCategories].map((cat, idx) => {
+                                                const isDefault = DEFAULT_CATEGORIES.expense.includes(cat);
+                                                return (
+                                                    <div key={idx} className="p-3 bg-red-50 dark:bg-red-950/20 rounded border border-red-200 dark:border-red-800 flex justify-between items-center group">
+                                                        <span className="font-medium text-red-900 dark:text-red-100">{cat}</span>
+                                                        <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                                                            {!isDefault && (
+                                                                <>
+                                                                    <Button variant="ghost" size="icon" className="h-6 w-6" onClick={() => openEditCategory(cat, 'expense')}>
+                                                                        <Pencil className="h-3 w-3 text-red-700" />
+                                                                    </Button>
+                                                                    <Button variant="ghost" size="icon" className="h-6 w-6" onClick={() => handleDeleteCategory(cat, 'expense')}>
+                                                                        <Trash2 className="h-3 w-3 text-red-600" />
+                                                                    </Button>
+                                                                </>
+                                                            )}
+                                                        </div>
+                                                    </div>
+                                                );
+                                            })}
                                         </div>
                                     </div>
                                 </div>
@@ -1003,6 +1098,29 @@ const CompanyBudget = () => {
                     <DialogFooter>
                         <Button variant="outline" onClick={() => setAddCategoryOpen(false)}>Cancel</Button>
                         <Button onClick={handleAddCategory}>Add Category</Button>
+                    </DialogFooter>
+                </DialogContent>
+            </Dialog>
+
+            {/* Edit Category Dialog */}
+            <Dialog open={editCategoryOpen} onOpenChange={setEditCategoryOpen}>
+                <DialogContent>
+                    <DialogHeader>
+                        <DialogTitle>Edit Category</DialogTitle>
+                    </DialogHeader>
+                    <div className="space-y-4 py-4">
+                        <div>
+                            <Label>Category Name</Label>
+                            <Input
+                                value={editCategoryName}
+                                onChange={(e) => setEditCategoryName(e.target.value)}
+                                placeholder="Enter category name"
+                            />
+                        </div>
+                    </div>
+                    <DialogFooter>
+                        <Button variant="outline" onClick={() => setEditCategoryOpen(false)}>Cancel</Button>
+                        <Button onClick={handleUpdateCategory}>Update Category</Button>
                     </DialogFooter>
                 </DialogContent>
             </Dialog>

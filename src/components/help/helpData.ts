@@ -20,7 +20,8 @@ export const adminMenuTopics: HelpTopic[] = [
       'Menu Visibility Controls allow hiding or showing dashboard tiles in the sidebar and menus.',
       'User Administration provides full user management: create, update, impersonate, and delete employees.',
       'Employee Management modal focuses on employee operations with search and edit capabilities.',
-      'Website Administration integrates vehicle types, FAQs, contact info, and About sections management.',
+      'Web Administration integrates vehicle types, FAQs, contact info, and About sections management.',
+      "Client Intake Tools box provides quick access to Vehicle Classification, Evaluation forms, and Upsell scripts.",
     ],
     route: '/admin-dashboard',
     section: 'menu',
@@ -50,6 +51,18 @@ export const adminMenuTopics: HelpTopic[] = [
     section: 'menu',
   },
   {
+    id: 'estimates',
+    title: 'Estimates',
+    summary: 'Manage inbound estimate requests and outbound quotes.',
+    content: [
+      'Inbound requests from "Book Now" auto-generate PDFs in File Manager.',
+      'Review request details, convert to jobs, or communicate with customers.',
+      'System simulates emails for local testing and archives them.',
+    ],
+    route: '/estimates',
+    section: 'menu',
+  },
+  {
     id: 'accounting',
     title: 'Accounting',
     summary: 'View revenue reports and reconcile with completed jobs.',
@@ -59,6 +72,18 @@ export const adminMenuTopics: HelpTopic[] = [
       'Integrate with invoicing data for consistency.',
     ],
     route: '/accounting',
+    section: 'menu',
+  },
+  {
+    id: 'company-budget',
+    title: 'Company Budget',
+    summary: 'Track expenses, visualize P/L status, and monitor monthly timelines.',
+    content: [
+      'Visual P/L cards use green/red/blue coding for instant status recognition.',
+      'Input fixed and variable costs to forecast profitability.',
+      'Responsive line graphs allow monthly timeline tracking on all devices.',
+    ],
+    route: '/company-budget',
     section: 'menu',
   },
   {
@@ -81,6 +106,8 @@ export const adminMenuTopics: HelpTopic[] = [
       'Monitor critical inventory counts and restock reminders in alerts.',
       'Update item details and categories with unified modals.',
       'Link inventory usage to jobs for accurate tracking.',
+      'Responsive tables ensure full visibility on mobile devices.',
+      'Material Updates (Admin) are saved to File Manager for audit trails.',
     ],
     route: '/inventory-control',
     section: 'menu',
@@ -93,6 +120,8 @@ export const adminMenuTopics: HelpTopic[] = [
       'Save generated PDFs from Employee Contact and Certificates flows.',
       'Use alerts to track new files; dismiss when reviewed.',
       'Organize files by folder paths and metadata for quick retrieval.',
+      'Responsive layout ensures file lists are accessible on any device.',
+      'New automated folders for Estimates, Vehicle Classifications, and Inventory Reports.',
     ],
     route: '/file-manager',
     section: 'menu',
@@ -148,6 +177,29 @@ export const adminMenuTopics: HelpTopic[] = [
     section: 'menu',
   },
   {
+    id: 'vehicle-classification',
+    title: 'Vehicle Classification',
+    summary: 'Define vehicle sizes and pricing multipliers.',
+    content: [
+      'Categorize vehicles (sedan, SUV, truck) to standardize pricing.',
+      'Export classification lists to PDF for shop reference.',
+      'Link customers to specific classification profiles for accurate quoting.',
+    ],
+    route: '/vehicle-classification',
+    section: 'menu',
+  },
+  {
+    id: 'package-selection',
+    title: 'Package Comparison Guide',
+    summary: 'Visual aid for explaining service packages to clients.',
+    content: [
+      'Side-by-side comparison of features and pricing.',
+      'Use as a sales tool during client intake or phone calls.',
+    ],
+    route: '/package-selection',
+    section: 'menu',
+  },
+  {
     id: 'website',
     title: 'Website',
     summary: 'Open the public site to view packages, add-ons, and tools.',
@@ -199,6 +251,7 @@ export const adminMenuTopics: HelpTopic[] = [
     content: [
       'Manage environment toggles in development, mock data, and auth settings.',
       'Adjust features visibility and refine operational defaults.',
+      'Danger Zone includes "Restore Default Data" to reset seed measurements without losing user records.',
     ],
     route: '/settings',
     section: 'menu',
@@ -210,6 +263,8 @@ export const adminMenuTopics: HelpTopic[] = [
     content: [
       'Use filters to produce tailored insights and exports.',
       'Cross-link with invoicing and tasks data.',
+      'Fully responsive tables for clear data viewing on any device.',
+      'Export specialized PDFs for Customer Jobs, Inventory Value, and Employee Performance.',
     ],
     route: '/reports',
     section: 'menu',
@@ -474,7 +529,7 @@ export const employeeTopics: HelpTopic[] = [
   ...employeeDashboardTopics,
 ];
 
-export function makeToc(role: 'admin'|'employee', _blockedIds: string[] = []): HelpTopic[] {
+export function makeToc(role: 'admin' | 'employee', _blockedIds: string[] = []): HelpTopic[] {
   if (role === 'admin') {
     const mainMenu: HelpTopic = {
       id: 'main-menu',

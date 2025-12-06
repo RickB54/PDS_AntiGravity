@@ -348,7 +348,7 @@ const Accounting = () => {
           </div>
 
           {/* Profit/Loss Summary - Moved to Top */}
-          <Card className={`p-6 border-border ${profit > 0 ? 'bg-gradient-hero' : profit < 0 ? 'bg-destructive/20' : 'bg-blue-500/20'}`}>
+          <Card className={`p-6 border-border ${profit > 0 ? 'bg-green-600' : profit < 0 ? 'bg-red-600' : 'bg-blue-600'}`}>
             <h2 className="text-2xl font-bold text-white mb-2">Profit/Loss Summary</h2>
             <div className="flex items-baseline gap-2">
               <span className="text-4xl font-bold text-white">

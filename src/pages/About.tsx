@@ -49,7 +49,7 @@ const About = () => {
   return (
     <div className="min-h-screen bg-background">
       <Navbar />
-      
+
       {/* Hero Section with Video Background (click to open About dialog) */}
       <section
         className="relative h-[60vh] flex items-center justify-center overflow-hidden cursor-pointer"
@@ -57,7 +57,7 @@ const About = () => {
         aria-label="Open About dialog"
       >
         <div className="absolute inset-0 bg-black/60 z-10" />
-        <video 
+        <video
           preload="none"
           muted
           playsInline
@@ -83,26 +83,16 @@ const About = () => {
             Previous
           </Link>
         </Button>
-        
+
         <div className="space-y-16">
           {/* Mission Statement */}
           <Card className="p-8 md:p-12 bg-gradient-card border-border">
             <h2 className="text-3xl font-bold text-center mb-6 text-foreground">Welcome to Prime Detail Solutions</h2>
             <p className="text-lg text-muted-foreground text-center max-w-4xl mx-auto leading-relaxed mb-8">
-              Your trusted partner in premium auto care in <strong>Methuen, MA</strong>. We specialize in high-quality 
-              interior and exterior detailing, paint correction, ceramic coatings, and mobile services. 
-              With transparent pricing and expert craftsmanship, we deliver showroom results at our optimized detailing facility.
+              Your trusted partner in premium auto care in Methuen, MA. We specialize in high-quality
+              interior and exterior detailing, paint correction, ceramic coatings, and mobile services.
+              With transparent pricing and expert craftsmanship, we deliver showroom results at our optimized detailing facility or onsite for your convenience.
             </p>
-            <div className="text-center">
-              <a 
-                href="https://prime-detail-solutions.netlify.app" 
-                target="_blank" 
-                rel="noopener noreferrer"
-                className="text-primary hover:underline font-medium"
-              >
-                prime-detail-solutions.netlify.app
-              </a>
-            </div>
           </Card>
 
           {/* Dynamic About Sections */}
@@ -121,7 +111,7 @@ const About = () => {
           )}
 
           {/* Features Grid (dynamic) */}
-  <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
             <Card className="p-6 bg-gradient-card border-border hover:shadow-glow transition-all">
               <div className="flex flex-col items-center text-center">
                 <div className="p-4 bg-primary/20 rounded-full mb-4">
@@ -156,7 +146,7 @@ const About = () => {
           {/* Testimonials (dynamic, same styling) */}
           <section>
             <h2 className="text-3xl font-bold text-center mb-8 text-foreground">What Our Customers Say</h2>
-  <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
               {testimonials.length > 0 ? (
                 testimonials.map((t) => (
                   <Card key={t.id} className="p-6 bg-gradient-card border-border">

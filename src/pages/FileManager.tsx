@@ -241,13 +241,13 @@ const FileManager = () => {
       <PageHeader title="File Manager" />
       <main className="container mx-auto px-4 py-8 max-w-7xl">
         <div className="space-y-6">
-          <div className="flex items-center justify-between">
+          <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
             <h1 className="text-3xl font-bold text-foreground">PDF Archive</h1>
             <div className="text-muted-foreground">
               {filteredRecords.length} of {records.length} files
             </div>
           </div>
-          <div className="flex justify-end gap-2">
+          <div className="flex flex-col sm:flex-row justify-end gap-2 w-full sm:w-auto">
             <Button
               variant="destructive"
               onClick={() => {
@@ -317,120 +317,122 @@ const FileManager = () => {
 
           {/* File List */}
           <Card className="bg-gradient-card border-border">
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>File Name</TableHead>
-                  <TableHead>Type</TableHead>
-                  <TableHead>Customer</TableHead>
-                  <TableHead>Date</TableHead>
-                  <TableHead>Created</TableHead>
-                  <TableHead className="text-right">Actions</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {filteredRecords.length === 0 ? (
+            <div className="overflow-x-auto">
+              <Table>
+                <TableHeader>
                   <TableRow>
-                    <TableCell colSpan={6} className="text-center text-muted-foreground py-12">
-                      <FileText className="h-12 w-12 mx-auto mb-4 opacity-50" />
-                      <p>No files found</p>
-                    </TableCell>
+                    <TableHead>File Name</TableHead>
+                    <TableHead>Type</TableHead>
+                    <TableHead>Customer</TableHead>
+                    <TableHead>Date</TableHead>
+                    <TableHead>Created</TableHead>
+                    <TableHead className="text-right">Actions</TableHead>
                   </TableRow>
-                ) : (
-                  [...filteredRecords]
-                    .sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime())
-                    .map((record) => (
-                      <TableRow key={record.id}>
-                        <TableCell className="font-medium flex items-center gap-2">
-                          {record.fileName}
-                          {isViewed("file", record.id) ? (
-                            <span className="text-xs text-zinc-500">• viewed</span>
-                          ) : null}
-                        </TableCell>
-                        <TableCell>
-                          <span className="px-2 py-1 bg-primary/20 text-primary text-xs rounded-full">
-                            {record.recordType}
-                          </span>
-                        </TableCell>
-                        <TableCell>{record.customerName}</TableCell>
-                        <TableCell>{record.date}</TableCell>
-                        <TableCell className="text-sm text-muted-foreground">
-                          {new Date(record.timestamp).toLocaleString()}
-                        </TableCell>
-                        <TableCell className="text-right">
-                          <div className="flex gap-2 justify-end">
-                            <Button size="icon" variant="ghost" onClick={async () => {
-                              setSelectedRecord(record);
-                              setViewerLoading(true);
-                              setViewerError(null);
-                              markViewed("file", record.id);
-                              // Prefer local data/blob URL first, then backend URL
-                              const isInline = record.pdfData?.startsWith('data:application/pdf') || record.pdfData?.startsWith('blob:');
-                              if (isInline) {
-                                setViewerSrc(record.pdfData);
-                                setViewerLoading(false);
-                              } else {
-                                const backendUrl = buildBackendUrl(record);
-                                if (backendUrl) {
-                                  setViewerSrc(backendUrl);
+                </TableHeader>
+                <TableBody>
+                  {filteredRecords.length === 0 ? (
+                    <TableRow>
+                      <TableCell colSpan={6} className="text-center text-muted-foreground py-12">
+                        <FileText className="h-12 w-12 mx-auto mb-4 opacity-50" />
+                        <p>No files found</p>
+                      </TableCell>
+                    </TableRow>
+                  ) : (
+                    [...filteredRecords]
+                      .sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime())
+                      .map((record) => (
+                        <TableRow key={record.id}>
+                          <TableCell className="font-medium flex items-center gap-2">
+                            {record.fileName}
+                            {isViewed("file", record.id) ? (
+                              <span className="text-xs text-zinc-500">• viewed</span>
+                            ) : null}
+                          </TableCell>
+                          <TableCell>
+                            <span className="px-2 py-1 bg-primary/20 text-primary text-xs rounded-full">
+                              {record.recordType}
+                            </span>
+                          </TableCell>
+                          <TableCell>{record.customerName}</TableCell>
+                          <TableCell>{record.date}</TableCell>
+                          <TableCell className="text-sm text-muted-foreground">
+                            {new Date(record.timestamp).toLocaleString()}
+                          </TableCell>
+                          <TableCell className="text-right">
+                            <div className="flex gap-2 justify-end">
+                              <Button size="icon" variant="ghost" onClick={async () => {
+                                setSelectedRecord(record);
+                                setViewerLoading(true);
+                                setViewerError(null);
+                                markViewed("file", record.id);
+                                // Prefer local data/blob URL first, then backend URL
+                                const isInline = record.pdfData?.startsWith('data:application/pdf') || record.pdfData?.startsWith('blob:');
+                                if (isInline) {
+                                  setViewerSrc(record.pdfData);
                                   setViewerLoading(false);
                                 } else {
-                                  setViewerSrc(null);
-                                  const msg = record.pdfData?.startsWith('blob:')
-                                    ? 'This PDF was saved as a temporary blob URL and cannot be displayed after reload. Please re-generate this document.'
-                                    : 'Unable to display PDF.';
-                                  setViewerError(msg);
-                                  setViewerLoading(false);
-                                }
-                              }
-                            }}>
-                              <Eye className="h-4 w-4" />
-                            </Button>
-                            <Button size="icon" variant="ghost" onClick={() => { markViewed("file", record.id); downloadPDF(record); }}>
-                              <Download className="h-4 w-4" />
-                            </Button>
-                            <Button size="icon" variant="ghost" onClick={() => { markViewed("file", record.id); openPrintPreview(record); }} title="Print">
-                              <Printer className="h-4 w-4" />
-                            </Button>
-                            <Button
-                              size="icon"
-                              variant="ghost"
-                              onClick={() => {
-                                try {
-                                  // Deterministically map bell state to viewed status
-                                  // Bell ON (yellow) means unviewed; Bell OFF (white) means viewed
-                                  const viewed = isViewed("file", record.id);
-                                  if (viewed) {
-                                    // Turn bell ON → mark as unviewed
-                                    unmarkViewed("file", record.id);
+                                  const backendUrl = buildBackendUrl(record);
+                                  if (backendUrl) {
+                                    setViewerSrc(backendUrl);
+                                    setViewerLoading(false);
                                   } else {
-                                    // Turn bell OFF → mark as viewed
-                                    markViewed("file", record.id);
+                                    setViewerSrc(null);
+                                    const msg = record.pdfData?.startsWith('blob:')
+                                      ? 'This PDF was saved as a temporary blob URL and cannot be displayed after reload. Please re-generate this document.'
+                                      : 'Unable to display PDF.';
+                                    setViewerError(msg);
+                                    setViewerLoading(false);
                                   }
-                                  // Clear any historical admin alerts tied to this exact archive ID
-                                  try { dismissAlertsForRecord(record.recordType, record.id); } catch { }
-                                  // Force re-render
-                                  setRecords(prev => [...prev]);
-                                } catch { }
-                              }}
-                              title="Toggle alert flag for this file"
-                            >
-                              {!isViewed("file", record.id) ? (
-                                <Bell className="h-4 w-4 text-yellow-400" />
-                              ) : (
-                                <Bell className="h-4 w-4 text-white" />
-                              )}
-                            </Button>
-                            <Button size="icon" variant="ghost" onClick={() => setDeleteId(record.id)}>
-                              <Trash2 className="h-4 w-4 text-destructive" />
-                            </Button>
-                          </div>
-                        </TableCell>
-                      </TableRow>
-                    ))
-                )}
-              </TableBody>
-            </Table>
+                                }
+                              }}>
+                                <Eye className="h-4 w-4" />
+                              </Button>
+                              <Button size="icon" variant="ghost" onClick={() => { markViewed("file", record.id); downloadPDF(record); }}>
+                                <Download className="h-4 w-4" />
+                              </Button>
+                              <Button size="icon" variant="ghost" onClick={() => { markViewed("file", record.id); openPrintPreview(record); }} title="Print">
+                                <Printer className="h-4 w-4" />
+                              </Button>
+                              <Button
+                                size="icon"
+                                variant="ghost"
+                                onClick={() => {
+                                  try {
+                                    // Deterministically map bell state to viewed status
+                                    // Bell ON (yellow) means unviewed; Bell OFF (white) means viewed
+                                    const viewed = isViewed("file", record.id);
+                                    if (viewed) {
+                                      // Turn bell ON → mark as unviewed
+                                      unmarkViewed("file", record.id);
+                                    } else {
+                                      // Turn bell OFF → mark as viewed
+                                      markViewed("file", record.id);
+                                    }
+                                    // Clear any historical admin alerts tied to this exact archive ID
+                                    try { dismissAlertsForRecord(record.recordType, record.id); } catch { }
+                                    // Force re-render
+                                    setRecords(prev => [...prev]);
+                                  } catch { }
+                                }}
+                                title="Toggle alert flag for this file"
+                              >
+                                {!isViewed("file", record.id) ? (
+                                  <Bell className="h-4 w-4 text-yellow-400" />
+                                ) : (
+                                  <Bell className="h-4 w-4 text-white" />
+                                )}
+                              </Button>
+                              <Button size="icon" variant="ghost" onClick={() => setDeleteId(record.id)}>
+                                <Trash2 className="h-4 w-4 text-destructive" />
+                              </Button>
+                            </div>
+                          </TableCell>
+                        </TableRow>
+                      ))
+                  )}
+                </TableBody>
+              </Table>
+            </div>
           </Card>
         </div>
       </main>

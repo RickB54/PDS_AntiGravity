@@ -295,58 +295,60 @@ const InventoryControl = () => {
               </div>
             </div>
 
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Name</TableHead>
-                  <TableHead className="hidden md:table-cell">Category</TableHead>
-                  <TableHead className="hidden md:table-cell">Subtype</TableHead>
-                  <TableHead className="hidden md:table-cell">Cost</TableHead>
-                  <TableHead>Quantity</TableHead>
-                  <TableHead className="hidden md:table-cell">Threshold</TableHead>
-                  <TableHead className="text-right">Actions</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {materials.map(m => {
-                  const isLow = typeof m.lowThreshold === 'number' && m.quantity <= m.lowThreshold;
-                  return (
-                    <TableRow key={m.id}>
-                      <TableCell className="font-medium cursor-pointer" onClick={() => openEdit(m, 'material')}>{m.name}</TableCell>
-                      <TableCell className="hidden md:table-cell cursor-pointer" onClick={() => openEdit(m, 'material')}>{m.category}</TableCell>
-                      <TableCell className="hidden md:table-cell cursor-pointer" onClick={() => openEdit(m, 'material')}>{m.subtype || '-'}</TableCell>
-                      <TableCell className="hidden md:table-cell cursor-pointer" onClick={() => openEdit(m, 'material')}>
-                        {typeof m.costPerItem === 'number' ? `$${m.costPerItem.toFixed(2)}` : '-'}
-                      </TableCell>
-                      <TableCell className={`cursor-pointer ${isLow ? "text-destructive font-bold" : ""}`} onClick={() => openEdit(m, 'material')}>
-                        {m.quantity}
-                      </TableCell>
-                      <TableCell className="hidden md:table-cell cursor-pointer" onClick={() => openEdit(m, 'material')}>
-                        {typeof m.lowThreshold === 'number' ? m.lowThreshold : '-'}
-                      </TableCell>
-                      <TableCell className="text-right">
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            handleDelete(m.id, 'material', m.name);
-                          }}
-                          className="text-destructive hover:text-destructive hover:bg-destructive/10"
-                        >
-                          <Trash2 className="h-4 w-4" />
-                        </Button>
-                      </TableCell>
-                    </TableRow>
-                  );
-                })}
-                {materials.length === 0 && (
+            <div className="overflow-x-auto">
+              <Table>
+                <TableHeader>
                   <TableRow>
-                    <TableCell colSpan={7} className="text-center text-muted-foreground py-8">No materials added yet.</TableCell>
+                    <TableHead>Name</TableHead>
+                    <TableHead className="hidden md:table-cell">Category</TableHead>
+                    <TableHead className="hidden md:table-cell">Subtype</TableHead>
+                    <TableHead className="hidden md:table-cell">Cost</TableHead>
+                    <TableHead>Quantity</TableHead>
+                    <TableHead className="hidden md:table-cell">Threshold</TableHead>
+                    <TableHead className="text-right">Actions</TableHead>
                   </TableRow>
-                )}
-              </TableBody>
-            </Table>
+                </TableHeader>
+                <TableBody>
+                  {materials.map(m => {
+                    const isLow = typeof m.lowThreshold === 'number' && m.quantity <= m.lowThreshold;
+                    return (
+                      <TableRow key={m.id}>
+                        <TableCell className="font-medium cursor-pointer" onClick={() => openEdit(m, 'material')}>{m.name}</TableCell>
+                        <TableCell className="hidden md:table-cell cursor-pointer" onClick={() => openEdit(m, 'material')}>{m.category}</TableCell>
+                        <TableCell className="hidden md:table-cell cursor-pointer" onClick={() => openEdit(m, 'material')}>{m.subtype || '-'}</TableCell>
+                        <TableCell className="hidden md:table-cell cursor-pointer" onClick={() => openEdit(m, 'material')}>
+                          {typeof m.costPerItem === 'number' ? `$${m.costPerItem.toFixed(2)}` : '-'}
+                        </TableCell>
+                        <TableCell className={`cursor-pointer ${isLow ? "text-destructive font-bold" : ""}`} onClick={() => openEdit(m, 'material')}>
+                          {m.quantity}
+                        </TableCell>
+                        <TableCell className="hidden md:table-cell cursor-pointer" onClick={() => openEdit(m, 'material')}>
+                          {typeof m.lowThreshold === 'number' ? m.lowThreshold : '-'}
+                        </TableCell>
+                        <TableCell className="text-right">
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleDelete(m.id, 'material', m.name);
+                            }}
+                            className="text-destructive hover:text-destructive hover:bg-destructive/10"
+                          >
+                            <Trash2 className="h-4 w-4" />
+                          </Button>
+                        </TableCell>
+                      </TableRow>
+                    );
+                  })}
+                  {materials.length === 0 && (
+                    <TableRow>
+                      <TableCell colSpan={7} className="text-center text-muted-foreground py-8">No materials added yet.</TableCell>
+                    </TableRow>
+                  )}
+                </TableBody>
+              </Table>
+            </div>
           </Card>
 
           {/* Chemicals Section */}
@@ -381,56 +383,58 @@ const InventoryControl = () => {
               </div>
             </div>
 
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Name</TableHead>
-                  <TableHead className="hidden md:table-cell">Bottle Size</TableHead>
-                  <TableHead className="hidden md:table-cell">Cost</TableHead>
-                  <TableHead>Stock</TableHead>
-                  <TableHead className="hidden md:table-cell">Threshold</TableHead>
-                  <TableHead className="text-right">Actions</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {chemicals.map(c => {
-                  const isLow = c.currentStock <= c.threshold;
-                  return (
-                    <TableRow key={c.id}>
-                      <TableCell className="font-medium cursor-pointer" onClick={() => openEdit(c, 'chemical')}>{c.name}</TableCell>
-                      <TableCell className="hidden md:table-cell cursor-pointer" onClick={() => openEdit(c, 'chemical')}>{c.bottleSize}</TableCell>
-                      <TableCell className="hidden md:table-cell cursor-pointer" onClick={() => openEdit(c, 'chemical')}>
-                        ${c.costPerBottle.toFixed(2)}
-                      </TableCell>
-                      <TableCell className={`cursor-pointer ${isLow ? "text-destructive font-bold" : ""}`} onClick={() => openEdit(c, 'chemical')}>
-                        {c.currentStock}
-                      </TableCell>
-                      <TableCell className="hidden md:table-cell cursor-pointer" onClick={() => openEdit(c, 'chemical')}>
-                        {c.threshold}
-                      </TableCell>
-                      <TableCell className="text-right">
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            handleDelete(c.id, 'chemical', c.name);
-                          }}
-                          className="text-destructive hover:text-destructive hover:bg-destructive/10"
-                        >
-                          <Trash2 className="h-4 w-4" />
-                        </Button>
-                      </TableCell>
-                    </TableRow>
-                  );
-                })}
-                {chemicals.length === 0 && (
+            <div className="overflow-x-auto">
+              <Table>
+                <TableHeader>
                   <TableRow>
-                    <TableCell colSpan={6} className="text-center text-muted-foreground py-8">No chemicals added yet.</TableCell>
+                    <TableHead>Name</TableHead>
+                    <TableHead className="hidden md:table-cell">Bottle Size</TableHead>
+                    <TableHead className="hidden md:table-cell">Cost</TableHead>
+                    <TableHead>Stock</TableHead>
+                    <TableHead className="hidden md:table-cell">Threshold</TableHead>
+                    <TableHead className="text-right">Actions</TableHead>
                   </TableRow>
-                )}
-              </TableBody>
-            </Table>
+                </TableHeader>
+                <TableBody>
+                  {chemicals.map(c => {
+                    const isLow = c.currentStock <= c.threshold;
+                    return (
+                      <TableRow key={c.id}>
+                        <TableCell className="font-medium cursor-pointer" onClick={() => openEdit(c, 'chemical')}>{c.name}</TableCell>
+                        <TableCell className="hidden md:table-cell cursor-pointer" onClick={() => openEdit(c, 'chemical')}>{c.bottleSize}</TableCell>
+                        <TableCell className="hidden md:table-cell cursor-pointer" onClick={() => openEdit(c, 'chemical')}>
+                          ${c.costPerBottle.toFixed(2)}
+                        </TableCell>
+                        <TableCell className={`cursor-pointer ${isLow ? "text-destructive font-bold" : ""}`} onClick={() => openEdit(c, 'chemical')}>
+                          {c.currentStock}
+                        </TableCell>
+                        <TableCell className="hidden md:table-cell cursor-pointer" onClick={() => openEdit(c, 'chemical')}>
+                          {c.threshold}
+                        </TableCell>
+                        <TableCell className="text-right">
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleDelete(c.id, 'chemical', c.name);
+                            }}
+                            className="text-destructive hover:text-destructive hover:bg-destructive/10"
+                          >
+                            <Trash2 className="h-4 w-4" />
+                          </Button>
+                        </TableCell>
+                      </TableRow>
+                    );
+                  })}
+                  {chemicals.length === 0 && (
+                    <TableRow>
+                      <TableCell colSpan={6} className="text-center text-muted-foreground py-8">No chemicals added yet.</TableCell>
+                    </TableRow>
+                  )}
+                </TableBody>
+              </Table>
+            </div>
           </Card>
 
           <Card className="p-6 bg-gradient-card border-border">
@@ -464,49 +468,51 @@ const InventoryControl = () => {
               </div>
             </div>
 
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Name</TableHead>
-                  <TableHead>Warranty</TableHead>
-                  <TableHead>Purchase Date</TableHead>
-                  <TableHead>Price</TableHead>
-                  <TableHead>Life Expectancy</TableHead>
-                  <TableHead>Notes</TableHead>
-                  <TableHead className="text-right">Actions</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {tools.map((tool) => (
-                  <TableRow key={tool.id}>
-                    <TableCell className="font-medium cursor-pointer" onClick={() => openEdit(tool, 'tool')}>{tool.name}</TableCell>
-                    <TableCell className="cursor-pointer" onClick={() => openEdit(tool, 'tool')}>{tool.warranty || '-'}</TableCell>
-                    <TableCell className="cursor-pointer" onClick={() => openEdit(tool, 'tool')}>{tool.purchaseDate ? new Date(tool.purchaseDate).toLocaleDateString() : '-'}</TableCell>
-                    <TableCell className="cursor-pointer" onClick={() => openEdit(tool, 'tool')}>{tool.price ? `$${tool.price.toFixed(2)}` : '-'}</TableCell>
-                    <TableCell className="cursor-pointer" onClick={() => openEdit(tool, 'tool')}>{tool.lifeExpectancy || '-'}</TableCell>
-                    <TableCell className="cursor-pointer" onClick={() => openEdit(tool, 'tool')}>{tool.notes || '-'}</TableCell>
-                    <TableCell className="text-right">
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          handleDelete(tool.id, 'tool', tool.name);
-                        }}
-                        className="text-destructive hover:text-destructive hover:bg-destructive/10"
-                      >
-                        <Trash2 className="h-4 w-4" />
-                      </Button>
-                    </TableCell>
-                  </TableRow>
-                ))}
-                {tools.length === 0 && (
+            <div className="overflow-x-auto">
+              <Table>
+                <TableHeader>
                   <TableRow>
-                    <TableCell colSpan={7} className="text-center text-muted-foreground py-8">No tools added yet.</TableCell>
+                    <TableHead>Name</TableHead>
+                    <TableHead>Warranty</TableHead>
+                    <TableHead>Purchase Date</TableHead>
+                    <TableHead>Price</TableHead>
+                    <TableHead>Life Expectancy</TableHead>
+                    <TableHead>Notes</TableHead>
+                    <TableHead className="text-right">Actions</TableHead>
                   </TableRow>
-                )}
-              </TableBody>
-            </Table>
+                </TableHeader>
+                <TableBody>
+                  {tools.map((tool) => (
+                    <TableRow key={tool.id}>
+                      <TableCell className="font-medium cursor-pointer" onClick={() => openEdit(tool, 'tool')}>{tool.name}</TableCell>
+                      <TableCell className="cursor-pointer" onClick={() => openEdit(tool, 'tool')}>{tool.warranty || '-'}</TableCell>
+                      <TableCell className="cursor-pointer" onClick={() => openEdit(tool, 'tool')}>{tool.purchaseDate ? new Date(tool.purchaseDate).toLocaleDateString() : '-'}</TableCell>
+                      <TableCell className="cursor-pointer" onClick={() => openEdit(tool, 'tool')}>{tool.price ? `$${tool.price.toFixed(2)}` : '-'}</TableCell>
+                      <TableCell className="cursor-pointer" onClick={() => openEdit(tool, 'tool')}>{tool.lifeExpectancy || '-'}</TableCell>
+                      <TableCell className="cursor-pointer" onClick={() => openEdit(tool, 'tool')}>{tool.notes || '-'}</TableCell>
+                      <TableCell className="text-right">
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleDelete(tool.id, 'tool', tool.name);
+                          }}
+                          className="text-destructive hover:text-destructive hover:bg-destructive/10"
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </Button>
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                  {tools.length === 0 && (
+                    <TableRow>
+                      <TableCell colSpan={7} className="text-center text-muted-foreground py-8">No tools added yet.</TableCell>
+                    </TableRow>
+                  )}
+                </TableBody>
+              </Table>
+            </div>
           </Card>
 
           <Card className="p-6 bg-gradient-card border-border">
@@ -528,35 +534,37 @@ const InventoryControl = () => {
               </div>
             </div>
 
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Date</TableHead>
-                  <TableHead>Chemical</TableHead>
-                  <TableHead>Material</TableHead>
-                  <TableHead>Tool</TableHead>
-                  <TableHead>Service</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {filteredHistory.map(item => (
-                  <TableRow key={item.id}>
-                    <TableCell>{new Date(item.date).toLocaleString()}</TableCell>
-                    <TableCell>{item.chemicalName || '-'}</TableCell>
-                    <TableCell>{(item as any).materialName || '-'}</TableCell>
-                    <TableCell>{(item as any).toolName || '-'}</TableCell>
-                    <TableCell>{item.serviceName}</TableCell>
-                  </TableRow>
-                ))}
-                {filteredHistory.length === 0 && (
+            <div className="overflow-x-auto">
+              <Table>
+                <TableHeader>
                   <TableRow>
-                    <TableCell colSpan={4} className="text-center text-muted-foreground py-8">
-                      No usage history found for the selected period.
-                    </TableCell>
+                    <TableHead>Date</TableHead>
+                    <TableHead>Chemical</TableHead>
+                    <TableHead>Material</TableHead>
+                    <TableHead>Tool</TableHead>
+                    <TableHead>Service</TableHead>
                   </TableRow>
-                )}
-              </TableBody>
-            </Table>
+                </TableHeader>
+                <TableBody>
+                  {filteredHistory.map(item => (
+                    <TableRow key={item.id}>
+                      <TableCell>{new Date(item.date).toLocaleString()}</TableCell>
+                      <TableCell>{item.chemicalName || '-'}</TableCell>
+                      <TableCell>{(item as any).materialName || '-'}</TableCell>
+                      <TableCell>{(item as any).toolName || '-'}</TableCell>
+                      <TableCell>{item.serviceName}</TableCell>
+                    </TableRow>
+                  ))}
+                  {filteredHistory.length === 0 && (
+                    <TableRow>
+                      <TableCell colSpan={4} className="text-center text-muted-foreground py-8">
+                        No usage history found for the selected period.
+                      </TableCell>
+                    </TableRow>
+                  )}
+                </TableBody>
+              </Table>
+            </div>
           </Card>
         </div>
       </main>
