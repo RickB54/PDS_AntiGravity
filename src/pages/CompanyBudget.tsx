@@ -33,6 +33,7 @@ import {
     CollapsibleTrigger,
 } from "@/components/ui/collapsible";
 import { Download, PieChart as PieChartIcon, BarChart3, TrendingUp, Plus, Filter, ChevronDown, Trash2, Pencil, Printer, FileText } from "lucide-react";
+import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip as RechartsTooltip, Legend, ResponsiveContainer } from 'recharts';
 import { getReceivables, Receivable, upsertReceivable } from "@/lib/receivables";
 import { getExpenses, upsertExpense } from "@/lib/db";
 import DateRangeFilter, { DateRangeValue } from "@/components/filters/DateRangeFilter";
@@ -962,7 +963,7 @@ const CompanyBudget = () => {
 
                                 {/* Line Chart - Monthly Timeline */}
                                 {viewMode === 'line' && (
-                                    <div className="overflow-x-auto w-full pb-4">
+                                    <div className="w-full h-[400px] mt-4">
                                         {(() => {
                                             // Build monthly data
                                             const months: string[] = [];
@@ -993,76 +994,87 @@ const CompanyBudget = () => {
                                                 }
                                             });
 
-                                            const w = 800, h = 300, pad = 40;
-                                            const maxY = Math.max(
-                                                ...months.map(m => Math.max(incomeByMonth.get(m) || 0, expenseByMonth.get(m) || 0)),
-                                                100
-                                            );
+                                            const aggregateMode = filterType === 'all';
+                                            let activeCategories: string[] = [];
+                                            let data: any[] = [];
+                                            if (aggregateMode) {
+                                                data = months.map(m => {
+                                                    const inc = incomeByMonth.get(m) || 0;
+                                                    const exp = expenseByMonth.get(m) || 0;
+                                                    const profit = inc - exp;
+                                                    // Avoid division by zero
+                                                    const margin = inc > 0 ? (profit / inc) * 100 : 0;
+                                                    // Format month for display (e.g., "Jan 2024")
+                                                    const [yr, mo] = m.split('-');
+                                                    const dateObj = new Date(parseInt(yr), parseInt(mo) - 1, 1);
+                                                    const name = dateObj.toLocaleDateString('default', { month: 'short', year: 'numeric' });
 
-                                            const xFor = (i: number) => pad + (i * (w - 2 * pad)) / Math.max(1, months.length - 1);
-                                            const yFor = (v: number) => h - pad - (v * (h - 2 * pad)) / maxY;
-                                            const pathFor = (series: number[]) => series.map((v, i) => `${i === 0 ? 'M' : 'L'} ${xFor(i)} ${yFor(v)}`).join(' ');
+                                                    return {
+                                                        name,
+                                                        Income: inc,
+                                                        Expenses: exp,
+                                                        Profit: profit,
+                                                        Margin: margin
+                                                    };
+                                                });
+                                            } else {
+                                                const isIncome = filterType === 'income';
+                                                const sourceList = isIncome ? incomeList : expenseList;
+                                                activeCategories = Array.from(new Set(sourceList.map(item => item.category || (isIncome ? "Other Income" : "Other Expenses"))));
+                                                data = months.map(m => {
+                                                    const [yr, mo] = m.split('-');
+                                                    const dateObj = new Date(parseInt(yr), parseInt(mo) - 1, 1);
+                                                    const name = dateObj.toLocaleDateString('default', { month: 'short', year: 'numeric' });
+                                                    const point: any = { name };
+                                                    activeCategories.forEach(cat => {
+                                                        const total = sourceList.filter(item => {
+                                                            const itemMonth = (item.date || item.createdAt || '').slice(0, 7);
+                                                            const itemCat = item.category || (isIncome ? "Other Income" : "Other Expenses");
+                                                            return itemMonth === m && itemCat === cat;
+                                                        }).reduce((sum, item) => sum + (item.amount || 0), 0);
+                                                        point[cat] = total;
+                                                    });
+                                                    return point;
+                                                });
+                                            }
 
-                                            const incomeSeries = months.map(m => incomeByMonth.get(m) || 0);
-                                            const expenseSeries = months.map(m => expenseByMonth.get(m) || 0);
-                                            const profitSeries = months.map(m => (incomeByMonth.get(m) || 0) - (expenseByMonth.get(m) || 0));
+                                            const getColor = (cat: string) => {
+                                                const found = categoryData.find(c => c.name === cat);
+                                                return found ? found.color : "#888888";
+                                            };
 
                                             return (
-                                                <svg width={w} height={h} className="min-w-[800px]">
-                                                    {/* Grid lines */}
-                                                    {[0, 0.25, 0.5, 0.75, 1].map(pct => (
-                                                        <line
-                                                            key={pct}
-                                                            x1={pad}
-                                                            y1={yFor(maxY * pct)}
-                                                            x2={w - pad}
-                                                            y2={yFor(maxY * pct)}
-                                                            stroke="currentColor"
-                                                            opacity="0.1"
+                                                <ResponsiveContainer width="100%" height="100%">
+                                                    <LineChart data={data} margin={{ top: 20, right: 30, left: 20, bottom: 5 }}>
+                                                        <CartesianGrid strokeDasharray="3 3" stroke="#333" vertical={false} />
+                                                        <XAxis dataKey="name" stroke="#888888" fontSize={12} tickLine={false} axisLine={false} />
+                                                        <YAxis yAxisId="left" stroke="#888888" fontSize={12} tickLine={false} axisLine={false} tickFormatter={(value) => `$${value}`} />
+                                                        {aggregateMode && (
+                                                            <YAxis yAxisId="right" orientation="right" stroke="#888888" fontSize={12} tickLine={false} axisLine={false} tickFormatter={(value) => `${value.toFixed(0)}%`} />
+                                                        )}
+                                                        <RechartsTooltip
+                                                            contentStyle={{ backgroundColor: '#1f2937', border: '1px solid #374151', borderRadius: '6px' }}
+                                                            itemStyle={{ color: '#e5e7eb' }}
+                                                            formatter={(value: any, name: any) => {
+                                                                if (name === 'Margin') return [`${Number(value).toFixed(1)}%`, name];
+                                                                return [`$${Number(value).toFixed(2)}`, name];
+                                                            }}
                                                         />
-                                                    ))}
-
-                                                    {/* Axes */}
-                                                    <line x1={pad} y1={h - pad} x2={w - pad} y2={h - pad} stroke="currentColor" opacity="0.3" />
-                                                    <line x1={pad} y1={pad} x2={pad} y2={h - pad} stroke="currentColor" opacity="0.3" />
-
-                                                    {/* Lines */}
-                                                    <path d={pathFor(incomeSeries)} fill="none" stroke="#10b981" strokeWidth="3" />
-                                                    <path d={pathFor(expenseSeries)} fill="none" stroke="#ef4444" strokeWidth="3" />
-                                                    <path d={pathFor(profitSeries)} fill="none" stroke="#3b82f6" strokeWidth="2" strokeDasharray="5,5" />
-
-                                                    {/* Points */}
-                                                    {incomeSeries.map((v, i) => (
-                                                        <circle key={`i-${i}`} cx={xFor(i)} cy={yFor(v)} r="4" fill="#10b981" />
-                                                    ))}
-                                                    {expenseSeries.map((v, i) => (
-                                                        <circle key={`e-${i}`} cx={xFor(i)} cy={yFor(v)} r="4" fill="#ef4444" />
-                                                    ))}
-
-                                                    {/* Labels */}
-                                                    {months.map((m, i) => (
-                                                        <text
-                                                            key={m}
-                                                            x={xFor(i)}
-                                                            y={h - pad + 20}
-                                                            fontSize="10"
-                                                            fill="currentColor"
-                                                            textAnchor="middle"
-                                                        >
-                                                            {m.slice(5)}
-                                                        </text>
-                                                    ))}
-
-                                                    {/* Legend */}
-                                                    <g>
-                                                        <circle cx={pad + 10} cy={20} r={4} fill="#10b981" />
-                                                        <text x={pad + 20} y={24} fontSize="12" fill="currentColor">Income</text>
-                                                        <circle cx={pad + 100} cy={20} r={4} fill="#ef4444" />
-                                                        <text x={pad + 110} y={24} fontSize="12" fill="currentColor">Expenses</text>
-                                                        <line x1={pad + 190} y1={20} x2={pad + 210} y2={20} stroke="#3b82f6" strokeWidth="2" strokeDasharray="5,5" />
-                                                        <text x={pad + 220} y={24} fontSize="12" fill="currentColor">Net Profit</text>
-                                                    </g>
-                                                </svg>
+                                                        <Legend />
+                                                        {aggregateMode ? (
+                                                            <>
+                                                                <Line yAxisId="left" type="monotone" dataKey="Income" stroke="#10b981" strokeWidth={2} dot={{ r: 4 }} activeDot={{ r: 6 }} />
+                                                                <Line yAxisId="left" type="monotone" dataKey="Expenses" stroke="#ef4444" strokeWidth={2} dot={{ r: 4 }} activeDot={{ r: 6 }} />
+                                                                <Line yAxisId="left" type="monotone" dataKey="Profit" stroke="#3b82f6" strokeWidth={2} strokeDasharray="5 5" dot={{ r: 4 }} activeDot={{ r: 6 }} />
+                                                                <Line yAxisId="right" type="monotone" dataKey="Margin" stroke="#f59e0b" strokeWidth={1} dot={false} activeDot={{ r: 4 }} />
+                                                            </>
+                                                        ) : (
+                                                            activeCategories.map(cat => (
+                                                                <Line key={cat} yAxisId="left" type="monotone" dataKey={cat} stroke={getColor(cat)} strokeWidth={2} dot={{ r: 3 }} activeDot={{ r: 5 }} />
+                                                            ))
+                                                        )}
+                                                    </LineChart>
+                                                </ResponsiveContainer>
                                             );
                                         })()}
                                     </div>
