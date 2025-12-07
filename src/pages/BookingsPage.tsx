@@ -20,11 +20,15 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { Badge } from "@/components/ui/badge";
-import { ChevronLeft, ChevronRight, Plus, Calendar as CalendarIcon, Clock, User, Car, Search, X, MapPin, Users, ChevronDown, Mail, Phone, MapPinIcon } from "lucide-react";
+import { ChevronLeft, ChevronRight, Plus, Calendar as CalendarIcon, Clock, User, Car, Search, X, MapPin, Users, ChevronDown, Mail, Phone, MapPinIcon, Check, ChevronsUpDown } from "lucide-react";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem } from "@/components/ui/command";
 import { useBookingsStore, type Booking } from "@/store/bookings";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
 import api from "@/lib/api";
+import { servicePackages, addOns } from "@/lib/services";
+import { getCustomPackages, getCustomAddOns } from "@/lib/servicesMeta";
 import { useLocation } from "react-router-dom";
 import localforage from "localforage";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
@@ -54,13 +58,18 @@ export default function BookingsPage() {
     address: "",
     time: "09:00",
     assignedEmployee: "",
-    notes: ""
+    notes: "",
+    addons: [] as string[]
   });
 
   const [employees, setEmployees] = useState<any[]>([]);
   const [customers, setCustomers] = useState<any[]>([]);
   const [selectedCustomer, setSelectedCustomer] = useState<any>(null);
   const [selectedHistoryCustomer, setSelectedHistoryCustomer] = useState<string | null>(null);
+
+
+  const allServices = useMemo(() => [...servicePackages, ...getCustomPackages()], []);
+  const allAddons = useMemo(() => [...addOns, ...getCustomAddOns()], []);
 
   // Fetch employees
   useEffect(() => {
@@ -146,7 +155,7 @@ export default function BookingsPage() {
 
   const handleDayClick = (day: Date) => {
     setSelectedDate(day);
-    setFormData(prev => ({ ...prev, time: "09:00" })); // Reset time default
+    setFormData(prev => ({ ...prev, time: "09:00", addons: [] })); // Reset time default
     setIsAddModalOpen(true);
   };
 
@@ -163,7 +172,8 @@ export default function BookingsPage() {
       address: booking.address || "",
       time: format(parseISO(booking.date), "HH:mm"),
       assignedEmployee: booking.assignedEmployee || "",
-      notes: booking.notes || ""
+      notes: booking.notes || "",
+      addons: booking.addons || []
     });
     setIsAddModalOpen(true);
   };
@@ -191,7 +201,8 @@ export default function BookingsPage() {
         vehicleModel: formData.vehicleModel,
         address: formData.address,
         assignedEmployee: formData.assignedEmployee,
-        notes: formData.notes
+        notes: formData.notes,
+        addons: formData.addons
       });
       toast.success("Booking updated");
     } else {
@@ -209,13 +220,14 @@ export default function BookingsPage() {
         address: formData.address,
         assignedEmployee: formData.assignedEmployee,
         notes: formData.notes,
+        addons: formData.addons,
         createdAt: new Date().toISOString()
       });
       toast.success("Booking created");
     }
     setIsAddModalOpen(false);
     setSelectedBooking(null);
-    setFormData({ customer: "", service: "", vehicle: "", vehicleYear: "", vehicleMake: "", vehicleModel: "", address: "", time: "09:00", assignedEmployee: "", notes: "" });
+    setFormData({ customer: "", service: "", vehicle: "", vehicleYear: "", vehicleMake: "", vehicleModel: "", address: "", time: "09:00", assignedEmployee: "", notes: "", addons: [] });
   };
 
   const handleDelete = () => {
@@ -455,14 +467,67 @@ export default function BookingsPage() {
 
             <div className="grid grid-cols-4 items-center gap-4">
               <label className="text-right text-sm font-medium text-gray-400">Service</label>
-              <div className="col-span-3 relative">
-                <CalendarIcon className="absolute left-3 top-2.5 h-4 w-4 text-gray-500" />
-                <Input
-                  placeholder="e.g. Full Detail, Ceramic Coating"
-                  className="pl-9 bg-zinc-900 border-zinc-800 text-gray-300 placeholder:text-gray-500"
-                  value={formData.service}
-                  onChange={(e) => setFormData({ ...formData, service: e.target.value })}
-                />
+              <div className="col-span-3 flex gap-2">
+                <div className="relative flex-1">
+                  <CalendarIcon className="absolute left-3 top-2.5 h-4 w-4 text-gray-500 z-10" />
+                  <select
+                    className="flex h-10 w-full rounded-md border border-zinc-800 bg-zinc-900 px-9 py-2 text-sm text-gray-300 ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                    value={formData.service}
+                    onChange={(e) => setFormData({ ...formData, service: e.target.value })}
+                  >
+                    <option value="" className="text-gray-500">Select Service...</option>
+                    {allServices.map((pkg) => (
+                      <option key={pkg.id} value={pkg.name}>
+                        {pkg.name}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                <div className="flex-1">
+                  <Popover>
+                    <PopoverTrigger asChild>
+                      <Button variant="outline" role="combobox" className="w-full justify-between bg-zinc-900 border-zinc-800 text-gray-300 h-10 px-3 font-normal">
+                        <span className="truncate">
+                          {formData.addons.length > 0
+                            ? `${formData.addons.length} Addon${formData.addons.length > 1 ? 's' : ''}`
+                            : "Addons..."}
+                        </span>
+                        <ChevronsUpDown className="ml-2 h-4 w-4 shrinking-0 opacity-50" />
+                      </Button>
+                    </PopoverTrigger>
+                    <PopoverContent className="w-[200px] p-0 bg-zinc-950 border-zinc-800">
+                      <Command>
+                        <CommandInput placeholder="Search addons..." className="h-9" />
+                        <CommandEmpty>No addon found.</CommandEmpty>
+                        <CommandGroup className="max-h-64 overflow-auto">
+                          {allAddons.map((addon) => (
+                            <CommandItem
+                              key={addon.id}
+                              value={addon.name}
+                              onSelect={() => {
+                                setFormData(prev => {
+                                  const exists = prev.addons.includes(addon.name);
+                                  if (exists) return { ...prev, addons: prev.addons.filter(a => a !== addon.name) };
+                                  return { ...prev, addons: [...prev.addons, addon.name] };
+                                });
+                              }}
+                              className="text-gray-300 cursor-pointer hover:bg-zinc-900"
+                            >
+                              <Check
+                                className={cn(
+                                  "mr-2 h-4 w-4",
+                                  formData.addons.includes(addon.name) ? "opacity-100" : "opacity-0"
+                                )}
+                              />
+                              {addon.name}
+                            </CommandItem>
+                          ))}
+                        </CommandGroup>
+                      </Command>
+                    </PopoverContent>
+                  </Popover>
+                </div>
               </div>
             </div>
 

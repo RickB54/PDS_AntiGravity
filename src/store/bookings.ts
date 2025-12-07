@@ -17,6 +17,7 @@ export interface Booking {
   assignedEmployee?: string;
   notes?: string;
   price?: number;
+  addons?: string[];
 }
 
 const STORAGE_KEY = "bookings";
