@@ -4,13 +4,14 @@ import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { FileText, Printer, Save, Trash2, Plus } from "lucide-react";
+import { FileText, Printer, Save, Trash2, Plus, Pencil, CheckCircle, XCircle, RotateCcw } from "lucide-react";
 import { Link } from "react-router-dom";
-import { getEstimates, addEstimate, getCustomers, deleteEstimate } from "@/lib/db";
+import { getEstimates, upsertEstimate, getCustomers, deleteEstimate } from "@/lib/db";
 import { Customer } from "@/components/customers/CustomerModal";
 import { servicePackages, addOns } from "@/lib/services";
 import { useToast } from "@/hooks/use-toast";
 import jsPDF from "jspdf";
+import { savePDFToArchive } from "@/lib/pdfArchive";
 import {
     Select,
     SelectContent,
@@ -41,6 +42,9 @@ interface Estimate {
     date: string;
     createdAt: string;
     status?: "open" | "accepted" | "declined";
+    packageId?: string;
+    vehicleType?: "compact" | "midsize" | "truck" | "luxury";
+    addonIds?: string[];
 }
 
 const Estimates = () => {
@@ -58,6 +62,8 @@ const Estimates = () => {
     const [selectedPackage, setSelectedPackage] = useState("");
     const [selectedVehicleType, setSelectedVehicleType] = useState<"compact" | "midsize" | "truck" | "luxury">("midsize");
     const [selectedAddons, setSelectedAddons] = useState<string[]>([]);
+    const [editingEstimateId, setEditingEstimateId] = useState<string | null>(null);
+    const [selectedStatus, setSelectedStatus] = useState<"open" | "accepted" | "declined">("open");
 
     useEffect(() => {
         loadData();
@@ -66,7 +72,7 @@ const Estimates = () => {
     const loadData = async () => {
         const [est, custs] = await Promise.all([getEstimates(), getCustomers()]);
         setEstimates(est as Estimate[]);
-        setCustomers(custs);
+        setCustomers(custs as Customer[]);
     };
 
     const calculateTotal = () => services.reduce((sum, s) => sum + s.price, 0);
@@ -80,24 +86,50 @@ const Estimates = () => {
         const customer = customers.find(c => c.id === selectedCustomer);
         if (!customer) return;
 
-        const newEstimate: Estimate = {
+        const estimateData: Estimate = {
+            id: editingEstimateId || undefined,
+            estimateNumber: editingEstimateId ? estimates.find(e => e.id === editingEstimateId)?.estimateNumber : undefined,
             customerId: selectedCustomer,
             customerName: customer.name,
             vehicle: `${customer.year || ''} ${customer.vehicle || ''} ${customer.model || ''}`.trim(),
             services,
             total: calculateTotal(),
             date: new Date().toLocaleDateString(),
-            createdAt: new Date().toISOString(),
-            status: "open"
+            createdAt: editingEstimateId ? (estimates.find(e => e.id === editingEstimateId)?.createdAt || new Date().toISOString()) : new Date().toISOString(),
+            status: selectedStatus,
+            packageId: selectedPackage,
+            vehicleType: selectedVehicleType,
+            addonIds: selectedAddons
         };
 
-        await addEstimate(newEstimate);
-        toast({ title: "Success", description: "Estimate created successfully!" });
+        await upsertEstimate(estimateData);
+        toast({ title: "Success", description: editingEstimateId ? "Estimate updated successfully!" : "Estimate created successfully!" });
         setShowCreateForm(false);
+        setEditingEstimateId(null);
         setSelectedCustomer("");
         setServices([]);
         setSelectedPackage("");
         setSelectedAddons([]);
+        setSelectedStatus("open");
+        loadData();
+    };
+
+    const handleModify = (est: Estimate) => {
+        setEditingEstimateId(est.id || null);
+        setSelectedCustomer(est.customerId);
+        setServices(est.services);
+        setSelectedPackage(est.packageId || "");
+        setSelectedVehicleType(est.vehicleType || "midsize");
+        setSelectedAddons(est.addonIds || []);
+        setSelectedStatus(est.status || "open");
+        setShowCreateForm(true);
+        window.scrollTo({ top: 0, behavior: 'smooth' });
+    };
+
+    const handleStatusChange = async (est: Estimate, newStatus: "open" | "accepted" | "declined") => {
+        const updated = { ...est, status: newStatus };
+        await upsertEstimate(updated);
+        toast({ title: "Status Updated", description: `Estimate marked as ${newStatus}` });
         loadData();
     };
 
@@ -108,7 +140,7 @@ const Estimates = () => {
         loadData();
     };
 
-    const generatePDF = (estimate: Estimate, download = false) => {
+    const generatePDF = (estimate: Estimate, action: 'print' | 'download' | 'archive') => {
         const doc = new jsPDF();
 
         // Header
@@ -150,10 +182,23 @@ const Estimates = () => {
         doc.setFontSize(8);
         doc.text("This estimate is valid for 30 days from the date above.", 105, 280, { align: "center" });
 
-        if (download) {
-            doc.save(`Estimate_${estimate.estimateNumber || 'New'}_.pdf`);
-        } else {
+        if (action === 'download') {
+            doc.save(`Estimate_${estimate.estimateNumber || 'New'}.pdf`);
+        } else if (action === 'print') {
             window.open(doc.output('bloburl'), '_blank');
+        } else if (action === 'archive') {
+            const pdfDataUrl = doc.output('datauristring');
+            const safeName = estimate.customerName.replace(/[^a-zA-Z0-9]/g, '_');
+            const fileName = `Estimate_${safeName}_${estimate.estimateNumber || Date.now()}.pdf`;
+
+            savePDFToArchive(
+                'Estimate',
+                estimate.customerName,
+                estimate.id || `est-${Date.now()}`,
+                pdfDataUrl,
+                { fileName }
+            );
+            toast({ title: 'Saved', description: 'Estimate PDF saved to File Manager.' });
         }
     };
 
@@ -243,7 +288,7 @@ const Estimates = () => {
 
                     {showCreateForm && (
                         <Card className="p-6 bg-gradient-card border-border">
-                            <h2 className="text-xl font-bold text-foreground mb-4">New Estimate</h2>
+                            <h2 className="text-xl font-bold text-foreground mb-4">{editingEstimateId ? "Edit Estimate" : "New Estimate"}</h2>
                             <div className="space-y-4">
                                 <div>
                                     <Label htmlFor="customer">Select Customer</Label>
@@ -348,6 +393,20 @@ const Estimates = () => {
                                     </div>
                                 </div>
 
+                                <div className="border-t border-border pt-4">
+                                    <Label>Estimate Status</Label>
+                                    <Select value={selectedStatus} onValueChange={(val: any) => setSelectedStatus(val)}>
+                                        <SelectTrigger>
+                                            <SelectValue />
+                                        </SelectTrigger>
+                                        <SelectContent>
+                                            <SelectItem value="open">Open</SelectItem>
+                                            <SelectItem value="accepted">Accepted (Closed)</SelectItem>
+                                            <SelectItem value="declined">Declined (Closed)</SelectItem>
+                                        </SelectContent>
+                                    </Select>
+                                </div>
+
                                 {services.length > 0 && (
                                     <div className="space-y-2">
                                         {services.map((s, i) => (
@@ -363,8 +422,18 @@ const Estimates = () => {
                                 )}
 
                                 <Button onClick={createEstimate} className="w-full bg-gradient-hero">
-                                    Create Estimate
+                                    {editingEstimateId ? "Save Changes" : "Create Estimate"}
                                 </Button>
+                                {editingEstimateId && (
+                                    <Button variant="outline" className="w-full mt-2" onClick={() => {
+                                        setEditingEstimateId(null);
+                                        setShowCreateForm(false);
+                                        setSelectedCustomer("");
+                                        setServices([]);
+                                    }}>
+                                        Cancel Edit
+                                    </Button>
+                                )}
                             </div>
                         </Card>
                     )}
@@ -384,17 +453,39 @@ const Estimates = () => {
                                         <p className="text-sm text-muted-foreground">Date: {est.date}</p>
                                         <p className="text-lg font-bold text-primary mt-2">Total: ${est.total.toFixed(2)}</p>
                                         <p className={`text-sm font-medium mt-1 ${(est.status || "open") === "accepted" ? "text-success" :
-                                                (est.status || "open") === "declined" ? "text-destructive" :
-                                                    "text-yellow-500"
+                                            (est.status || "open") === "declined" ? "text-destructive" :
+                                                "text-yellow-500"
                                             }`}>
                                             {(est.status || "open").toUpperCase()}
                                         </p>
                                     </div>
                                     <div className="flex gap-2" onClick={(e) => e.stopPropagation()}>
-                                        <Button size="icon" variant="outline" onClick={() => generatePDF(est, false)}>
+                                        <Button size="icon" variant="outline" onClick={() => handleModify(est)} title="Edit Estimate">
+                                            <Pencil className="h-4 w-4" />
+                                        </Button>
+
+                                        {(est.status || 'open') !== 'accepted' && (
+                                            <Button size="icon" variant="outline" onClick={() => handleStatusChange(est, 'accepted')} title="Mark Accepted/Closed" className="text-green-600 hover:text-green-700">
+                                                <CheckCircle className="h-4 w-4" />
+                                            </Button>
+                                        )}
+
+                                        {(est.status || 'open') !== 'declined' && (
+                                            <Button size="icon" variant="outline" onClick={() => handleStatusChange(est, 'declined')} title="Mark Declined/Closed" className="text-red-600 hover:text-red-700">
+                                                <XCircle className="h-4 w-4" />
+                                            </Button>
+                                        )}
+
+                                        {(est.status === 'accepted' || est.status === 'declined') && (
+                                            <Button size="icon" variant="outline" onClick={() => handleStatusChange(est, 'open')} title="Re-open Estimate" className="text-yellow-600 hover:text-yellow-700">
+                                                <RotateCcw className="h-4 w-4" />
+                                            </Button>
+                                        )}
+
+                                        <Button size="icon" variant="outline" onClick={() => generatePDF(est, 'print')} title="Print">
                                             <Printer className="h-4 w-4" />
                                         </Button>
-                                        <Button size="icon" variant="outline" onClick={() => generatePDF(est, true)}>
+                                        <Button size="icon" variant="outline" onClick={() => generatePDF(est, 'archive')} title="Save to File Manager">
                                             <Save className="h-4 w-4" />
                                         </Button>
                                         <Button size="icon" variant="ghost" onClick={() => setDeleteId(est.id!)}>
@@ -423,7 +514,6 @@ const Estimates = () => {
                 </AlertDialogContent>
             </AlertDialog>
 
-            {/* Estimate Detail Dialog */}
             {selectedEstimate && (
                 <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4" onClick={() => setSelectedEstimate(null)}>
                     <Card className="max-w-2xl w-full max-h-[90vh] overflow-auto bg-background" onClick={(e) => e.stopPropagation()}>
@@ -470,8 +560,8 @@ const Estimates = () => {
                                 </div>
                                 <div className="mt-2">
                                     <p className={`text-sm font-medium ${(selectedEstimate.status || "open") === "accepted" ? "text-success" :
-                                            (selectedEstimate.status || "open") === "declined" ? "text-destructive" :
-                                                "text-yellow-500"
+                                        (selectedEstimate.status || "open") === "declined" ? "text-destructive" :
+                                            "text-yellow-500"
                                         }`}>
                                         Status: {(selectedEstimate.status || "open").toUpperCase()}
                                     </p>
@@ -479,10 +569,10 @@ const Estimates = () => {
                             </div>
 
                             <div className="border-t border-border pt-4 flex gap-2 justify-end">
-                                <Button variant="outline" onClick={() => generatePDF(selectedEstimate, false)}>
+                                <Button variant="outline" onClick={() => generatePDF(selectedEstimate, 'print')}>
                                     <Printer className="h-4 w-4 mr-2" />Print
                                 </Button>
-                                <Button variant="outline" onClick={() => generatePDF(selectedEstimate, true)}>
+                                <Button variant="outline" onClick={() => generatePDF(selectedEstimate, 'archive')}>
                                     <Save className="h-4 w-4 mr-2" />Save PDF
                                 </Button>
                             </div>

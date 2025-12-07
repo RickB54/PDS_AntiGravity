@@ -425,7 +425,7 @@ const SearchCustomer = () => {
                               <Trash2 className="h-4 w-4" />
                             </Button>
                             <Button asChild variant="outline" size="sm" className="ml-2">
-                              <Link to={`/bookings?add=true&customerId=${customer.id}&customerName=${encodeURIComponent(customer.name)}&address=${encodeURIComponent(customer.address || '')}`}>
+                              <Link to={`/bookings?add=true&customerId=${customer.id}&customerName=${encodeURIComponent(customer.name)}&address=${encodeURIComponent(customer.address || '')}&email=${encodeURIComponent(customer.email || '')}&phone=${encodeURIComponent(customer.phone || '')}&vehicleYear=${encodeURIComponent(customer.year || '')}&vehicleMake=${encodeURIComponent(customer.vehicle || '')}&vehicleModel=${encodeURIComponent(customer.model || '')}&vehicleType=${encodeURIComponent(customer.vehicleType || '')}`}>
                                 <CalendarPlus className="h-4 w-4 mr-2" />
                                 Book Job
                               </Link>

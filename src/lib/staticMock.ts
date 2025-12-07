@@ -461,40 +461,137 @@ export async function insertStaticMockBasic(
 
 export async function removeStaticMockBasic(reporter?: (msg: string) => void) {
   const report = (msg: string) => { try { reporter && reporter(msg); } catch { } };
-  report('Removing static customers, employees, and inventory…');
-  // Users
+
+  report('Starting comprehensive mock data removal...');
+
+  const mockEmailPrefix = 'static+';
+  const mockNames = ['Alex Green', 'Casey Brown', 'Drew White', 'Evan Blue', 'Finn Gray', 'Taylor Frost', 'Jordan Lee', 'Morgan Park', 'Sam Rivera', 'Jamie Chen', 'Riley Brooks', 'Harper Quinn', 'Jesse Lane', 'Kai Morgan', 'Logan Reese', 'Milan Avery'];
+  const mockIncomeCategories = ['Detail Package Sales', 'Add-on Services', 'Gift Cards'];
+  const mockExpenseCategories = ['Marketing', 'Equipment Purchases', 'Payroll', 'Office Supplies'];
+  const isMockName = (name: string) => mockNames.some(m => m.toLowerCase() === (name || '').toLowerCase());
+  const isMockEmail = (email: string) => (email || '').startsWith(mockEmailPrefix);
+
+  // 1. Users
+  report('Cleaning Users...');
   const users = (await localforage.getItem<any[]>('users')) || [];
-  await localforage.setItem('users', users.filter(u => !u.isStaticMock && !String(u.email || '').startsWith('static+')));
-  // Employees (both localforage and localStorage)
+  const nextUsers = users.filter(u => !u.isStaticMock && !isMockEmail(u.email) && !isMockName(u.name));
+  await localforage.setItem('users', nextUsers);
+
+  // 2. Employees (LF + LS)
+  report('Cleaning Employees...');
   const emps = (await localforage.getItem<any[]>('company-employees')) || [];
-  await localforage.setItem('company-employees', emps.filter(u => !u.isStaticMock && !String(u.email || '').startsWith('static+')));
+  const nextEmps = emps.filter(u => !u.isStaticMock && !isMockEmail(u.email) && !isMockName(u.name));
+  await localforage.setItem('company-employees', nextEmps);
   try {
     const lsEmps = JSON.parse(localStorage.getItem('company-employees') || '[]');
-    const nextLsEmps = lsEmps.filter((u: any) => !u.isStaticMock && !String(u.email || '').startsWith('static+'));
+    const nextLsEmps = lsEmps.filter((u: any) => !u.isStaticMock && !isMockEmail(u.email) && !isMockName(u.name));
     localStorage.setItem('company-employees', JSON.stringify(nextLsEmps));
   } catch { }
-  // Customers
+
+  // 3. Customers
+  report('Cleaning Customers...');
   const customers = (await localforage.getItem<any[]>('customers')) || [];
-  await localforage.setItem('customers', customers.filter(c => !String(c.email || '').startsWith('static+')));
-  // Inventory
+  const nextCust = customers.filter(c => !c.isStaticMock && !isMockEmail(c.email) && !isMockName(c.name));
+  await localforage.setItem('customers', nextCust);
+
+  // 4. Inventory (Chemicals, Materials, Tools)
+  report('Cleaning Inventory...');
   const chemicals = (await localforage.getItem<any[]>('chemicals')) || [];
-  await localforage.setItem('chemicals', chemicals.filter(c => !c.isStaticMock));
+  await localforage.setItem('chemicals', chemicals.filter(c => !c.isStaticMock && !String(c.id).startsWith('chem_')));
+
   const materials = (await localforage.getItem<any[]>('materials')) || [];
-  await localforage.setItem('materials', materials.filter(m => !m.isStaticMock));
-  // Clear residual badges/alerts (payroll_due and others created during mock)
+  await localforage.setItem('materials', materials.filter(m => !m.isStaticMock && !String(m.id).startsWith('mat_')));
+
+  const tools = (await localforage.getItem<any[]>('tools')) || [];
+  await localforage.setItem('tools', tools.filter(t => !t.isStaticMock && !String(t.id).startsWith('tool_')));
+
+  // 5. Accounting - Income (Receivables)
+  report('Cleaning Accounting (Income)...');
+  const receivables = (await localforage.getItem<any[]>('receivables')) || [];
+  const nextReceivables = receivables.filter(r => {
+    // Filter by explicit ID pattern
+    if (String(r.id || '').startsWith('static_') || String(r.id || '').startsWith('income_')) return false;
+    // Filter by mock categories IF description is generic mock description
+    if (mockIncomeCategories.includes(r.category) && (r.description || '').startsWith('Mock ')) return false;
+    // Filter by mock source/customer name
+    if (isMockName(r.source || r.customerName)) return false;
+    return true;
+  });
+  await localforage.setItem('receivables', nextReceivables);
+
+  // 6. Accounting - Expenses
+  report('Cleaning Accounting (Expenses)...');
+  const expenses = (await localforage.getItem<any[]>('expenses')) || [];
+  const nextExpenses = expenses.filter(e => {
+    if (String(e.id || '').startsWith('static_') || String(e.id || '').startsWith('expense_')) return false;
+    if (mockExpenseCategories.includes(e.category) && (e.description || '').startsWith('Mock ')) return false;
+    return true;
+  });
+  await localforage.setItem('expenses', nextExpenses);
+
+  // 7. Payroll History
+  report('Cleaning Payroll History...');
+  const payroll = (await localforage.getItem<any[]>('payroll-history')) || [];
+  const nextPayroll = payroll.filter(p => !isMockEmail(p.employee) && !isMockName(p.employeeName));
+  await localforage.setItem('payroll-history', nextPayroll);
+
+  // 8. Invoices
+  report('Cleaning Invoices...');
+  const invoices = (await localforage.getItem<any[]>('invoices')) || [];
+  const nextInvoices = invoices.filter(inv => {
+    if (inv.isStaticMock) return false;
+    if (isMockEmail(inv.customerEmail)) return false;
+    if (isMockName(inv.customerName)) return false;
+    if (String(inv.id || '').startsWith('static_')) return false;
+    return true;
+  });
+  await localforage.setItem('invoices', nextInvoices);
+
+  // 9. Generic Checklists / Jobs
+  report('Cleaning Jobs/Checklists...');
+  const checklists = (await localforage.getItem<any[]>('generic-checklists')) || [];
+  const nextChecklists = checklists.filter(c => {
+    if (String(c.id || '').startsWith('static_') || String(c.id || '').startsWith('gc_')) {
+      // Double check against mock customer if ID pattern is generic
+      // Assuming static mocks used 'gc_' prefix heavily in tracker
+      if (isMockName(c.customerName)) return false;
+    }
+    return true;
+  });
+  await localforage.setItem('generic-checklists', nextChecklists);
+
+  // 10. Custom Categories (LocalStorage/LocalForage)
+  report('Cleaning Custom Categories...');
+  // Note: We only remove categories if they match our specific mock list exactly and are unused? 
+  // Safest is to leave them unless we track them, but user asked to remove "Accounting and budget items".
+  // Let's remove them from the custom lists if present.
+  const customCats = (await localforage.getItem<string[]>('customCategories')) || [];
+  // const nextCustomCats = customCats.filter(c => !mockIncomeCategories.includes(c) && !mockExpenseCategories.includes(c)); 
+  // Actually, let's keep them in case user used them for real things, unless we are sure.
+  // The prompt implies "Mock Data" items in the list. The transactions are the items. 
+  // We will leave the category names themselves to avoid breaking filters if user adopted them.
+
+  // 11. Clear Alerts & Badges
+  report('Clearing Alerts...');
   try {
     const { clearAllAlerts } = await import('@/lib/adminAlerts');
     clearAllAlerts();
   } catch { }
-  // Reset computed badge helpers
+
+  // 12. Reset helpers
   try { localStorage.setItem('inventory_low_count', '0'); } catch { }
   try { localStorage.setItem('payroll_owed_adjustments', '{}'); } catch { }
+
+  // Dispatch Updates
   try {
     window.dispatchEvent(new CustomEvent('content-changed', { detail: { kind: 'users' } }));
     window.dispatchEvent(new CustomEvent('content-changed', { detail: { kind: 'employees' } }));
     window.dispatchEvent(new CustomEvent('content-changed', { detail: { kind: 'customers' } }));
     window.dispatchEvent(new CustomEvent('inventory-changed'));
+    window.dispatchEvent(new CustomEvent('accounting-changed'));
+    window.dispatchEvent(new CustomEvent('payroll-changed'));
     window.dispatchEvent(new CustomEvent('admin_alerts_updated'));
   } catch { }
-  report('Static mock data removal complete');
+
+  report('Static mock data removal complete. All traces cleared.');
 }

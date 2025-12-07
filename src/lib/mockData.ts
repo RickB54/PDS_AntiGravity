@@ -5,7 +5,7 @@ import { upsertCustomer, upsertInvoice } from '@/lib/db';
 import { savePDFToArchive } from '@/lib/pdfArchive';
 import { servicePackages, addOns, getServicePrice, getAddOnPrice } from '@/lib/services';
 
-type CreatedUser = { id: string; name: string; email: string; role: 'customer'|'employee' };
+type CreatedUser = { id: string; name: string; email: string; role: 'customer' | 'employee' };
 type MockJob = {
   id: string;
   customerId: string;
@@ -16,13 +16,13 @@ type MockJob = {
   vehicleType: string;
   invoice?: { id?: string; total: number; paidAmount: number; paymentStatus: string; invoiceNumber?: number };
 };
-type MockInventoryItem = { name: string; category: 'Chemical'|'Material' };
+type MockInventoryItem = { name: string; category: 'Chemical' | 'Material' };
 
-function mockEmail(slug: string, role: 'customer'|'employee', n: number) {
+function mockEmail(slug: string, role: 'customer' | 'employee', n: number) {
   return `mock+${role}${n}.${slug}@example.com`;
 }
 
-async function createUserViaEdge(name: string, email: string, role: 'customer'|'employee'): Promise<CreatedUser> {
+async function createUserViaEdge(name: string, email: string, role: 'customer' | 'employee'): Promise<CreatedUser> {
   if (isSupabaseConfigured()) {
     const { data, error } = await supabase.functions.invoke('create-user', { body: { name, email, role } });
     if (!error && data?.ok && data?.id) {
@@ -30,7 +30,7 @@ async function createUserViaEdge(name: string, email: string, role: 'customer'|'
     }
   }
   // Fallback local-only
-  const id = `mock_${role}_${Date.now()}_${Math.random().toString(36).slice(2,6)}`;
+  const id = `mock_${role}_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`;
   return { id, name, email, role };
 }
 
@@ -118,12 +118,12 @@ async function addMockInventory(): Promise<MockInventoryItem[]> {
     { name: 'Detailing Clay', category: 'Material' },
   );
 
-  try { window.dispatchEvent(new CustomEvent('inventory-changed')); } catch {}
+  try { window.dispatchEvent(new CustomEvent('inventory-changed')); } catch { }
   return inv;
 }
 
 export async function insertMockData(reporter?: (msg: string) => void) {
-  const report = (msg: string) => { try { reporter && reporter(msg); } catch {} };
+  const report = (msg: string) => { try { reporter && reporter(msg); } catch { } };
   const tracker: { users: CreatedUser[]; jobs: string[]; invoices: string[]; jobDetails: MockJob[]; inventory: MockInventoryItem[] } = { users: [], jobs: [], invoices: [], jobDetails: [], inventory: [] };
   const custNames = ['Alex Carter', 'Brooke Reed', 'Charlie Nguyen'];
   const empNames = ['Evan Green', 'Faith Morgan', 'Gabe Ortiz'];
@@ -132,7 +132,7 @@ export async function insertMockData(reporter?: (msg: string) => void) {
   report('Creating customers…');
   for (let i = 0; i < custNames.length; i++) {
     const name = custNames[i];
-    const email = mockEmail(name.split(' ')[0].toLowerCase(), 'customer', i+1);
+    const email = mockEmail(name.split(' ')[0].toLowerCase(), 'customer', i + 1);
     const u = await createUserViaEdge(name, email, 'customer');
     await addLocalUserRecord(u);
     tracker.users.push(u);
@@ -142,7 +142,7 @@ export async function insertMockData(reporter?: (msg: string) => void) {
   report('Creating employees…');
   for (let i = 0; i < empNames.length; i++) {
     const name = empNames[i];
-    const email = mockEmail(name.split(' ')[0].toLowerCase(), 'employee', i+1);
+    const email = mockEmail(name.split(' ')[0].toLowerCase(), 'employee', i + 1);
     const u = await createUserViaEdge(name, email, 'employee');
     await addLocalUserRecord(u);
     tracker.users.push(u);
@@ -159,7 +159,7 @@ export async function insertMockData(reporter?: (msg: string) => void) {
     const emp = employees[j % employees.length];
     const pkg = pkgChoices[j];
     const addOnChoices = pick(addOns, 2);
-    const vehicleType = ['compact','midsize','truck','luxury'][j % 4];
+    const vehicleType = ['compact', 'midsize', 'truck', 'luxury'][j % 4];
     const tasks = (pkg.steps || []).map((s: any) => ({ id: s.id || s, name: s.name || s, category: s.category || 'exterior', checked: true }));
     const payload = {
       packageId: pkg.id,
@@ -169,12 +169,12 @@ export async function insertMockData(reporter?: (msg: string) => void) {
       tasks,
       progress: 100,
       employeeId: emp.id,
-      estimatedTime: `${90 + j*15} mins`,
+      estimatedTime: `${90 + j * 15} mins`,
       customerId: cust.id,
     };
-    report(`Starting job ${j+1}/2 for ${cust.name} with ${emp.name} (${pkg.name})`);
+    report(`Starting job ${j + 1}/2 for ${cust.name} with ${emp.name} (${pkg.name})`);
     const res: any = await api('/api/checklist/generic', { method: 'POST', body: JSON.stringify(payload) });
-    const checklistId = res?.id || `gc_${Date.now()}_${Math.random().toString(36).slice(2,6)}`;
+    const checklistId = res?.id || `gc_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`;
     // Link to customer (normal flow)
     await api(`/api/checklist/${checklistId}/link-customer`, { method: 'PUT', body: JSON.stringify({ customerId: cust.id }) });
     report(`Linked checklist ${checklistId} to customer ${cust.name}`);
@@ -196,11 +196,11 @@ export async function insertMockData(reporter?: (msg: string) => void) {
       total,
       paidAmount: j === 0 ? total : Math.round(total * 0.5),
       paymentStatus: j === 0 ? 'paid' : 'unpaid',
-      invoiceNumber: 100 + Math.floor(Math.random()*100),
+      invoiceNumber: 100 + Math.floor(Math.random() * 100),
       date: new Date().toISOString(),
-    });
+    } as any);
     tracker.invoices.push(inv.id);
-    report(`Created invoice ${inv?.invoiceNumber || inv?.id} (${j===0?'paid':'unpaid'}) for ${cust.name}`);
+    report(`Created invoice ${inv?.invoiceNumber || inv?.id} (${j === 0 ? 'paid' : 'unpaid'}) for ${cust.name}`);
     tracker.jobDetails.push({
       id: checklistId,
       customerId: cust.id,
@@ -221,56 +221,99 @@ export async function insertMockData(reporter?: (msg: string) => void) {
 
   await localforage.setItem('mock-tracker', tracker);
   report('Saved tracker and notifying UI listeners');
-  try { window.dispatchEvent(new CustomEvent('content-changed', { detail: { type: 'mock-data' } })); } catch {}
+  try { window.dispatchEvent(new CustomEvent('content-changed', { detail: { type: 'mock-data' } })); } catch { }
   report('Mock data insertion complete');
   return tracker;
 }
 
 export async function removeMockData() {
-  const tracker = (await localforage.getItem<any>('mock-tracker')) || { users: [], jobs: [], invoices: [] };
+  const tracker = (await localforage.getItem<any>('mock-tracker')) || { users: [], jobs: [], invoices: [], inventory: [] };
+  const mockCustomerNames = ['Alex Carter', 'Brooke Reed', 'Charlie Nguyen'];
+  const isMockName = (name: string) => mockCustomerNames.some(m => m.toLowerCase() === (name || '').toLowerCase());
+
   // Remove local users cache
   const users = (await localforage.getItem<any[]>('users')) || [];
-  const nextUsers = users.filter(u => !u.isMock && !String(u.email||'').startsWith('mock+'));
+  const nextUsers = users.filter(u => !u.isMock && !String(u.email || '').startsWith('mock+') && !isMockName(u.name));
   await localforage.setItem('users', nextUsers);
+
   // Remove company employees
   const emps = (await localforage.getItem<any[]>('company-employees')) || [];
-  const nextEmps = emps.filter(u => !u.isMock && !String(u.email||'').startsWith('mock+'));
+  const nextEmps = emps.filter(u => !u.isMock && !String(u.email || '').startsWith('mock+') && !isMockName(u.name));
   await localforage.setItem('company-employees', nextEmps);
+
   // Remove customers
   const customers = (await localforage.getItem<any[]>('customers')) || [];
-  const nextCust = customers.filter(c => !String(c.email||'').startsWith('mock+'));
+  const nextCust = customers.filter(c => !String(c.email || '').startsWith('mock+') && !isMockName(c.name));
   await localforage.setItem('customers', nextCust);
-  // Remove invoices
+
+  // Remove invoices - comprehensive filtering
   const invoices = (await localforage.getItem<any[]>('invoices')) || [];
-  const nextInv = invoices.filter(inv => !(tracker.invoices || []).includes(inv.id));
+  const nextInv = invoices.filter(inv => {
+    if ((tracker.invoices || []).includes(inv.id)) return false;
+    if (String(inv.customerId || '').startsWith('mock_')) return false;
+    if (isMockName(inv.customerName)) return false;
+    // Also check if invoice is linked to a deleted mock customer by ID interaction if possible, 
+    // but name check is usually sufficient.
+    return true;
+  });
   await localforage.setItem('invoices', nextInv);
+
   // Remove generic checklists
   const gcs = (await localforage.getItem<any[]>('generic-checklists')) || [];
-  const nextGcs = gcs.filter(gc => !(tracker.jobs || []).includes(gc.id));
+  const nextGcs = gcs.filter(gc => {
+    if ((tracker.jobs || []).includes(gc.id)) return false;
+    if (String(gc.customerId || '').startsWith('mock_')) return false;
+    if (isMockName(gc.customerName)) return false;
+    return true;
+  });
   await localforage.setItem('generic-checklists', nextGcs);
+
+  // Remove Chemicals (Inventory)
+  const chemicals = (await localforage.getItem<any[]>('chemicals')) || [];
+  const nextChemicals = chemicals.filter(c => {
+    if (String(c.id || '').startsWith('chem_')) {
+      // Double check it matches mock names to avoid accidental deletion if ID format reused
+      if (['All-Purpose Cleaner', 'Glass Cleaner', 'Wheel Degreaser'].includes(c.name)) return false;
+      // If ID starts with chem_ and it was added recently (timestamp check?), 
+      // effectively all chem_ IDs are from mock data in this context usually.
+      return false;
+    }
+    return true;
+  });
+  await localforage.setItem('chemicals', nextChemicals);
+
+  // Remove Materials (Inventory)
+  const materials = (await localforage.getItem<any[]>('materials')) || [];
+  const nextMaterials = materials.filter(m => {
+    if (String(m.id || '').startsWith('mat_')) {
+      if (['Microfiber Rag', 'Soft Brush', 'Detailing Clay'].includes(m.name)) return false;
+      return false;
+    }
+    return true;
+  });
+  await localforage.setItem('materials', nextMaterials);
+
   // Remove PDFs
   try {
     const pdfRaw = JSON.parse(localStorage.getItem('pdfArchive') || '[]');
-    const nextPdf = pdfRaw.filter((r: any) => !(tracker.jobs || []).includes(r.recordId));
+    const nextPdf = pdfRaw.filter((r: any) => !(tracker.jobs || []).includes(r.recordId) && !isMockName(r.customerName));
     localStorage.setItem('pdfArchive', JSON.stringify(nextPdf));
-  } catch {}
+  } catch { }
 
   // Supabase cleanup when configured
   if (isSupabaseConfigured()) {
     try {
       for (const u of tracker.users || []) {
-        // delete auth user
-        try { await (supabase as any).auth.admin.deleteUser(u.id); } catch {}
-        // delete app_users
-        try { await supabase.from('app_users').delete().eq('id', u.id); } catch {}
-        // delete customers
-        if (u.role === 'customer') { try { await supabase.from('customers').delete().eq('id', u.id); } catch {} }
+        try { await (supabase as any).auth.admin.deleteUser(u.id); } catch { }
+        try { await supabase.from('app_users').delete().eq('id', u.id); } catch { }
+        if (u.role === 'customer') { try { await supabase.from('customers').delete().eq('id', u.id); } catch { } }
       }
-    } catch {}
+    } catch { }
   }
 
   await localforage.removeItem('mock-tracker');
-  try { window.dispatchEvent(new CustomEvent('content-changed', { detail: { type: 'mock-data-removed' } })); } catch {}
+  try { window.dispatchEvent(new CustomEvent('content-changed', { detail: { type: 'mock-data-removed' } })); } catch { }
+  try { window.dispatchEvent(new CustomEvent('inventory-changed')); } catch { }
 }
 
 export default { insertMockData, removeMockData };

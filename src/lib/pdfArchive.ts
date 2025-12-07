@@ -43,7 +43,7 @@ export function savePDFToArchive(
       defaultPath = `Bookings ${year}/${monthName}/`;
       break;
     case "Estimate":
-      defaultPath = `Customers/${safeName}/Quotes/`;
+      defaultPath = `Estimates/`;
       break;
     case "Customer":
       defaultPath = `Customers/${safeName}/`;

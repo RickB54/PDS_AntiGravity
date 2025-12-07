@@ -40,6 +40,7 @@ const LOCALSTORAGE_KEYS_TO_INCLUDE = [
   'training_exam_schedule',
   'employee_training_progress',
   'employee_training_certified',
+  'bookings',
 ];
 
 export async function exportAllData(): Promise<{ json: string; payload: any }> {

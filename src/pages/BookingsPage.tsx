@@ -31,7 +31,10 @@ import { servicePackages, addOns } from "@/lib/services";
 import { getCustomPackages, getCustomAddOns } from "@/lib/servicesMeta";
 import { useLocation } from "react-router-dom";
 import localforage from "localforage";
+import { upsertCustomer } from "@/lib/db";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
+import jsPDF from "jspdf";
+import { savePDFToArchive } from "@/lib/pdfArchive";
 
 // --- Types ---
 type ViewMode = "day" | "week" | "month" | "year";
@@ -50,6 +53,8 @@ export default function BookingsPage() {
   // Form State
   const [formData, setFormData] = useState({
     customer: "",
+    email: "",
+    phone: "",
     service: "",
     vehicle: "",
     vehicleYear: "",
@@ -103,13 +108,24 @@ export default function BookingsPage() {
     const params = new URLSearchParams(location.search);
     const shouldAdd = params.get('add') === 'true';
     const customerName = params.get('customerName');
-    const address = params.get('address');
+    const email = params.get('email');
+    const phone = params.get('phone');
+    const vehicleYear = params.get('vehicleYear');
+    const vehicleMake = params.get('vehicleMake');
+    const vehicleModel = params.get('vehicleModel');
+    const vehicleType = params.get('vehicleType');
 
     if (shouldAdd) {
       setFormData(prev => ({
         ...prev,
         customer: customerName ? decodeURIComponent(customerName) : prev.customer,
-        address: address ? decodeURIComponent(address) : prev.address
+        address: address ? decodeURIComponent(address) : prev.address,
+        email: email ? decodeURIComponent(email) : prev.email,
+        phone: phone ? decodeURIComponent(phone) : prev.phone,
+        vehicleYear: vehicleYear ? decodeURIComponent(vehicleYear) : prev.vehicleYear,
+        vehicleMake: vehicleMake ? decodeURIComponent(vehicleMake) : prev.vehicleMake,
+        vehicleModel: vehicleModel ? decodeURIComponent(vehicleModel) : prev.vehicleModel,
+        vehicle: vehicleType ? decodeURIComponent(vehicleType) : prev.vehicle
       }));
       setSelectedDate(new Date());
       setIsAddModalOpen(true);
@@ -162,8 +178,12 @@ export default function BookingsPage() {
   const handleBookingClick = (e: React.MouseEvent, booking: Booking) => {
     e.stopPropagation();
     setSelectedBooking(booking);
+    const matchingCust = customers.find(c => c.name === booking.customer);
+    setSelectedCustomer(matchingCust || null);
     setFormData({
       customer: booking.customer,
+      email: customers.find(c => c.name === booking.customer)?.email || "",
+      phone: customers.find(c => c.name === booking.customer)?.phone || "",
       service: booking.title,
       vehicle: booking.vehicle || "",
       vehicleYear: booking.vehicleYear || "",
@@ -178,11 +198,27 @@ export default function BookingsPage() {
     setIsAddModalOpen(true);
   };
 
-  const handleSave = () => {
+  const handleSave = async () => {
     if (!formData.customer || !formData.service) {
       toast.error("Customer and Service are required");
       return;
     }
+
+    // Sync to Customer Profile
+    try {
+      const custPayload = {
+        id: (selectedCustomer?.name === formData.customer) ? selectedCustomer?.id : undefined,
+        name: formData.customer,
+        email: formData.email,
+        phone: formData.phone,
+        address: formData.address,
+        vehicle: formData.vehicleMake,
+        model: formData.vehicleModel,
+        year: formData.vehicleYear,
+        updatedAt: new Date().toISOString()
+      };
+      await upsertCustomer(custPayload);
+    } catch (e) { console.error('Customer sync failed', e); }
 
     const dateBase = selectedDate || new Date();
     const [hours, minutes] = formData.time.split(":").map(Number);
@@ -227,7 +263,8 @@ export default function BookingsPage() {
     }
     setIsAddModalOpen(false);
     setSelectedBooking(null);
-    setFormData({ customer: "", service: "", vehicle: "", vehicleYear: "", vehicleMake: "", vehicleModel: "", address: "", time: "09:00", assignedEmployee: "", notes: "", addons: [] });
+    setSelectedCustomer(null);
+    setFormData({ customer: "", email: "", phone: "", service: "", vehicle: "", vehicleYear: "", vehicleMake: "", vehicleModel: "", address: "", time: "09:00", assignedEmployee: "", notes: "", addons: [] });
   };
 
   const handleDelete = () => {
@@ -237,6 +274,7 @@ export default function BookingsPage() {
         toast.success("Booking deleted");
         setIsAddModalOpen(false);
         setSelectedBooking(null);
+        setSelectedCustomer(null);
       }
     }
   };
@@ -249,6 +287,77 @@ export default function BookingsPage() {
       case 'done': return 'bg-green-500/20 text-green-400 border-green-500/50';
       default: return 'bg-zinc-800 text-zinc-400 border-zinc-700';
     }
+  };
+
+  const handleSavePDF = () => {
+    if (!formData.customer || !formData.service) {
+      toast.error('Please fill in Customer and Service to generate PDF');
+      return;
+    }
+
+    const doc = new jsPDF();
+    doc.setFontSize(20);
+    doc.text('New Booking Details', 20, 20);
+
+    doc.setFontSize(10);
+    doc.text(`Created: ${new Date().toLocaleString()}`, 20, 28);
+
+    // Draw a line
+    doc.setLineWidth(0.5);
+    doc.line(20, 32, 190, 32);
+
+    let y = 45;
+    const addLine = (label: string, value: string) => {
+      doc.setFont(undefined, 'bold');
+      doc.text(label, 20, y);
+      doc.setFont(undefined, 'normal');
+      doc.text(String(value || 'N/A'), 60, y);
+      y += 8;
+    };
+
+    addLine('Customer:', formData.customer);
+    if (formData.email) addLine('Email:', formData.email);
+    if (formData.phone) addLine('Phone:', formData.phone);
+    addLine('Service:', formData.service);
+    if (formData.addons && formData.addons.length > 0) {
+      addLine('Add-Ons:', formData.addons.join(', '));
+    }
+    addLine('Date:', selectedDate ? format(selectedDate, "MMM d, yyyy") : 'N/A');
+    addLine('Time:', formData.time);
+    addLine('Address:', formData.address);
+
+    y += 4;
+    doc.setFont(undefined, 'bold');
+    doc.text('Vehicle Information:', 20, y);
+    y += 8;
+    addLine('Type:', formData.vehicle);
+    addLine('Details:', `${formData.vehicleYear} ${formData.vehicleMake} ${formData.vehicleModel}`);
+
+    y += 4;
+    addLine('Assigned To:', formData.assignedEmployee);
+
+    if (formData.notes) {
+      y += 4;
+      doc.setFont(undefined, 'bold');
+      doc.text('Notes:', 20, y);
+      y += 6;
+      doc.setFont(undefined, 'normal');
+      const splitNotes = doc.splitTextToSize(formData.notes, 170);
+      doc.text(splitNotes, 20, y);
+    }
+
+    const pdfDataUrl = doc.output('datauristring');
+    const safeName = formData.customer.replace(/[^a-zA-Z0-9]/g, '_');
+    const fileName = `Booking_${safeName}_${new Date().getTime()}.pdf`;
+
+    savePDFToArchive(
+      'Bookings',
+      formData.customer,
+      `b-pdf-${Date.now()}`,
+      pdfDataUrl,
+      { fileName }
+    );
+    toast.success('PDF saved to File Manager (Bookings)');
   };
 
   return (
@@ -347,7 +456,7 @@ export default function BookingsPage() {
       </Card>
 
       {/* Booking Dialog */}
-      <Dialog open={isAddModalOpen} onOpenChange={(open) => { if (!open) setSelectedBooking(null); setIsAddModalOpen(open); }}>
+      <Dialog open={isAddModalOpen} onOpenChange={(open) => { if (!open) { setSelectedBooking(null); setSelectedCustomer(null); } setIsAddModalOpen(open); }}>
         <DialogContent className="sm:max-w-[500px] bg-zinc-950 border-zinc-800">
           <DialogHeader>
             <div className="flex items-center justify-between">
@@ -411,6 +520,8 @@ export default function BookingsPage() {
                       setFormData(prev => ({
                         ...prev,
                         customer: cust.name,
+                        email: cust.email || prev.email || "",
+                        phone: cust.phone || prev.phone || "",
                         address: cust.address || prev.address,
                         vehicleYear: cust.year || prev.vehicleYear,
                         vehicleMake: cust.vehicle || prev.vehicleMake,
@@ -433,6 +544,30 @@ export default function BookingsPage() {
                     className="pl-9 bg-zinc-900 border-zinc-800 text-gray-300 placeholder:text-gray-500"
                     value={formData.customer}
                     onChange={(e) => setFormData({ ...formData, customer: e.target.value })}
+                  />
+                </div>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-4 items-center gap-4">
+              <label className="text-right text-sm font-medium text-gray-400">Contact</label>
+              <div className="col-span-3 grid grid-cols-2 gap-2">
+                <div className="relative">
+                  <Mail className="absolute left-3 top-2.5 h-4 w-4 text-gray-500" />
+                  <Input
+                    placeholder="Email (optional)"
+                    className="pl-9 bg-zinc-900 border-zinc-800 text-gray-300"
+                    value={formData.email}
+                    onChange={(e) => setFormData({ ...formData, email: e.target.value })}
+                  />
+                </div>
+                <div className="relative">
+                  <Phone className="absolute left-3 top-2.5 h-4 w-4 text-gray-500" />
+                  <Input
+                    placeholder="Phone (optional)"
+                    className="pl-9 bg-zinc-900 border-zinc-800 text-gray-300"
+                    value={formData.phone}
+                    onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
                   />
                 </div>
               </div>
@@ -624,6 +759,9 @@ export default function BookingsPage() {
               </Button>
             ) : <div></div>}
             <div className="flex gap-2">
+              <Button type="button" variant="secondary" onClick={handleSavePDF} className="bg-zinc-800 hover:bg-zinc-700 text-zinc-200">
+                Save PDF
+              </Button>
               <Button variant="outline" onClick={() => setIsAddModalOpen(false)}>Cancel</Button>
               <Button onClick={handleSave} className="bg-primary hover:bg-primary/90">Save Booking</Button>
             </div>

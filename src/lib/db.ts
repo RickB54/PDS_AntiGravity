@@ -83,12 +83,32 @@ export async function getEstimates<T extends GenericWithId>(): Promise<T[]> {
   return getArray<T>(KEYS.estimates);
 }
 
-export async function addEstimate<T>(estimate: T): Promise<GenericWithId & T> {
+export async function upsertEstimate<T extends Partial<GenericWithId>>(estimate: T): Promise<GenericWithId & T> {
   const list = await getArray<any>(KEYS.estimates);
-  const saved: any = { id: genId(), ...estimate };
-  list.push(saved);
+  let saved: any;
+  if (estimate.id) {
+    const idx = list.findIndex((e: any) => e.id === estimate.id);
+    if (idx >= 0) {
+      // Update existing
+      saved = { ...list[idx], ...estimate };
+      list[idx] = saved;
+    } else {
+      // Insert with specified ID
+      saved = { id: String(estimate.id), ...estimate };
+      list.push(saved);
+    }
+  } else {
+    // New
+    saved = { id: genId(), ...estimate };
+    list.push(saved);
+  }
   await setArray(KEYS.estimates, list);
   return saved;
+}
+
+// Keep addEstimate for backward compatibility if needed, but wrap upsert
+export async function addEstimate<T>(estimate: T): Promise<GenericWithId & T> {
+  return upsertEstimate(estimate as any);
 }
 
 export async function deleteEstimate(id: string): Promise<void> {
