@@ -8,6 +8,7 @@ import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Textarea } from "@/components/ui/textarea";
 import { ChevronDown, ChevronUp, Save, FileText, Info, Plus, Trash2, CheckCircle2, HelpCircle } from "lucide-react";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import localforage from "localforage";
 import api from "@/lib/api";
 import { getCurrentUser } from "@/lib/auth";
@@ -1064,29 +1065,41 @@ const ServiceChecklist = () => {
                           };
 
                           return (
-                            <div key={step.id} className="flex items-center justify-between group">
-                              <label className="flex items-center gap-2 text-sm cursor-pointer flex-1">
+                            <div key={step.id} className="flex items-center justify-between group py-2 border-b border-border/40 last:border-0 hover:bg-zinc-900/50 rounded-lg px-2 -mx-2 transition-colors">
+                              <label className="flex items-center gap-3 text-sm cursor-pointer flex-1 py-1">
                                 <input
                                   type="checkbox"
                                   checked={step.checked}
                                   onChange={(e) => setChecklistSteps(prev => prev.map(ps => ps.id === step.id ? { ...ps, checked: e.target.checked } : ps))}
-                                  className="rounded border-zinc-600 bg-zinc-900 text-red-600 focus:ring-red-600"
+                                  className="h-5 w-5 rounded border-zinc-600 bg-zinc-900 text-red-600 focus:ring-red-600 focus:ring-offset-0"
                                 />
-                                <span>{step.name}</span>
+                                <span className={step.checked ? "text-muted-foreground line-through decoration-red-500/50" : "text-foreground font-medium"}>
+                                  {step.name}
+                                </span>
                               </label>
-                              <TooltipProvider>
-                                <Tooltip>
-                                  <TooltipTrigger asChild>
-                                    <button className="text-muted-foreground hover:text-white transition-colors cursor-help p-1">
-                                      <HelpCircle className="h-4 w-4" />
-                                    </button>
-                                  </TooltipTrigger>
-                                  <TooltipContent side="left" className="max-w-[300px] bg-zinc-900 border-zinc-800 text-zinc-100 p-3">
-                                    <p className="text-sm font-semibold mb-1">{step.name}</p>
-                                    <p className="text-xs text-zinc-400">{getInstructions(step)}</p>
-                                  </TooltipContent>
-                                </Tooltip>
-                              </TooltipProvider>
+
+                              <Popover>
+                                <PopoverTrigger asChild>
+                                  <Button
+                                    variant="ghost"
+                                    size="icon"
+                                    className="h-8 w-8 ml-2 text-muted-foreground hover:text-primary hover:bg-primary/10 rounded-full"
+                                  >
+                                    <HelpCircle className="h-5 w-5" />
+                                  </Button>
+                                </PopoverTrigger>
+                                <PopoverContent side="left" className="w-[280px] p-4 bg-zinc-900 border-zinc-800 text-zinc-100 shadow-xl" align="end">
+                                  <div className="space-y-2">
+                                    <h4 className="font-semibold text-primary flex items-center gap-2 border-b border-zinc-800 pb-2">
+                                      <Info className="h-4 w-4" />
+                                      {step.name}
+                                    </h4>
+                                    <p className="text-sm text-zinc-300 leading-relaxed">
+                                      {getInstructions(step)}
+                                    </p>
+                                  </div>
+                                </PopoverContent>
+                              </Popover>
                             </div>
                           );
                         })}
