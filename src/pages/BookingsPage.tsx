@@ -114,6 +114,7 @@ export default function BookingsPage() {
     const vehicleMake = params.get('vehicleMake');
     const vehicleModel = params.get('vehicleModel');
     const vehicleType = params.get('vehicleType');
+    const address = params.get('address');
 
     if (shouldAdd) {
       setFormData(prev => ({

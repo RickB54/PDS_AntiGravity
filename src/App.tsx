@@ -58,6 +58,7 @@ import PackageExplanationGuide from "./pages/PackageExplanationGuide";
 import ManageSubContractors from "./pages/ManageSubContractors";
 import DetailingVendors from "./pages/DetailingVendors";
 import PackageSelection from "./pages/PackageSelection";
+import Prospects from "./pages/Prospects";
 import ErrorBoundary from "./components/ErrorBoundary";
 import { initTaskWorkflowListeners } from "./store/tasks";
 
@@ -189,6 +190,11 @@ const App = () => {
                     <Route path="/search-customer" element={
                       <ProtectedRoute allowedRoles={['employee', 'admin']}>
                         <SearchCustomer />
+                      </ProtectedRoute>
+                    } />
+                    <Route path="/prospects" element={
+                      <ProtectedRoute allowedRoles={['employee', 'admin']}>
+                        <Prospects />
                       </ProtectedRoute>
                     } />
                     <Route path="/inventory-control" element={

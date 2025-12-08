@@ -15,6 +15,7 @@ export interface UnifiedCustomer {
   vehicleType?: string;
   createdAt?: string;
   updatedAt?: string;
+  type?: 'customer' | 'prospect';
 }
 
 function dedupeByKey(items: UnifiedCustomer[]): UnifiedCustomer[] {
@@ -44,15 +45,16 @@ export async function getUnifiedCustomers(): Promise<UnifiedCustomer[]> {
     apiCustomers = (Array.isArray(list)
       ? list
       : (Array.isArray((list as any)?.data)
-          ? (list as any).data
-          : (Array.isArray((list as any)?.customers)
-              ? (list as any).customers
-              : []))) as UnifiedCustomer[];
+        ? (list as any).data
+        : (Array.isArray((list as any)?.customers)
+          ? (list as any).customers
+          : []))) as UnifiedCustomer[];
   } catch {
     apiCustomers = [];
   }
 
-  const localCustomers = await getLocalCustomers<UnifiedCustomer>();
+
+  const localCustomers = await getLocalCustomers<UnifiedCustomer & { id: string }>();
 
   // Pull names from bookings (created via website) and merge as minimal customers
   let bookingCustomers: UnifiedCustomer[] = [];

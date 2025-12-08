@@ -4,7 +4,7 @@ import { pushAdminAlert } from "@/lib/adminAlerts";
 interface PDFRecord {
   id: string;
   fileName: string;
-  recordType: "Invoice" | "Estimate" | "Job" | "Checklist" | "Customer" | "Employee Training" | "Bookings" | "Admin Updates" | "Payroll" | "Employee Contact" | "add-Ons" | "Mock Data" | "Sub Contractors" | "Sub-Contractors" | "Package Comparisons" | "Upsell Scripts" | "Client Evaluation" | "Detailing Vendors" | "Vehicle Classification" | "Vehicle History" | "Inventory Report";
+  recordType: "Invoice" | "Estimate" | "Job" | "Checklist" | "Customer" | "Employee Training" | "Bookings" | "Admin Updates" | "Payroll" | "Employee Contact" | "add-Ons" | "Mock Data" | "Sub Contractors" | "Sub-Contractors" | "Package Comparisons" | "Upsell Scripts" | "Client Evaluation" | "Detailing Vendors" | "Vehicle Classification" | "Vehicle History" | "Inventory Report" | "Prospects";
   customerName: string;
   date: string;
   timestamp: string;
@@ -34,11 +34,15 @@ export function savePDFToArchive(
   //  - Employee Training: "Employee Training/"
   //  - Admin Updates: "Admin Updates/"
   //  - Payroll: "Payroll/YYYY/Month/"
+  //  - Prospects: "Prospects/"
   const monthName = new Date().toLocaleString(undefined, { month: 'long' });
   const year = new Date().getFullYear();
   const safeName = String(customerName || 'Customer').trim();
   let defaultPath = '';
   switch (recordType) {
+    case "Prospects":
+      defaultPath = `Prospects/`;
+      break;
     case "Bookings":
       defaultPath = `Bookings ${year}/${monthName}/`;
       break;

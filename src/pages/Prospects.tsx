@@ -5,10 +5,10 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
 import CustomerModal, { type Customer as ModalCustomer } from "@/components/customers/CustomerModal";
-import { getCustomers, deleteCustomer as removeCustomer, purgeTestCustomers, getInvoices, upsertCustomer } from "@/lib/db";
+import { getCustomers, deleteCustomer as removeCustomer, upsertCustomer } from "@/lib/db";
 import { getUnifiedCustomers } from "@/lib/customers";
 import api from "@/lib/api";
-import { Search, Pencil, Trash2, Plus, Printer, Save, ChevronDown, ChevronUp, ChevronsDown, ChevronsUp, FileBarChart, Eye, Edit, MapPin, CalendarPlus } from "lucide-react";
+import { Search, Pencil, Trash2, Plus, Save, ChevronDown, ChevronUp, ChevronsDown, ChevronsUp, MapPin, CalendarPlus, Users } from "lucide-react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import {
@@ -24,7 +24,7 @@ import {
 import { useToast } from "@/hooks/use-toast";
 import DateRangeFilter, { DateRangeValue } from "@/components/filters/DateRangeFilter";
 import jsPDF from "jspdf";
-import autoTable from "jspdf-autotable";
+import { savePDFToArchive } from "@/lib/pdfArchive";
 
 interface Customer {
   id?: string;
@@ -51,7 +51,7 @@ interface Customer {
   type?: 'customer' | 'prospect';
 }
 
-const SearchCustomer = () => {
+const Prospects = () => {
   const location = useLocation();
   const navigate = useNavigate();
   const { toast } = useToast();
@@ -60,7 +60,6 @@ const SearchCustomer = () => {
   const [deleteCustomerId, setDeleteCustomerId] = useState<string | null>(null);
   const [modalOpen, setModalOpen] = useState(false);
   const [editing, setEditing] = useState<Customer | null>(null);
-  const [autoOpenedAdd, setAutoOpenedAdd] = useState(false);
   const [dateFilter, setDateFilter] = useState<"all" | "daily" | "weekly" | "monthly">("all");
   const [dateRange, setDateRange] = useState<DateRangeValue>({});
 
@@ -68,13 +67,16 @@ const SearchCustomer = () => {
     (async () => {
       try {
         const list = await getUnifiedCustomers();
-        setCustomers(Array.isArray(list) ? (list as Customer[]) : []);
+        // Filter for prospects
+        const prospects = (list as Customer[]).filter(c => c.type === 'prospect');
+        setCustomers(prospects);
       } catch (err: any) {
-        console.error('Failed to load customers:', err);
+        console.error('Failed to load prospects:', err);
         try {
           const fallback = await getCustomers();
-          setCustomers(Array.isArray(fallback) ? (fallback as Customer[]) : []);
-          toast({ title: 'Load failed — retry', description: 'Using local customers cache.', variant: 'default' });
+          const prospects = (fallback as Customer[]).filter(c => c.type === 'prospect');
+          setCustomers(prospects);
+          toast({ title: 'Load failed — retry', description: 'Using local cache.', variant: 'default' });
         } catch (err2: any) {
           toast({ title: 'Load failed — retry', description: err2?.message || String(err2), variant: 'destructive' });
           setCustomers([]);
@@ -86,34 +88,37 @@ const SearchCustomer = () => {
   const refresh = async () => {
     try {
       const list = await getUnifiedCustomers();
-      setCustomers(Array.isArray(list) ? (list as Customer[]) : []);
+      const prospects = (list as Customer[]).filter(c => c.type === 'prospect');
+      setCustomers(prospects);
     } catch (err: any) {
-      console.error('Refresh customers failed:', err);
+      console.error('Refresh prospects failed:', err);
       try {
         const fallback = await getCustomers();
-        setCustomers(Array.isArray(fallback) ? (fallback as Customer[]) : []);
-        toast({ title: 'Load failed — retry', description: 'Using local customers cache.', variant: 'default' });
+        const prospects = (fallback as Customer[]).filter(c => c.type === 'prospect');
+        setCustomers(prospects);
+        toast({ title: 'Load failed — retry', description: 'Using local cache.', variant: 'default' });
       } catch (err2: any) {
-        toast({ title: 'Load failed — retry', description: err2?.message || String(err2), variant: 'destructive' });
-        setCustomers([]);
+        console.error(err2);
       }
     }
   };
 
   const openAdd = () => { setEditing(null); setModalOpen(true); };
   const openEdit = (c: Customer) => { setEditing(c); setModalOpen(true); };
+
   const onSaveModal = async (data: ModalCustomer) => {
+    // Ensure it stays a prospect unless strictly changed (though modal handles type)
+    if (!data.type) data.type = 'prospect';
+
     try {
       await api('/api/customers', { method: 'POST', body: JSON.stringify(data) });
       await refresh();
       setModalOpen(false);
-      toast({ title: "Customer Saved", description: "Record stored." });
+      toast({ title: "Prospect Saved", description: "Record stored." });
     } catch (err: any) {
-      // Fallback to local IndexedDB when backend is unavailable
       try {
         const saved = await upsertCustomer(data as any);
-        const list = await getCustomers();
-        setCustomers(list as Customer[]);
+        await refresh();
         setModalOpen(false);
         toast({ title: "Saved locally", description: "Backend unavailable; stored offline.", variant: 'default' });
       } catch (err2: any) {
@@ -121,18 +126,6 @@ const SearchCustomer = () => {
       }
     }
   };
-
-  // Auto-open Add Customer modal ONCE when `?add=true` or bare `?add` exists
-  useEffect(() => {
-    const params = new URLSearchParams(location.search);
-    const flag = params.get("add");
-    const shouldOpen = flag === "true" || flag === "1" || (flag === null && params.has("add"));
-    if (shouldOpen && !autoOpenedAdd) {
-      setEditing(null);
-      setModalOpen(true);
-      setAutoOpenedAdd(true);
-    }
-  }, [location.search, autoOpenedAdd]);
 
   const filterByDate = (customer: Customer) => {
     const now = new Date();
@@ -154,7 +147,6 @@ const SearchCustomer = () => {
   };
 
   const filteredCustomers = (Array.isArray(customers) ? customers : []).filter(customer => {
-    if (customer.type === 'prospect') return false;
     const matchesSearch = (customer.name || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
       (customer.phone || '').includes(searchTerm) ||
       (customer.vehicle || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -168,8 +160,8 @@ const SearchCustomer = () => {
     await removeCustomer(deleteCustomerId);
     await refresh();
     toast({
-      title: "Customer Deleted",
-      description: "Customer record has been removed.",
+      title: "Prospect Deleted",
+      description: "Record has been removed.",
     });
     setDeleteCustomerId(null);
   };
@@ -179,103 +171,51 @@ const SearchCustomer = () => {
     const pageWidth = doc.internal.pageSize.getWidth();
     let y = 20;
 
-    // Report Header
     doc.setFontSize(22);
     doc.setTextColor(40, 40, 40);
-    doc.text("Customer List Report", 14, y);
+    doc.text("Prospects List Report", 14, y);
     y += 8;
     doc.setFontSize(10);
     doc.setTextColor(100);
-    doc.text(`Generated on: ${new Date().toLocaleDateString()} | Filter: ${dateFilter.toUpperCase()}`, 14, y);
+    doc.text(`Generated on: ${new Date().toLocaleDateString()}`, 14, y);
     y += 15;
 
-    filteredCustomers.forEach((c, index) => {
-      // Check space
-      if (y > 250) {
-        doc.addPage();
-        y = 20;
-      }
-
-      // Customer Header (Blue Background)
-      doc.setFillColor(59, 130, 246); // Blue-500
+    filteredCustomers.forEach((c) => {
+      if (y > 250) { doc.addPage(); y = 20; }
+      doc.setFillColor(168, 85, 247); // Purple
       doc.rect(14, y, pageWidth - 28, 10, 'F');
-
       doc.setFontSize(14);
       doc.setTextColor(255, 255, 255);
       doc.setFont("helvetica", "bold");
-      doc.text(c.name || "Unknown Customer", 18, y + 7);
-
+      doc.text(c.name || "Unknown Prospect", 18, y + 7);
       y += 15;
 
-      // Reset Font
-      doc.setTextColor(40, 40, 40);
+      doc.setTextColor(40);
       doc.setFont("helvetica", "normal");
       doc.setFontSize(10);
 
-      // Data Grid Layout
-      const leftX = 18;
-      const rightX = 110;
-      const rowHeight = 6;
-      const startY = y;
+      doc.text(`Phone: ${c.phone || "N/A"}`, 18, y);
+      doc.text(`Email: ${c.email || "N/A"}`, 18, y + 5);
+      doc.text(`Vehicle: ${c.year || ''} ${c.vehicle || ''} ${c.model || ''}`, 110, y);
+      doc.text(`Acquisition: ${c.howFound || 'N/A'}`, 110, y + 5);
 
-      // Contact Info (Left Column)
-      doc.setFont("helvetica", "bold"); doc.text("Contact Info", leftX, y); y += rowHeight;
-      doc.setFont("helvetica", "normal");
-      doc.text(`Phone: ${c.phone || "N/A"}`, leftX, y); y += rowHeight;
-      doc.text(`Email: ${c.email || "N/A"}`, leftX, y); y += rowHeight;
-      doc.text(`Address: ${c.address || "N/A"}`, leftX, y); y += rowHeight;
-      doc.text(`How Found: ${c.howFound === 'other' ? c.howFoundOther : c.howFound || "N/A"}`, leftX, y); y += rowHeight;
-
-      // Vehicle Info (Right Column) - Reset Y to start
-      let rightY = startY;
-      doc.setFont("helvetica", "bold"); doc.text("Vehicle Details", rightX, rightY); rightY += rowHeight;
-      doc.setFont("helvetica", "normal");
-      doc.text(`Vehicle: ${c.year || ''} ${c.vehicle || ''} ${c.model || ''}`, rightX, rightY); rightY += rowHeight;
-      doc.text(`Type/Color: ${c.vehicleType || '-'} / ${c.color || '-'}`, rightX, rightY); rightY += rowHeight;
-      doc.text(`Mileage: ${c.mileage || 'N/A'}`, rightX, rightY); rightY += rowHeight;
-      doc.text(`Condition (In/Out): ${c.conditionInside || '-'} / ${c.conditionOutside || '-'}`, rightX, rightY); rightY += rowHeight;
-
-      // Sync Y
-      y = Math.max(y, rightY) + 5;
-
-      // Service Info
-      doc.setFont("helvetica", "bold"); doc.text("Service History", leftX, y); y += rowHeight;
-      doc.setFont("helvetica", "normal");
-      doc.text(`Last Service: ${c.lastService || "N/A"}`, leftX, y); y += rowHeight;
-      doc.text(`Duration: ${c.duration || "N/A"}`, leftX, y); y += rowHeight;
-
-      const services = Array.isArray(c.services) ? c.services.join(", ") : "";
-      if (services) {
-        const splitServices = doc.splitTextToSize(`Services: ${services}`, pageWidth - 40);
-        doc.text(splitServices, leftX, y);
-        y += (splitServices.length * rowHeight);
-      } else {
-        doc.text("Services: None recorded", leftX, y);
-        y += rowHeight;
-      }
-
-      // Notes
-      if (c.notes) {
-        y += 2;
-        doc.setFont("helvetica", "bold"); doc.text("Notes:", leftX, y); y += rowHeight;
-        doc.setFont("helvetica", "normal");
-        const splitNotes = doc.splitTextToSize(c.notes, pageWidth - 40);
-        doc.text(splitNotes, leftX, y);
-        y += (splitNotes.length * rowHeight);
-      }
-
-      // Separator
-      y += 5;
+      y += 15;
       doc.setDrawColor(200);
       doc.line(14, y, pageWidth - 14, y);
       y += 10;
     });
 
     if (download) {
-      doc.save(`customers_report_${new Date().toISOString().slice(0, 10)}.pdf`);
-      toast({ title: "PDF Saved", description: "Customer report downloaded." });
+      const fileName = `prospects_report_${new Date().toISOString().slice(0, 10)}.pdf`;
+      doc.save(fileName);
+      try {
+        const dataUrl = doc.output('datauristring');
+        savePDFToArchive('Prospects', 'Admin', `prospects-${Date.now()}`, dataUrl, { fileName });
+        toast({ title: 'Archived', description: 'Saved to File Manager under prospects/.' });
+      } catch (e) {
+        console.error('Archive failed', e);
+      }
     } else {
-      doc.autoPrint();
       window.open(doc.output('bloburl'), '_blank');
     }
   };
@@ -304,7 +244,7 @@ const SearchCustomer = () => {
 
   return (
     <div className="min-h-screen bg-background">
-      <PageHeader title="Customer Info" />
+      <PageHeader title="Prospects" />
 
       <main className="container mx-auto px-4 py-6 max-w-6xl">
         <div className="space-y-6 animate-fade-in">
@@ -312,7 +252,10 @@ const SearchCustomer = () => {
           <Card className="p-6 bg-gradient-card border-border">
             <div className="space-y-4">
               <div className="flex items-center justify-between flex-wrap gap-4">
-                <h2 className="text-2xl font-bold text-foreground">Find Customer</h2>
+                <div className="flex items-center gap-3">
+                  <Users className="h-6 w-6 text-purple-400" />
+                  <h2 className="text-2xl font-bold text-foreground">Find Prospect</h2>
+                </div>
                 <div className="flex gap-2 items-center flex-wrap">
                   <select
                     value={dateFilter}
@@ -324,16 +267,12 @@ const SearchCustomer = () => {
                     <option value="weekly">This Week</option>
                     <option value="monthly">This Month</option>
                   </select>
-                  <DateRangeFilter value={dateRange} onChange={setDateRange} storageKey="customers-range" />
-                  <Button variant="outline" onClick={() => generatePDF(false)}>
-                    <Printer className="h-4 w-4 mr-2" />Print
-                  </Button>
                   <Button variant="outline" onClick={() => generatePDF(true)}>
                     <Save className="h-4 w-4 mr-2" />Save PDF
                   </Button>
                   <Button className="bg-gradient-hero" onClick={openAdd}>
                     <Plus className="h-4 w-4 mr-2" />
-                    Add New Customer
+                    Add Prospect
                   </Button>
                 </div>
               </div>
@@ -362,30 +301,20 @@ const SearchCustomer = () => {
                   <Input
                     value={searchTerm}
                     onChange={(e) => setSearchTerm(e.target.value)}
-                    placeholder="Search by name, phone, vehicle make, model, or year..."
+                    placeholder="Search by name, phone, vehicle, etc..."
                     className="pl-10 bg-background border-border"
                   />
                 </div>
-                <select
-                  className="h-10 rounded-md border border-input bg-background px-3 py-2 text-sm"
-                  onChange={(e) => setSearchTerm(e.target.value)}
-                  value={""}
-                >
-                  <option value="" disabled>All Customers</option>
-                  {[...(Array.isArray(customers) ? customers : [])].sort((a, b) => (a.name || '').localeCompare(b.name || '')).map(c => (
-                    <option key={c.id || c.name} value={c.name}>{c.name}</option>
-                  ))}
-                </select>
               </div>
             </div>
           </Card>
 
-          {/* Customer List */}
+          {/* List */}
           <div className="space-y-4">
             {[...filteredCustomers]
               .sort((a, b) => {
-                const da = a.updatedAt || a.createdAt || a.lastService || "";
-                const db = b.updatedAt || b.createdAt || b.lastService || "";
+                const da = a.updatedAt || a.createdAt || "";
+                const db = b.updatedAt || b.createdAt || "";
                 return (db ? new Date(db).getTime() : 0) - (da ? new Date(da).getTime() : 0);
               })
               .map((customer) => {
@@ -410,7 +339,10 @@ const SearchCustomer = () => {
                                 <ChevronDown className="h-5 w-5 text-muted-foreground" />
                               )}
                               <div>
-                                <h3 className="text-xl font-bold text-foreground">{customer.name}</h3>
+                                <h3 className="text-xl font-bold text-foreground flex items-center gap-2">
+                                  {customer.name}
+                                  <span className="text-xs bg-purple-500/20 text-purple-400 px-2 py-0.5 rounded-full border border-purple-500/50">Prospect</span>
+                                </h3>
                                 <p className="text-muted-foreground">{customer.phone}</p>
                               </div>
                             </div>
@@ -422,19 +354,14 @@ const SearchCustomer = () => {
                             <Button
                               variant="ghost"
                               size="icon"
-                              onClick={() => setDeleteCustomerId(customer.id)}
+                              onClick={() => setDeleteCustomerId(customer.id!)}
                             >
                               <Trash2 className="h-4 w-4" />
                             </Button>
                             <Button asChild variant="outline" size="sm" className="ml-2">
                               <Link to={`/bookings?add=true&customerId=${customer.id}&customerName=${encodeURIComponent(customer.name)}&address=${encodeURIComponent(customer.address || '')}&email=${encodeURIComponent(customer.email || '')}&phone=${encodeURIComponent(customer.phone || '')}&vehicleYear=${encodeURIComponent(customer.year || '')}&vehicleMake=${encodeURIComponent(customer.vehicle || '')}&vehicleModel=${encodeURIComponent(customer.model || '')}&vehicleType=${encodeURIComponent(customer.vehicleType || '')}`}>
                                 <CalendarPlus className="h-4 w-4 mr-2" />
-                                Book Job
-                              </Link>
-                            </Button>
-                            <Button asChild variant="outline" size="sm" className="ml-2">
-                              <Link to={`/service-checklist?customerId=${customer.id}`}>
-                                Start Job
+                                Convert to Booking
                               </Link>
                             </Button>
                           </div>
@@ -488,55 +415,6 @@ const SearchCustomer = () => {
                               </div>
 
                               <div>
-                                <Label className="text-muted-foreground">Color</Label>
-                                <p className="text-foreground font-medium">{customer.color || "N/A"}</p>
-                              </div>
-
-                              <div>
-                                <Label className="text-muted-foreground">Mileage</Label>
-                                <p className="text-foreground font-medium">{customer.mileage ? `${customer.mileage} miles` : "N/A"}</p>
-                              </div>
-
-                              <div>
-                                <Label className="text-muted-foreground">Vehicle Type</Label>
-                                <p className="text-foreground font-medium">{customer.vehicleType || "N/A"}</p>
-                              </div>
-
-                              <div>
-                                <Label className="text-muted-foreground">Last Service</Label>
-                                <p className="text-foreground font-medium">{customer.lastService}</p>
-                              </div>
-
-                              <div>
-                                <Label className="text-muted-foreground">Condition (Inside)</Label>
-                                <p className="text-foreground font-medium">{customer.conditionInside || "N/A"}</p>
-                              </div>
-
-                              <div>
-                                <Label className="text-muted-foreground">Condition (Outside)</Label>
-                                <p className="text-foreground font-medium">{customer.conditionOutside || "N/A"}</p>
-                              </div>
-
-                              <div className="md:col-span-2">
-                                <Label className="text-muted-foreground">Services</Label>
-                                <div className="flex flex-wrap gap-2 mt-1">
-                                  {(Array.isArray(customer.services) ? customer.services : []).map((service, idx) => (
-                                    <span
-                                      key={idx}
-                                      className="px-2 py-1 bg-primary/20 text-primary text-xs rounded-full"
-                                    >
-                                      {service}
-                                    </span>
-                                  ))}
-                                </div>
-                              </div>
-
-                              <div>
-                                <Label className="text-muted-foreground">Duration</Label>
-                                <p className="text-foreground font-medium">{customer.duration}</p>
-                              </div>
-
-                              <div>
                                 <Label className="text-muted-foreground">How Found</Label>
                                 <p className="text-foreground font-medium">
                                   {customer.howFound === 'other' ? (customer.howFoundOther || 'Other') : (customer.howFound || "N/A")}
@@ -561,14 +439,14 @@ const SearchCustomer = () => {
 
           {filteredCustomers.length === 0 && (
             <Card className="p-12 bg-gradient-card border-border text-center">
-              <Search className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
-              <h3 className="text-xl font-semibold text-foreground mb-2">No customers yet</h3>
+              <Users className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
+              <h3 className="text-xl font-semibold text-foreground mb-2">No prospects yet</h3>
               <p className="text-muted-foreground">
-                Try adjusting your search or add a new customer
+                Add people you meet to track them as potential clients.
               </p>
               <div className="mt-4">
                 <Button className="bg-gradient-hero" onClick={openAdd}>
-                  <Plus className="h-4 w-4 mr-2" /> Add Customer
+                  <Plus className="h-4 w-4 mr-2" /> Add Prospect
                 </Button>
               </div>
             </Card>
@@ -581,7 +459,7 @@ const SearchCustomer = () => {
           <AlertDialogHeader>
             <AlertDialogTitle>Are you sure?</AlertDialogTitle>
             <AlertDialogDescription>
-              This will permanently delete this customer record. This action cannot be undone.
+              This will permanently delete this prospect record.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter className="button-group-responsive">
@@ -595,23 +473,13 @@ const SearchCustomer = () => {
 
       <CustomerModal
         open={modalOpen}
-        onOpenChange={(open) => {
-          setModalOpen(open);
-          if (!open) {
-            const params = new URLSearchParams(location.search);
-            if (params.has("add")) navigate(location.pathname, { replace: true });
-          }
-        }}
+        onOpenChange={setModalOpen}
         initial={editing}
-        onSave={async (data) => {
-          await onSaveModal(data);
-          const params = new URLSearchParams(location.search);
-          if (params.has("add")) navigate(location.pathname, { replace: true });
-        }}
+        onSave={onSaveModal}
+        defaultType="prospect"
       />
     </div>
   );
 };
 
-export default SearchCustomer;
-
+export default Prospects;

@@ -590,7 +590,7 @@ export default function AdminDashboard() {
           <Card className="relative p-5 bg-[#18181b] rounded-2xl border border-zinc-800">
             <div className="flex items-center gap-2 mb-3">
               <Users className="w-6 h-6 text-blue-400" />
-              <div className="text-lg font-bold">Client Intake Tools</div>
+              <div className="text-lg font-bold">Customer Intake</div>
             </div>
             <Card className="p-4 bg-[#0f0f13] rounded-xl border border-zinc-800">
               <div className="flex flex-col gap-2">
@@ -609,6 +609,10 @@ export default function AdminDashboard() {
                 <Link to="/package-selection" className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md border border-orange-600 text-orange-600 hover:bg-orange-600/10 w-fit">
                   <FileText className="w-3.5 h-3.5 text-orange-600" />
                   <span>Package Comparison Guide</span>
+                </Link>
+                <Link to="/prospects" className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md border border-purple-500 text-purple-500 hover:bg-purple-500/10 w-fit">
+                  <Users className="w-3.5 h-3.5 text-purple-500" />
+                  <span>Prospects</span>
                 </Link>
               </div>
             </Card>

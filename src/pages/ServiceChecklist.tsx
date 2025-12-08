@@ -7,7 +7,7 @@ import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Textarea } from "@/components/ui/textarea";
-import { ChevronDown, ChevronUp, Save, FileText, Info, Plus, Trash2, CheckCircle2 } from "lucide-react";
+import { ChevronDown, ChevronUp, Save, FileText, Info, Plus, Trash2, CheckCircle2, HelpCircle } from "lucide-react";
 import localforage from "localforage";
 import api from "@/lib/api";
 import { getCurrentUser } from "@/lib/auth";
@@ -1040,12 +1040,56 @@ const ServiceChecklist = () => {
                     </button>
                     {!collapsedSections[section] && (
                       <div className="space-y-2">
-                        {checklistSteps.filter(s => s.category === section).map((step) => (
-                          <label key={step.id} className="flex items-center gap-2 text-sm">
-                            <input type="checkbox" checked={step.checked} onChange={(e) => setChecklistSteps(prev => prev.map(ps => ps.id === step.id ? { ...ps, checked: e.target.checked } : ps))} />
-                            <span>{step.name}</span>
-                          </label>
-                        ))}
+                        {checklistSteps.filter(s => s.category === section).map((step) => {
+                          // Define instructions based on step content
+                          const getInstructions = (s: typeof step) => {
+                            const n = s.name.toLowerCase();
+                            if (s.id === 'prep-inspect') return "Walk around the vehicle and note existing damage (dents, scratches) on the diagram. Confirm vehicle condition with customer if present.";
+                            if (s.id === 'prep-tools') return "Ensure pressure washer, foam cannon, buckets, mitts, and brushes are ready. Check water tank and generator fuel levels.";
+                            if (s.id === 'prep-walkaround') return "Review the service package with the client. Confirm any special requests or areas of concern.";
+
+                            if (n.includes('rinse')) return "Thoroughly rinse the vehicle from top to bottom to remove loose dirt and debris. Don't forget wheel wells.";
+                            if (n.includes('foam')) return "Apply a thick layer of foam. Let it dwell for 3-5 minutes to loosen grime. Do not let it dry on paint.";
+                            if (n.includes('wash')) return "Use the two-bucket method. Wash from top to bottom. Use a separate mitt for lower panels/wheels if possible.";
+                            if (n.includes('dry')) return "Use a clean microfiber drying towel or air blower. Ensure no standing water remains in mirrors, door jambs, or grilles.";
+                            if (n.includes('clay')) return "Spray clay lubricant liberally. Glently glide clay bar over paint until smooth. Fold clay often to expose clean surface.";
+                            if (n.includes('wax') || n.includes('sealant')) return "Apply thin, even layer using a soft foam applicator. Allow to haze (if required) then buff off with a clean plush towel.";
+                            if (n.includes('vacuum')) return "Remove floor mats first. Vacuum all carpets, seats, and crevices. Use stiff brush to agitate embedded debris.";
+                            if (n.includes('interior')) return "Wipe down dashboard, console, and door panels with APC and a microfiber towel. Use a brush for vents.";
+                            if (n.includes('glass')) return "Use distinct glass towel. Spray cleaner on towel, not glass (to avoid overspray). Wipe in box pattern.";
+                            if (n.includes('tire')) return "Apply tire dressing evenly with an applicator pad. Wipe off excess to prevent sling.";
+                            if (n.includes('wheel')) return "Clean face and barrel of wheels. Use iron remover if brake dust is heavy. Rinse thoroughly.";
+
+                            return "Perform this step with care. Ensure quality standards are met before proceeding.";
+                          };
+
+                          return (
+                            <div key={step.id} className="flex items-center justify-between group">
+                              <label className="flex items-center gap-2 text-sm cursor-pointer flex-1">
+                                <input
+                                  type="checkbox"
+                                  checked={step.checked}
+                                  onChange={(e) => setChecklistSteps(prev => prev.map(ps => ps.id === step.id ? { ...ps, checked: e.target.checked } : ps))}
+                                  className="rounded border-zinc-600 bg-zinc-900 text-red-600 focus:ring-red-600"
+                                />
+                                <span>{step.name}</span>
+                              </label>
+                              <TooltipProvider>
+                                <Tooltip>
+                                  <TooltipTrigger asChild>
+                                    <button className="text-muted-foreground hover:text-white transition-colors cursor-help p-1">
+                                      <HelpCircle className="h-4 w-4" />
+                                    </button>
+                                  </TooltipTrigger>
+                                  <TooltipContent side="left" className="max-w-[300px] bg-zinc-900 border-zinc-800 text-zinc-100 p-3">
+                                    <p className="text-sm font-semibold mb-1">{step.name}</p>
+                                    <p className="text-xs text-zinc-400">{getInstructions(step)}</p>
+                                  </TooltipContent>
+                                </Tooltip>
+                              </TooltipProvider>
+                            </div>
+                          );
+                        })}
                       </div>
                     )}
                   </div>

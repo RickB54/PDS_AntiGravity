@@ -16,10 +16,11 @@ import {
   GraduationCap,
   Shield,
   CheckSquare,
-  CalendarDays
+  CalendarDays,
+  ChevronRight // Added
 } from "lucide-react";
 import { NavLink, Link, useLocation } from "react-router-dom";
-import { useEffect, useState } from "react";
+import { useEffect, useState, useRef } from "react";
 import {
   Sidebar,
   SidebarContent,
@@ -28,7 +29,13 @@ import {
   SidebarMenuItem,
   SidebarMenuBadge,
   useSidebar,
+  SidebarGroup, // Added
+  SidebarGroupLabel, // Added
+  SidebarMenuSub, // Added
+  SidebarMenuSubButton, // Added
+  SidebarMenuSubItem, // Added
 } from "@/components/ui/sidebar";
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible"; // Added
 import { getCurrentUser } from "@/lib/auth";
 import logo from "@/assets/logo-3inch.png";
 import { getAdminAlerts } from "@/lib/adminAlerts";
@@ -42,6 +49,28 @@ export function AppSidebar() {
   const isAdmin = user?.role === 'admin';
   const isEmployee = user?.role === 'employee';
   const isCustomer = user?.role === 'customer';
+
+  // 5-click Admin Unlock Logic
+  const clickCountRef = useRef(0);
+  const clickTimerRef = useRef<NodeJS.Timeout | null>(null);
+
+  const handleLogoClick = () => {
+    clickCountRef.current += 1;
+
+    if (clickTimerRef.current) {
+      clearTimeout(clickTimerRef.current);
+    }
+
+    // Reset count if no clicks for 1 second
+    clickTimerRef.current = setTimeout(() => {
+      clickCountRef.current = 0;
+    }, 1000);
+
+    if (clickCountRef.current >= 5) {
+      localStorage.setItem('adminMode', 'true');
+      window.location.reload();
+    }
+  };
 
   const [tick, setTick] = useState(0);
   const getHiddenMenuItems = (): string[] => {
@@ -74,7 +103,7 @@ export function AppSidebar() {
   useEffect(() => {
     setOpenMobile(false);
   }, [location.pathname, setOpenMobile]);
-  // Removed Bookings counters and store refresh logic
+
   // Red badge: number of unviewed PDFs (any type), reflects yellow bells in File Manager.
   const fileCount = (() => {
     try {
@@ -121,19 +150,89 @@ export function AppSidebar() {
   const linkClass = ({ isActive }: { isActive: boolean }) =>
     `flex items-center gap-2 ${isActive ? 'text-blue-400' : ''}`;
 
-  // Provider now controls open state; remove local role-based overrides
-  // This prevents race conditions and ensures persistent visibility.
-
-  // Make admin sidebar fixed (non-offcanvas) so it stays visible on scroll.
-  // Keep employee as-is unless requested; customers remain offcanvas.
-  // Make admin behave like employee: offcanvas with reserved layout gap.
   const collapsibleMode = "offcanvas";
   const sidebarClass = "border-r border-border";
+
+  // Menu Configuration
+  type MenuItem = {
+    title: string;
+    url: string;
+    icon?: any;
+    role?: string;
+    key?: string;
+    badge?: number;
+    highlight?: 'red' | 'green';
+  };
+
+  const MENU_GROUPS: { title: string; icon: any; items: MenuItem[] }[] = [
+    {
+      title: "Dashboards",
+      icon: LayoutDashboard,
+      items: [
+        { title: "Admin Dashboard", url: "/admin-dashboard", role: "admin", key: "admin-dashboard", icon: LayoutDashboard },
+        { title: "Website Admin", url: "/website-admin", role: "admin", icon: Shield, highlight: "red" },
+        { title: "Users & Roles", url: "/admin/users", role: "admin", icon: Users },
+        { title: "Employee Dashboard", url: "/employee-dashboard", key: "employee-dashboard", icon: LayoutDashboard },
+        { title: "Website", url: "/", role: "all", icon: Globe },
+      ]
+    },
+    {
+      title: "Operations",
+      icon: ClipboardCheck,
+      items: [
+        { title: "Bookings", url: "/bookings", key: "bookings", icon: CalendarDays },
+        { title: "Service Checklist", url: "/service-checklist", key: "service-checklist", icon: ClipboardCheck },
+        { title: "Tasks", url: "/tasks", badge: todoCount > 0 ? todoCount : undefined, icon: CheckSquare },
+        { title: "Customer Profiles", url: "/search-customer", key: "search-customer", icon: Users },
+        { title: "Prospects", url: "/prospects", key: "prospects", icon: Users }
+      ]
+    },
+    {
+      title: "Finance & Sales",
+      icon: DollarSign,
+      items: [
+        { title: "Estimates", url: "/estimates", role: "admin", highlight: "green", icon: FileText },
+        { title: "Invoicing", url: "/invoicing", role: "admin", key: "invoicing", icon: FileText },
+        { title: "Accounting", url: "/accounting", role: "admin", key: "accounting", icon: Calculator },
+        { title: "Payroll", url: "/payroll", role: "admin", key: "payroll", badge: payrollDueCount > 0 ? payrollDueCount : undefined, icon: DollarSign },
+        { title: "Company Budget", url: "/company-budget", role: "admin", key: "company-budget", icon: DollarSign },
+        { title: "Discount Coupons", url: "/discount-coupons", role: "admin", key: "discount-coupons", icon: TicketPercent },
+        { title: "Package Pricing", url: "/package-pricing", role: "admin", key: "package-pricing", icon: DollarSign },
+      ]
+    },
+    {
+      title: "Inventory & Assets",
+      icon: Package,
+      items: [
+        { title: "Inventory Control", url: "/inventory-control", role: "admin", key: "inventory-control", badge: inventoryCount > 0 ? inventoryCount : undefined, icon: Package },
+        { title: "File Manager", url: "/file-manager", key: "file-manager", badge: fileCount > 0 ? fileCount : undefined, icon: FileText },
+        { title: "Reports", url: "/reports", role: "admin", key: "reports", icon: FileBarChart }
+      ]
+    },
+    {
+      title: "Staff & Training",
+      icon: Users,
+      items: [
+        { title: "Company Employees", url: "/company-employees", role: "admin", key: "company-employees", icon: Users },
+        { title: "Quick Detailing Manual", url: "/training-manual", key: "training-manual", icon: BookOpen },
+        { title: "Employee Training Course", url: "/employee-training", role: "employee", key: "employee-training", icon: GraduationCap },
+        { title: "Package Comparison", url: "/package-selection", role: "admin", icon: Package }
+      ]
+    },
+    {
+      title: "System",
+      icon: Settings,
+      items: [
+        { title: "Settings", url: "/settings", key: "settings", icon: Settings }
+      ]
+    }
+  ];
+
   return (
     <Sidebar className={sidebarClass} collapsible={collapsibleMode as any}>
       <div className="p-4 border-b border-border">
         {open && (
-          <div className="flex items-center gap-3 animate-fade-in">
+          <div className="flex items-center gap-3 animate-fade-in" onClick={handleLogoClick} style={{ cursor: 'pointer' }}>
             <img src={logo} alt="Prime Detail Solutions" className="w-10 h-10" />
             <div>
               <h2 className="font-bold text-foreground">Prime Detail</h2>
@@ -142,7 +241,7 @@ export function AppSidebar() {
           </div>
         )}
         {!open && (
-          <img src={logo} alt="Prime Detail Solutions" className="w-8 h-8 mx-auto" />
+          <img src={logo} alt="Prime Detail Solutions" className="w-8 h-8 mx-auto" onClick={handleLogoClick} style={{ cursor: 'pointer' }} />
         )}
       </div>
 
@@ -161,289 +260,65 @@ export function AppSidebar() {
 
           {(isAdmin || isEmployee) && (
             <>
-              {/* --- Admin & Web --- */}
-              {isAdmin && !isHidden('admin-dashboard') && (
-                <SidebarMenuItem>
-                  <SidebarMenuButton asChild onClick={handleNavClick}>
-                    <NavLink to="/admin-dashboard" className={linkClass}>
-                      <LayoutDashboard className="h-4 w-4" />
-                      <span>Admin Dashboard</span>
-                    </NavLink>
-                  </SidebarMenuButton>
-                </SidebarMenuItem>
-              )}
+              {MENU_GROUPS.map((group) => {
+                // Filter items visible to current user
+                const validItems = group.items.filter(item => {
+                  if (item.role === 'admin' && !isAdmin) return false;
+                  if (item.role === 'employee' && !isEmployee && !isAdmin) return false; // Admin sees employee stuff usually? Or just employee
+                  if (item.key && isHidden(item.key)) return false;
+                  return true;
+                });
 
-              {isAdmin && (
-                <SidebarMenuItem>
-                  <SidebarMenuButton asChild onClick={handleNavClick}>
-                    <NavLink
-                      to="/website-admin"
-                      className={({ isActive }: { isActive: boolean }) =>
-                        `flex items-center gap-2 ${isActive ? 'text-red-500 font-semibold' : 'text-red-600'} hover:text-red-700`}
-                    >
-                      <Shield className="h-4 w-4" />
-                      <span>Website Administration</span>
-                    </NavLink>
-                  </SidebarMenuButton>
-                </SidebarMenuItem>
-              )}
+                if (validItems.length === 0) return null;
 
-              <SidebarMenuItem>
-                <SidebarMenuButton asChild onClick={handleNavClick}>
-                  <Link to="/">
-                    <Globe className="h-4 w-4" />
-                    <span>Website</span>
-                  </Link>
-                </SidebarMenuButton>
-              </SidebarMenuItem>
+                // Check if any child is active to auto-open
+                const isActiveGroup = validItems.some(i => {
+                  if (i.url === '/') return location.pathname === '/';
+                  return location.pathname.startsWith(i.url);
+                });
 
-              {isAdmin && (
-                <SidebarMenuItem>
-                  <SidebarMenuButton asChild onClick={handleNavClick}>
-                    <NavLink to="/admin/users" className={linkClass}>
-                      <Users className="h-4 w-4" />
-                      <span>Users & Roles</span>
-                    </NavLink>
-                  </SidebarMenuButton>
-                </SidebarMenuItem>
-              )}
-
-              {/* --- Operations --- */}
-              {!isHidden('bookings') && (
-                <SidebarMenuItem>
-                  <SidebarMenuButton asChild onClick={handleNavClick}>
-                    <NavLink to="/bookings" className={linkClass}>
-                      <CalendarDays className="h-4 w-4" />
-                      <span>Bookings</span>
-                    </NavLink>
-                  </SidebarMenuButton>
-                </SidebarMenuItem>
-              )}
-
-              {!isHidden('service-checklist') && (
-                <SidebarMenuItem>
-                  <SidebarMenuButton asChild onClick={handleNavClick}>
-                    <NavLink to="/service-checklist" className={linkClass}>
-                      <ClipboardCheck className="h-4 w-4" />
-                      <span>Service Checklist</span>
-                    </NavLink>
-                  </SidebarMenuButton>
-                </SidebarMenuItem>
-              )}
-
-              <SidebarMenuItem>
-                <SidebarMenuButton asChild onClick={handleNavClick}>
-                  <NavLink to="/tasks" className={linkClass}>
-                    <CheckSquare className="h-4 w-4" />
-                    <span>Todo</span>
-                  </NavLink>
-                </SidebarMenuButton>
-                {todoCount > 0 && (
-                  <SidebarMenuBadge className="bg-red-600 text-white">{todoCount}</SidebarMenuBadge>
-                )}
-              </SidebarMenuItem>
-
-              {/* --- Customer & Sales --- */}
-              {!isHidden('search-customer') && (
-                <SidebarMenuItem>
-                  <SidebarMenuButton asChild onClick={handleNavClick}>
-                    <NavLink to="/search-customer" className={linkClass}>
-                      <Users className="h-4 w-4" />
-                      <span>Customer Profiles</span>
-                    </NavLink>
-                  </SidebarMenuButton>
-                </SidebarMenuItem>
-              )}
-
-              {isAdmin && (
-                <SidebarMenuItem>
-                  <SidebarMenuButton asChild onClick={handleNavClick}>
-                    <NavLink to="/estimates" className={({ isActive }: { isActive: boolean }) =>
-                      `flex items-center gap-2 ${isActive ? 'text-green-500 font-semibold' : 'text-green-600'} hover:text-green-700`}>
-                      <FileText className="h-4 w-4" />
-                      <span>Estimates</span>
-                    </NavLink>
-                  </SidebarMenuButton>
-                </SidebarMenuItem>
-              )}
-
-              {isAdmin && !isHidden('invoicing') && (
-                <SidebarMenuItem>
-                  <SidebarMenuButton asChild onClick={handleNavClick}>
-                    <NavLink to="/invoicing" className={linkClass}>
-                      <FileText className="h-4 w-4" />
-                      <span>Invoicing</span>
-                    </NavLink>
-                  </SidebarMenuButton>
-                </SidebarMenuItem>
-              )}
-
-              {isAdmin && !isHidden('discount-coupons') && (
-                <SidebarMenuItem>
-                  <SidebarMenuButton asChild onClick={handleNavClick}>
-                    <NavLink to="/discount-coupons" className={linkClass}>
-                      <TicketPercent className="h-4 w-4" />
-                      <span>Discount Coupons</span>
-                    </NavLink>
-                  </SidebarMenuButton>
-                </SidebarMenuItem>
-              )}
-
-              {isAdmin && !isHidden('package-pricing') && (
-                <SidebarMenuItem>
-                  <SidebarMenuButton asChild onClick={handleNavClick}>
-                    <NavLink to="/package-pricing" className={linkClass}>
-                      <DollarSign className="h-4 w-4" />
-                      <span>Package Pricing</span>
-                    </NavLink>
-                  </SidebarMenuButton>
-                </SidebarMenuItem>
-              )}
-
-              {/* --- Finance --- */}
-              {isAdmin && !isHidden('accounting') && (
-                <SidebarMenuItem>
-                  <SidebarMenuButton asChild onClick={handleNavClick}>
-                    <NavLink to="/accounting" className={linkClass}>
-                      <Calculator className="h-4 w-4" />
-                      <span>Accounting</span>
-                    </NavLink>
-                  </SidebarMenuButton>
-                </SidebarMenuItem>
-              )}
-
-              {isAdmin && !isHidden('company-budget') && (
-                <SidebarMenuItem>
-                  <SidebarMenuButton asChild onClick={handleNavClick}>
-                    <NavLink to="/company-budget" className={linkClass}>
-                      <DollarSign className="h-4 w-4" />
-                      <span>Company Budget</span>
-                    </NavLink>
-                  </SidebarMenuButton>
-                </SidebarMenuItem>
-              )}
-
-              {isAdmin && !isHidden('payroll') && (
-                <SidebarMenuItem>
-                  <SidebarMenuButton asChild onClick={handleNavClick}>
-                    <NavLink to="/payroll" className={linkClass}>
-                      <DollarSign className="h-4 w-4" />
-                      <span>Payroll</span>
-                    </NavLink>
-                  </SidebarMenuButton>
-                  {payrollDueCount > 0 && (
-                    <SidebarMenuBadge className="bg-red-600 text-white">{payrollDueCount}</SidebarMenuBadge>
-                  )}
-                </SidebarMenuItem>
-              )}
-
-              {/* --- Inventory & Assets --- */}
-              {isAdmin && !isHidden('inventory-control') && (
-                <SidebarMenuItem>
-                  <SidebarMenuButton asChild onClick={handleNavClick}>
-                    <NavLink to="/inventory-control" className={linkClass}>
-                      <Package className="h-4 w-4" />
-                      <span>Inventory Control</span>
-                    </NavLink>
-                  </SidebarMenuButton>
-                  {inventoryCount > 0 && (
-                    <SidebarMenuBadge className="bg-red-600 text-white">{inventoryCount}</SidebarMenuBadge>
-                  )}
-                </SidebarMenuItem>
-              )}
-
-              {!isHidden('file-manager') && (
-                <SidebarMenuItem>
-                  <SidebarMenuButton asChild onClick={handleNavClick}>
-                    <NavLink to="/file-manager" className={linkClass}>
-                      <FileText className="h-4 w-4" />
-                      <span>File Manager</span>
-                    </NavLink>
-                  </SidebarMenuButton>
-                  {fileCount > 0 && (
-                    <SidebarMenuBadge className="bg-red-600 text-white">{fileCount}</SidebarMenuBadge>
-                  )}
-                </SidebarMenuItem>
-              )}
-
-              {/* --- Staff --- */}
-              {isAdmin && !isHidden('company-employees') && (
-                <SidebarMenuItem>
-                  <SidebarMenuButton asChild onClick={handleNavClick}>
-                    <NavLink to="/company-employees" className={linkClass}>
-                      <Users className="h-4 w-4" />
-                      <span>Company Employees</span>
-                    </NavLink>
-                  </SidebarMenuButton>
-                </SidebarMenuItem>
-              )}
-
-              {!isHidden('employee-dashboard') && (
-                <SidebarMenuItem>
-                  <SidebarMenuButton asChild onClick={handleNavClick}>
-                    <NavLink to="/employee-dashboard" className={linkClass}>
-                      <LayoutDashboard className="h-4 w-4" />
-                      <span>Employee Dashboard</span>
-                    </NavLink>
-                  </SidebarMenuButton>
-                </SidebarMenuItem>
-              )}
-
-              {!isHidden('training-manual') && (
-                <SidebarMenuItem>
-                  <SidebarMenuButton asChild onClick={handleNavClick}>
-                    <NavLink to="/training-manual" className={linkClass}>
-                      <BookOpen className="h-4 w-4" />
-                      <span>Quick Detailing Manual</span>
-                    </NavLink>
-                  </SidebarMenuButton>
-                </SidebarMenuItem>
-              )}
-
-              {isEmployee && !isHidden('employee-training') && (
-                <SidebarMenuItem>
-                  <SidebarMenuButton asChild onClick={handleNavClick}>
-                    <NavLink to="/employee-training" className={linkClass}>
-                      <GraduationCap className="h-4 w-4" />
-                      <span>Employee Training Course</span>
-                    </NavLink>
-                  </SidebarMenuButton>
-                </SidebarMenuItem>
-              )}
-
-              {isAdmin && (
-                <SidebarMenuItem>
-                  <SidebarMenuButton asChild onClick={handleNavClick}>
-                    <NavLink to="/package-selection" className={linkClass}>
-                      <Package className="h-4 w-4" />
-                      <span>Package Comparison Guide</span>
-                    </NavLink>
-                  </SidebarMenuButton>
-                </SidebarMenuItem>
-              )}
-
-              {/* --- System --- */}
-              {isAdmin && !isHidden('reports') && (
-                <SidebarMenuItem>
-                  <SidebarMenuButton asChild onClick={handleNavClick}>
-                    <NavLink to="/reports" className={linkClass}>
-                      <FileBarChart className="h-4 w-4" />
-                      <span>Reports</span>
-                    </NavLink>
-                  </SidebarMenuButton>
-                </SidebarMenuItem>
-              )}
-
-              {!isHidden('settings') && (
-                <SidebarMenuItem>
-                  <SidebarMenuButton asChild onClick={handleNavClick}>
-                    <NavLink to="/settings" className={linkClass}>
-                      <Settings className="h-4 w-4" />
-                      <span>Settings</span>
-                    </NavLink>
-                  </SidebarMenuButton>
-                </SidebarMenuItem>
-              )}
+                return (
+                  <Collapsible key={group.title} defaultOpen={isActiveGroup} className="group/collapsible">
+                    <SidebarMenuItem>
+                      <CollapsibleTrigger asChild>
+                        <SidebarMenuButton tooltip={group.title}>
+                          <group.icon className="h-4 w-4" />
+                          <span>{group.title}</span>
+                          <ChevronRight className="ml-auto h-4 w-4 transition-transform duration-200 group-data-[state=open]/collapsible:rotate-90" />
+                        </SidebarMenuButton>
+                      </CollapsibleTrigger>
+                      <CollapsibleContent>
+                        <SidebarMenuSub>
+                          {validItems.map((item) => (
+                            <SidebarMenuSubItem key={item.url}>
+                              <SidebarMenuSubButton asChild onClick={handleNavClick}>
+                                <NavLink
+                                  to={item.url}
+                                  className={({ isActive }) => {
+                                    let base = "flex items-center gap-2";
+                                    if (item.highlight === 'red') base += isActive ? ' text-red-500 font-semibold' : ' text-red-600 hover:text-red-700';
+                                    else if (item.highlight === 'green') base += isActive ? ' text-green-500 font-semibold' : ' text-green-600 hover:text-green-700';
+                                    else base += isActive ? ' text-blue-400' : '';
+                                    return base;
+                                  }}
+                                >
+                                  {item.icon && <item.icon className="h-4 w-4 mr-2" />}
+                                  <span>{item.title}</span>
+                                  {item.badge !== undefined && (
+                                    <span className="ml-auto flex h-5 min-w-5 items-center justify-center rounded-full bg-red-600 px-1 text-xs text-white">
+                                      {item.badge}
+                                    </span>
+                                  )}
+                                </NavLink>
+                              </SidebarMenuSubButton>
+                            </SidebarMenuSubItem>
+                          ))}
+                        </SidebarMenuSub>
+                      </CollapsibleContent>
+                    </SidebarMenuItem>
+                  </Collapsible>
+                );
+              })}
             </>
           )}
         </SidebarMenu>
