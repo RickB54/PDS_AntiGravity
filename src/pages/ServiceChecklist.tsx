@@ -7,8 +7,9 @@ import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Textarea } from "@/components/ui/textarea";
-import { ChevronDown, ChevronUp, Save, FileText, Info, Plus, Trash2, CheckCircle2, HelpCircle } from "lucide-react";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
+import { Plus, Minus, Trash2, CheckCircle2, ChevronRight, Save, Receipt, ChevronDown, ChevronUp, FileText, Check, AlertCircle, HelpCircle, Info } from "lucide-react";
 import localforage from "localforage";
 import api from "@/lib/api";
 import { getCurrentUser } from "@/lib/auth";
@@ -46,6 +47,7 @@ function toBuiltInVehKey(key: string): VehKey {
 }
 
 // Build display lists from dynamic sources + admin customizations
+// Build display lists from dynamic sources + admin customizations
 function buildCoreServices(): DisplayService[] {
   const customs = getCustomPackages();
   const pkgs = [...servicePackages, ...customs];
@@ -53,6 +55,7 @@ function buildCoreServices(): DisplayService[] {
     .filter(p => (getPackageMeta(p.id)?.deleted !== true) && (getPackageMeta(p.id)?.visible !== false))
     .map(p => ({ id: p.id, name: p.name, description: (p as any).description || "", kind: 'package' }));
 }
+
 function buildAddOnServices(): DisplayService[] {
   const customs = getCustomAddOns();
   const base = addOns;
@@ -95,12 +98,41 @@ const ServiceChecklist = () => {
   const [customerSearch, setCustomerSearch] = useState<string>("");
   const [customerSearchResults, setCustomerSearchResults] = useState<CustomerType[]>([]);
   const [vehicleTypeOther, setVehicleTypeOther] = useState<string>("");
+
+  /* Accordion states for Materials Used & Discount */
+  const [materialsAccordion, setMaterialsAccordion] = useState({ chemicals: false, materials: false, tools: false });
+  const [discountExpanded, setDiscountExpanded] = useState(false);
+  const [destinationExpanded, setDestinationExpanded] = useState(false);
+  const toggleMatAccordion = (sec: 'chemicals' | 'materials' | 'tools') => setMaterialsAccordion(prev => ({ ...prev, [sec]: !prev[sec] }));
   const [savedPricesLive, setSavedPricesLive] = useState<Record<string, string>>({});
+  const [expandedHelp, setExpandedHelp] = useState<Record<string, boolean>>({}); // Track expanded help items
+
+  // Rick's Tips State
+  const [tipsOpen, setTipsOpen] = useState(false);
+  const [proTips, setProTips] = useState<string[]>([]);
+
+  useEffect(() => {
+    try {
+      const saved = JSON.parse(localStorage.getItem("pro_tips") || "[]");
+      if (Array.isArray(saved) && saved.length > 0) {
+        setProTips(saved.map(String));
+      } else {
+        setProTips([
+          "Always pre-rinse heavily soiled areas to prevent marring.",
+          "Use dedicated wheel buckets to avoid cross-contamination.",
+          "Work small sections; check results under proper lighting.",
+          "Prime pads correctly; clean pads frequently for consistent cut.",
+          "Decontam thoroughly before correction; coating requires perfect prep.",
+          "Customer handoff: demonstrate care guide to reduce comebacks.",
+        ]);
+      }
+    } catch {
+      setProTips([]);
+    }
+  }, []);
 
   const getKey = (type: 'package' | 'addon', id: string, size: string) => `${type}:${id}:${size}`;
 
-  // Resolve a vehicle "key" from either an existing key slug or a human label.
-  // Always return one of the built-in keys for legacy pricing helpers.
   const toVehKey = (value: string): VehKey => {
     const builtIns: VehKey[] = ['compact', 'midsize', 'truck', 'luxury'];
     const v = String(value || '').trim();
@@ -248,31 +280,44 @@ const ServiceChecklist = () => {
   // Load inventory lists for Materials Used selector (preferred split endpoints, fallback to /all)
   useEffect(() => {
     (async () => {
+      // Helper to normalize IDs to string and handle _id/key variants
+      const normalize = (list: any[]) => {
+        if (!Array.isArray(list)) return [];
+        return list
+          .map(i => ({ ...i, id: String(i.id || i._id || i.key || '') }))
+          .filter(i => i.id && i.name);
+      };
+
       try {
         const chems = await api('/api/inventory/chemicals', { method: 'GET' });
         const mats = await api('/api/inventory/materials', { method: 'GET' });
-        setChemicalsList(Array.isArray(chems) ? chems as ChemItem[] : []);
-        setMaterialsList(Array.isArray(mats) ? mats as MatItem[] : []);
+
+        let validChems = normalize(chems as any[]);
+        let validMats = normalize(mats as any[]);
+
         // Fallback if either is empty
-        if ((Array.isArray(chems) && chems.length === 0) || (Array.isArray(mats) && mats.length === 0)) {
+        if (validChems.length === 0 || validMats.length === 0) {
           const res = await api('/api/inventory/all', { method: 'GET' });
           const { chemicals = [], materials = [] } = (res as any) || {};
-          if ((Array.isArray(chems) && chems.length === 0)) setChemicalsList(chemicals as ChemItem[]);
-          if ((Array.isArray(mats) && mats.length === 0)) setMaterialsList(materials as MatItem[]);
+          if (validChems.length === 0) validChems = normalize(chemicals);
+          if (validMats.length === 0) validMats = normalize(materials);
         }
+        setChemicalsList(validChems);
+        setMaterialsList(validMats);
       } catch {
         try {
           const res = await api('/api/inventory/all', { method: 'GET' });
           const { chemicals = [], materials = [] } = (res as any) || {};
-          setChemicalsList(chemicals as ChemItem[]);
-          setMaterialsList(materials as MatItem[]);
+          setChemicalsList(normalize(chemicals));
+          setMaterialsList(normalize(materials));
         } catch {
           setChemicalsList([]);
           setMaterialsList([]);
         }
       }
       const tls = await localforage.getItem<ToolItem[]>('tools') || [];
-      setToolsList(tls);
+      // Normalize tools as well just in case
+      setToolsList(normalize(tls));
     })();
   }, []);
 
@@ -1012,17 +1057,29 @@ const ServiceChecklist = () => {
 
           {/* Checklist - dynamic from package and add-ons */}
           <Card className="p-6 bg-gradient-card border-border">
-            <div className="flex items-center justify-between mb-4">
-              <h2 className="text-2xl font-bold text-foreground">Checklist</h2>
+            <div className="flex items-center justify-between mb-4 flex-wrap gap-2">
               <div className="flex items-center gap-3">
+                <h2 className="text-2xl font-bold text-foreground">Checklist</h2>
+                <Button variant="secondary" size="sm" onClick={() => setTipsOpen(true)} className="bg-purple-700 text-white hover:bg-purple-800 h-7 text-xs">
+                  Rick's Tips
+                </Button>
+              </div>
+              <div className="flex items-center gap-3">
+                <Button variant="ghost" size="sm" onClick={() => {
+                  const allExpanded = checklistSteps.length > 0 && checklistSteps.every(s => expandedHelp[s.id]);
+                  const next = allExpanded ? {} : checklistSteps.reduce((acc, s) => ({ ...acc, [s.id]: true }), {} as Record<string, boolean>);
+                  setExpandedHelp(next);
+                }}>
+                  {checklistSteps.length > 0 && checklistSteps.every(s => expandedHelp[s.id]) ? <span className="flex items-center gap-1"><ChevronUp className="h-4 w-4" /> Collapse All</span> : <span className="flex items-center gap-1"><ChevronDown className="h-4 w-4" /> Expand All</span>}
+                </Button>
                 <Button variant="outline" size="sm" onClick={() => {
                   const all = checklistSteps.length > 0 && checklistSteps.every(s => s.checked);
                   setChecklistSteps(prev => prev.map(s => ({ ...s, checked: !all })));
                 }}>
                   {checklistSteps.length > 0 && checklistSteps.every(s => s.checked) ? 'Uncheck All' : 'Check All'}
                 </Button>
-                <Progress value={progressPercent} className="w-40" />
-                <span className="text-sm">{progressPercent}%</span>
+                <Progress value={progressPercent} className="w-40 hidden sm:block" />
+                <span className="text-sm hidden sm:inline">{progressPercent}%</span>
               </div>
             </div>
             {(!selectedPackage || !vehicleType) && (
@@ -1065,41 +1122,45 @@ const ServiceChecklist = () => {
                           };
 
                           return (
-                            <div key={step.id} className="flex items-center justify-between group py-2 border-b border-border/40 last:border-0 hover:bg-zinc-900/50 rounded-lg px-2 -mx-2 transition-colors">
-                              <label className="flex items-center gap-3 text-sm cursor-pointer flex-1 py-1">
-                                <input
-                                  type="checkbox"
-                                  checked={step.checked}
-                                  onChange={(e) => setChecklistSteps(prev => prev.map(ps => ps.id === step.id ? { ...ps, checked: e.target.checked } : ps))}
-                                  className="h-5 w-5 rounded border-zinc-600 bg-zinc-900 text-red-600 focus:ring-red-600 focus:ring-offset-0"
-                                />
-                                <span className={step.checked ? "text-muted-foreground line-through decoration-red-500/50" : "text-foreground font-medium"}>
-                                  {step.name}
-                                </span>
-                              </label>
+                            <div key={step.id} className="border-b border-border/40 last:border-0 hover:bg-zinc-900/50 rounded-lg -mx-2 px-2 transition-colors">
+                              <div className="flex items-center justify-between py-2">
+                                <label className="flex items-center gap-3 text-sm cursor-pointer flex-1 py-1">
+                                  <input
+                                    type="checkbox"
+                                    checked={step.checked}
+                                    onChange={(e) => setChecklistSteps(prev => prev.map(ps => ps.id === step.id ? { ...ps, checked: e.target.checked } : ps))}
+                                    className="h-5 w-5 rounded border-zinc-600 bg-zinc-900 text-red-600 focus:ring-red-600 focus:ring-offset-0"
+                                  />
+                                  <span className={step.checked ? "text-muted-foreground line-through decoration-red-500/50" : "text-foreground font-medium"}>
+                                    {step.name}
+                                  </span>
+                                </label>
 
-                              <Popover>
-                                <PopoverTrigger asChild>
-                                  <Button
-                                    variant="ghost"
-                                    size="icon"
-                                    className="h-8 w-8 ml-2 text-muted-foreground hover:text-primary hover:bg-primary/10 rounded-full"
-                                  >
-                                    <HelpCircle className="h-5 w-5" />
-                                  </Button>
-                                </PopoverTrigger>
-                                <PopoverContent side="left" className="w-[280px] p-4 bg-zinc-900 border-zinc-800 text-zinc-100 shadow-xl" align="end">
-                                  <div className="space-y-2">
-                                    <h4 className="font-semibold text-primary flex items-center gap-2 border-b border-zinc-800 pb-2">
-                                      <Info className="h-4 w-4" />
-                                      {step.name}
-                                    </h4>
-                                    <p className="text-sm text-zinc-300 leading-relaxed">
-                                      {getInstructions(step)}
-                                    </p>
+                                <Button
+                                  variant="ghost"
+                                  size="icon"
+                                  className="h-8 w-8 ml-2 text-muted-foreground hover:text-primary hover:bg-primary/10 rounded-full shrink-0"
+                                  onClick={(e) => {
+                                    e.preventDefault();
+                                    e.stopPropagation();
+                                    setExpandedHelp(prev => ({ ...prev, [step.id]: !prev[step.id] }));
+                                  }}
+                                >
+                                  {expandedHelp[step.id] ? <ChevronUp className="h-5 w-5" /> : <HelpCircle className="h-5 w-5" />}
+                                </Button>
+                              </div>
+
+                              {/* Accordion Content rendering below the flex row */}
+                              {expandedHelp[step.id] && (
+                                <div className="pb-3 pl-8 sm:pl-10 text-sm text-zinc-300 animate-in slide-in-from-top-2 fade-in duration-200">
+                                  <div className="bg-zinc-900/50 p-3 rounded border border-zinc-800/50">
+                                    <div className="flex items-start gap-2">
+                                      <Info className="h-4 w-4 text-primary mt-0.5 shrink-0" />
+                                      <p className="leading-relaxed">{getInstructions(step)}</p>
+                                    </div>
                                   </div>
-                                </PopoverContent>
-                              </Popover>
+                                </div>
+                              )}
                             </div>
                           );
                         })}
@@ -1134,178 +1195,215 @@ const ServiceChecklist = () => {
           </Card>
 
           {/* Materials Used */}
-          <Card className="p-6 bg-gradient-card border-border">
-            <div className="mb-4 flex items-center justify-between">
+          <Card className="p-6 bg-gradient-card border-border space-y-6">
+            <div className="flex items-center justify-between">
               <h2 className="text-2xl font-bold text-white pb-2 border-b border-red-600">Materials Used</h2>
               <Button variant="outline" className="h-9" onClick={() => setMaterialsModalOpen(true)}>Material Updates</Button>
             </div>
 
-            {/* Quick add from Inventory: unified dropdown for Chemicals + Materials */}
-            <div className="mb-4 grid grid-cols-1 md:grid-cols-2 gap-4">
-              <div>
-                <Label>Quick Add from Inventory</Label>
-                <select
-                  value=""
-                  onChange={(e) => {
-                    const val = e.target.value;
-                    if (!val) return;
-                    const chem = chemicalsList.find(c => String(c.id) === String(val));
-                    const mat = materialsList.find(m => String(m.id) === String(val));
-                    if (chem) {
-                      setChemRows(prev => ([...prev, { chemicalId: String(chem.id), fraction: '', notes: '' }]));
-                    } else if (mat) {
-                      setMatRows(prev => ([...prev, { materialId: String(mat.id), quantityNote: '' }]));
-                    } else {
-                      const tool = toolsList.find(t => String(t.id) === String(val));
-                      if (tool) setToolRows(prev => ([...prev, { toolId: String(tool.id), notes: '' }]));
-                    }
-                    // reset select
-                    e.currentTarget.selectedIndex = 0;
-                  }}
-                  className="flex h-10 w-full rounded-md border border-red-600 bg-black text-white px-3 py-2 text-sm"
-                >
-                  <option value="">Select item to add...</option>
-                  <optgroup label="Chemicals">
-                    {chemicalsList.map(it => (<option key={`chem-${it.id}`} value={it.id}>{it.name}</option>))}
-                  </optgroup>
-                  <optgroup label="Materials">
-                    {materialsList.map(it => (<option key={`mat-${it.id}`} value={it.id}>{it.name}</option>))}
-                  </optgroup>
-                  <optgroup label="Tools">
-                    {toolsList.map(it => (<option key={`tool-${it.id}`} value={it.id}>{it.name}</option>))}
-                  </optgroup>
-                </select>
-              </div>
+            {/* Quick add */}
+            <div className="p-4 bg-zinc-900/50 border border-zinc-800 rounded-lg">
+              <Label className="mb-2 block text-zinc-400">Quick Add from Inventory (Auto-expands section)</Label>
+              <select
+                value=""
+                onChange={(e) => {
+                  const val = e.target.value;
+                  if (!val) return;
+                  const chem = chemicalsList.find(c => String(c.id) === String(val));
+                  const mat = materialsList.find(m => String(m.id) === String(val));
+                  if (chem) {
+                    setChemRows(prev => ([...prev, { chemicalId: String(chem.id), fraction: '', notes: '' }]));
+                    setMaterialsAccordion(prev => ({ ...prev, chemicals: true }));
+                  } else if (mat) {
+                    setMatRows(prev => ([...prev, { materialId: String(mat.id), quantityNote: '' }]));
+                    setMaterialsAccordion(prev => ({ ...prev, materials: true }));
+                  } else {
+                    const tool = toolsList.find(t => String(t.id) === String(val));
+                    if (tool) setToolRows(prev => ([...prev, { toolId: String(tool.id), notes: '' }]));
+                    setMaterialsAccordion(prev => ({ ...prev, tools: true }));
+                  }
+                  e.currentTarget.selectedIndex = 0;
+                }}
+                className="flex h-10 w-full rounded-md border border-red-600 bg-black text-white px-3 py-2 text-sm"
+              >
+                <option value="">Select item to add...</option>
+                <optgroup label="Chemicals">
+                  {chemicalsList.map(it => (<option key={`chem-${it.id}`} value={it.id}>{it.name}</option>))}
+                </optgroup>
+                <optgroup label="Materials">
+                  {materialsList.map(it => (<option key={`mat-${it.id}`} value={it.id}>{it.name}</option>))}
+                </optgroup>
+                <optgroup label="Tools">
+                  {toolsList.map(it => (<option key={`tool-${it.id}`} value={it.id}>{it.name}</option>))}
+                </optgroup>
+              </select>
             </div>
 
-            {/* Chemicals subsection */}
-            <div className="mb-6">
-              <div className="flex items-center justify-between mb-2">
-                <h3 className="text-lg font-semibold text-white">Chemicals (fractional)</h3>
-                <Button onClick={addChemicalRow} className="bg-red-600 text-white h-9"><Plus className="h-4 w-4 mr-2" />Add Chemical Row</Button>
+            {/* Chemicals Accordion (Yellow) */}
+            <div className="border border-yellow-500/30 rounded-xl overflow-hidden bg-zinc-900/50">
+              <div
+                className="p-4 bg-yellow-500/10 flex items-center justify-between cursor-pointer hover:bg-yellow-500/15 transition-colors"
+                onClick={() => toggleMatAccordion('chemicals')}
+              >
+                <div className="flex items-center gap-3">
+                  <div className="h-2 w-2 rounded-full bg-yellow-500" />
+                  <h3 className="text-lg font-semibold text-yellow-100">Chemicals (fractional)</h3>
+                  <HelpCircle className="h-4 w-4 text-zinc-400 hover:text-white cursor-pointer" onClick={(e) => { e.stopPropagation(); window.dispatchEvent(new CustomEvent('open-help', { detail: 'inventory-chemicals' })); }} />
+                  <span className="text-xs px-2 py-0.5 rounded bg-zinc-800 text-zinc-400 border border-zinc-700">{chemRows.length} items</span>
+                </div>
+                {materialsAccordion.chemicals ? <ChevronUp className="h-5 w-5 text-yellow-500/50" /> : <ChevronDown className="h-5 w-5 text-yellow-500/50" />}
               </div>
-              {chemRows.length === 0 && (
-                <p className="text-sm text-muted-foreground">Add chemicals used (e.g., Wax 1/2).</p>
-              )}
-              {/* Search filter for chemicals */}
-              <div className="mb-3">
-                <Label>Search Chemicals</Label>
-                <Input placeholder="Type to filter…" value={chemSearch} onChange={(e) => setChemSearch(e.target.value)} />
-              </div>
-              <div className="space-y-3">
-                {chemRows.map((row, idx) => (
-                  <div key={`chem-${idx}`} className="grid grid-cols-1 md:grid-cols-12 gap-2 items-end">
-                    <div className="md:col-span-4">
-                      <Label>Chemical</Label>
-                      <select
-                        value={row.chemicalId}
-                        onChange={(e) => updateChemicalRow(idx, { chemicalId: e.target.value })}
-                        className="flex h-10 w-full rounded-md border border-red-600 bg-black text-white px-3 py-2 text-sm"
-                      >
-                        <option value="">Select a chemical...</option>
-                        {chemicalsList
-                          .filter(it => (chemSearch ? String(it.name || '').toLowerCase().includes(chemSearch.toLowerCase()) : true))
-                          .map(it => (<option key={it.id} value={it.id}>{it.name}</option>))}
-                      </select>
-                    </div>
-                    <div className="md:col-span-6">
-                      <Label>Quantity Used</Label>
-                      <div className="flex flex-wrap gap-2 mt-1">
-                        {FRACTIONS.map(f => (
-                          <label key={f} className="flex items-center gap-1 text-sm px-2 py-1 rounded border border-red-600 text-white">
-                            <input type="checkbox" checked={row.fraction === f} onChange={() => updateChemicalRow(idx, { fraction: row.fraction === f ? '' : f })} />
-                            <span>{f}</span>
-                          </label>
-                        ))}
+
+              {materialsAccordion.chemicals && (
+                <div className="p-4 border-t border-yellow-500/10 animate-in slide-in-from-top-2 duration-200">
+                  <div className="flex justify-between items-center mb-4">
+                    <p className="text-sm text-yellow-500/70">Track precise chemical usage (e.g. 1/4 bottle)</p>
+                    <Button onClick={addChemicalRow} size="sm" className="bg-yellow-600 hover:bg-yellow-500 text-white h-8"><Plus className="h-4 w-4 mr-2" />Add Row</Button>
+                  </div>
+                  <div className="mb-3">
+                    <Label>Search</Label>
+                    <Input placeholder="Filter chemicals..." value={chemSearch} onChange={(e) => setChemSearch(e.target.value)} className="h-9 bg-zinc-950/50 border-yellow-500/20 focus-visible:ring-yellow-500/50" />
+                  </div>
+                  <div className="space-y-3">
+                    {chemRows.map((row, idx) => (
+                      <div key={`chem-${idx}`} className="grid grid-cols-1 md:grid-cols-12 gap-2 items-end p-3 rounded bg-zinc-950/30 border border-zinc-800/50">
+                        <div className="md:col-span-4">
+                          <Label className="text-xs text-yellow-500/70">Chemical</Label>
+                          <select
+                            value={row.chemicalId}
+                            onChange={(e) => updateChemicalRow(idx, { chemicalId: e.target.value })}
+                            className="flex h-9 w-full rounded-md border border-yellow-500/20 bg-zinc-900 text-white px-3 py-1 text-sm focus:border-yellow-500/50 outline-none"
+                          >
+                            <option value="">Select a chemical...</option>
+                            {chemicalsList
+                              .filter(it => (chemSearch ? String(it.name || '').toLowerCase().includes(chemSearch.toLowerCase()) : true))
+                              .map(it => (<option key={it.id} value={it.id}>{it.name}</option>))}
+                          </select>
+                        </div>
+                        <div className="md:col-span-6">
+                          <Label className="text-xs text-yellow-500/70">Quantity Used</Label>
+                          <div className="flex flex-wrap gap-2 mt-1">
+                            {FRACTIONS.map(f => (
+                              <label key={f} className={`flex items-center gap-1 text-xs px-2 py-1 rounded border cursor-pointer transition-colors ${row.fraction === f ? 'bg-yellow-500/20 border-yellow-500 text-yellow-200' : 'border-zinc-700 text-zinc-400 hover:border-yellow-500/30'}`}>
+                                <input type="checkbox" className="hidden" checked={row.fraction === f} onChange={() => updateChemicalRow(idx, { fraction: row.fraction === f ? '' : f })} />
+                                <span>{f}</span>
+                              </label>
+                            ))}
+                          </div>
+                        </div>
+                        <div className="md:col-span-2">
+                          <Label className="text-xs text-yellow-500/70">Notes</Label>
+                          <Input className="h-9 border-yellow-500/20 bg-zinc-900" type="text" value={row.notes || ''} onChange={(e) => updateChemicalRow(idx, { notes: e.target.value })} placeholder="Note" />
+                        </div>
+                        <div className="md:col-span-12 flex justify-end mt-2 md:mt-0">
+                          <Button variant="ghost" size="sm" className="text-red-400 hover:text-red-300 hover:bg-red-500/10 h-8" onClick={() => removeChemicalRow(idx)}><Trash2 className="h-4 w-4 mr-2" /> Remove</Button>
+                        </div>
                       </div>
-                    </div>
-                    <div className="md:col-span-2">
-                      <Label>Notes</Label>
-                      <Input type="text" value={row.notes || ''} onChange={(e) => updateChemicalRow(idx, { notes: e.target.value })} placeholder="Optional note" />
-                    </div>
-                    <div className="md:col-span-1 flex items-end">
-                      <Button variant="destructive" className="h-10 w-full" onClick={() => removeChemicalRow(idx)}>
-                        <Trash2 className="h-4 w-4" />
-                      </Button>
-                    </div>
+                    ))}
+                    {chemRows.length === 0 && <p className="text-center text-sm text-zinc-500 italic py-4">No chemicals added yet.</p>}
                   </div>
-                ))}
-              </div>
+                </div>
+              )}
             </div>
 
-            {/* Materials subsection */}
-            <div>
-              <div className="flex items-center justify-between mb-2">
-                <h3 className="text-lg font-semibold text-white">Materials (note-based)</h3>
-                <Button onClick={addMaterialRow} className="bg-red-600 text-white h-9"><Plus className="h-4 w-4 mr-2" />Add Material Row</Button>
+            {/* Materials Accordion (Blue) */}
+            <div className="border border-blue-500/30 rounded-xl overflow-hidden bg-zinc-900/50">
+              <div
+                className="p-4 bg-blue-500/10 flex items-center justify-between cursor-pointer hover:bg-blue-500/15 transition-colors"
+                onClick={() => toggleMatAccordion('materials')}
+              >
+                <div className="flex items-center gap-3">
+                  <div className="h-2 w-2 rounded-full bg-blue-500" />
+                  <h3 className="text-lg font-semibold text-blue-100">Materials (note-based)</h3>
+                  <HelpCircle className="h-4 w-4 text-zinc-400 hover:text-white cursor-pointer" onClick={(e) => { e.stopPropagation(); window.dispatchEvent(new CustomEvent('open-help', { detail: 'inventory-materials' })); }} />
+                  <span className="text-xs px-2 py-0.5 rounded bg-zinc-800 text-zinc-400 border border-zinc-700">{matRows.length} items</span>
+                </div>
+                {materialsAccordion.materials ? <ChevronUp className="h-5 w-5 text-blue-500/50" /> : <ChevronDown className="h-5 w-5 text-blue-500/50" />}
               </div>
-              {matRows.length === 0 && (
-                <p className="text-sm text-muted-foreground">Add materials used (e.g., 5 rags, 2 brushes).</p>
-              )}
-              {/* Removed search input; unified quick add dropdown above now lists all inventory */}
-              <div className="space-y-3">
-                {matRows.map((row, idx) => (
-                  <div key={`mat-${idx}`} className="grid grid-cols-1 md:grid-cols-12 gap-2 items-end">
-                    <div className="md:col-span-5">
-                      <Label>Material</Label>
-                      <select
-                        value={row.materialId}
-                        onChange={(e) => updateMaterialRow(idx, { materialId: e.target.value })}
-                        className="flex h-10 w-full rounded-md border border-red-600 bg-black text-white px-3 py-2 text-sm"
-                      >
-                        <option value="">Select a material...</option>
-                        {materialsList.map(it => (<option key={it.id} value={it.id}>{it.name}</option>))}
-                      </select>
-                    </div>
-                    <div className="md:col-span-6">
-                      <Label>Quantity Used</Label>
-                      <Input type="text" value={row.quantityNote} onChange={(e) => updateMaterialRow(idx, { quantityNote: e.target.value })} placeholder="e.g., 5 rags, 2 brushes" />
-                    </div>
-                    <div className="md:col-span-1 flex items-end">
-                      <Button variant="destructive" className="h-10 w-full" onClick={() => removeMaterialRow(idx)}>
-                        <Trash2 className="h-4 w-4" />
-                      </Button>
-                    </div>
+
+              {materialsAccordion.materials && (
+                <div className="p-4 border-t border-blue-500/10 animate-in slide-in-from-top-2 duration-200">
+                  <div className="flex justify-between items-center mb-4">
+                    <p className="text-sm text-blue-500/70">Track disposables and items (e.g. 5 rags)</p>
+                    <Button onClick={addMaterialRow} size="sm" className="bg-blue-600 hover:bg-blue-500 text-white h-8"><Plus className="h-4 w-4 mr-2" />Add Row</Button>
                   </div>
-                ))}
-              </div>
+                  <div className="space-y-3">
+                    {matRows.map((row, idx) => (
+                      <div key={`mat-${idx}`} className="grid grid-cols-1 md:grid-cols-12 gap-2 items-end p-3 rounded bg-zinc-950/30 border border-zinc-800/50">
+                        <div className="md:col-span-5">
+                          <Label className="text-xs text-blue-500/70">Material</Label>
+                          <select
+                            value={row.materialId}
+                            onChange={(e) => updateMaterialRow(idx, { materialId: e.target.value })}
+                            className="flex h-9 w-full rounded-md border border-blue-500/20 bg-zinc-900 text-white px-3 py-1 text-sm focus:border-blue-500/50 outline-none"
+                          >
+                            <option value="">Select a material...</option>
+                            {materialsList.map(it => (<option key={it.id} value={it.id}>{it.name}</option>))}
+                          </select>
+                        </div>
+                        <div className="md:col-span-6">
+                          <Label className="text-xs text-blue-500/70">Quantity / Notes</Label>
+                          <Input className="h-9 border-blue-500/20 bg-zinc-900" type="text" value={row.quantityNote} onChange={(e) => updateMaterialRow(idx, { quantityNote: e.target.value })} placeholder="e.g. 5 rags" />
+                        </div>
+                        <div className="md:col-span-1 flex justify-end">
+                          <Button variant="ghost" size="icon" className="text-red-400 hover:text-red-300 hover:bg-red-500/10 h-9 w-9" onClick={() => removeMaterialRow(idx)}><Trash2 className="h-4 w-4" /></Button>
+                        </div>
+                      </div>
+                    ))}
+                    {matRows.length === 0 && <p className="text-center text-sm text-zinc-500 italic py-4">No materials added yet.</p>}
+                  </div>
+                </div>
+              )}
             </div>
 
-            {/* Tools subsection */}
-            <div className="mt-6">
-              <div className="flex items-center justify-between mb-2">
-                <h3 className="text-lg font-semibold text-white">Tools Used</h3>
-                <Button onClick={addToolRow} className="bg-red-600 text-white h-9"><Plus className="h-4 w-4 mr-2" />Add Tool Row</Button>
+            {/* Tools Accordion (Purple) */}
+            <div className="border border-purple-500/30 rounded-xl overflow-hidden bg-zinc-900/50">
+              <div
+                className="p-4 bg-purple-500/10 flex items-center justify-between cursor-pointer hover:bg-purple-500/15 transition-colors"
+                onClick={() => toggleMatAccordion('tools')}
+              >
+                <div className="flex items-center gap-3">
+                  <div className="h-2 w-2 rounded-full bg-purple-500" />
+                  <h3 className="text-lg font-semibold text-purple-100">Tools (tracking)</h3>
+                  <HelpCircle className="h-4 w-4 text-zinc-400 hover:text-white cursor-pointer" onClick={(e) => { e.stopPropagation(); window.dispatchEvent(new CustomEvent('open-help', { detail: 'inventory-tools' })); }} />
+                  <span className="text-xs px-2 py-0.5 rounded bg-zinc-800 text-zinc-400 border border-zinc-700">{toolRows.length} items</span>
+                </div>
+                {materialsAccordion.tools ? <ChevronUp className="h-5 w-5 text-purple-500/50" /> : <ChevronDown className="h-5 w-5 text-purple-500/50" />}
               </div>
-              {toolRows.length === 0 && (
-                <p className="text-sm text-muted-foreground">Add tools used (e.g., Polisher, Vacuum).</p>
-              )}
-              <div className="space-y-3">
-                {toolRows.map((row, idx) => (
-                  <div key={`tool-${idx}`} className="grid grid-cols-1 md:grid-cols-12 gap-2 items-end">
-                    <div className="md:col-span-5">
-                      <Label>Tool</Label>
-                      <select
-                        value={row.toolId}
-                        onChange={(e) => updateToolRow(idx, { toolId: e.target.value })}
-                        className="flex h-10 w-full rounded-md border border-red-600 bg-black text-white px-3 py-2 text-sm"
-                      >
-                        <option value="">Select a tool...</option>
-                        {toolsList.map(it => (<option key={it.id} value={it.id}>{it.name}</option>))}
-                      </select>
-                    </div>
-                    <div className="md:col-span-6">
-                      <Label>Notes</Label>
-                      <Input type="text" value={row.notes} onChange={(e) => updateToolRow(idx, { notes: e.target.value })} placeholder="e.g., Used for 2 hours" />
-                    </div>
-                    <div className="md:col-span-1 flex items-end">
-                      <Button variant="destructive" className="h-10 w-full" onClick={() => removeToolRow(idx)}>
-                        <Trash2 className="h-4 w-4" />
-                      </Button>
-                    </div>
+
+              {materialsAccordion.tools && (
+                <div className="p-4 border-t border-purple-500/10 animate-in slide-in-from-top-2 duration-200">
+                  <div className="flex justify-between items-center mb-4">
+                    <p className="text-sm text-purple-500/70">Log usage of main tools</p>
+                    <Button onClick={addToolRow} size="sm" className="bg-purple-600 hover:bg-purple-500 text-white h-8"><Plus className="h-4 w-4 mr-2" />Add Row</Button>
                   </div>
-                ))}
-              </div>
+                  <div className="space-y-3">
+                    {toolRows.map((row, idx) => (
+                      <div key={`tool-${idx}`} className="grid grid-cols-1 md:grid-cols-12 gap-2 items-end p-3 rounded bg-zinc-950/30 border border-zinc-800/50">
+                        <div className="md:col-span-5">
+                          <Label className="text-xs text-purple-500/70">Tool</Label>
+                          <select
+                            value={row.toolId}
+                            onChange={(e) => updateToolRow(idx, { toolId: e.target.value })}
+                            className="flex h-9 w-full rounded-md border border-purple-500/20 bg-zinc-900 text-white px-3 py-1 text-sm focus:border-purple-500/50 outline-none"
+                          >
+                            <option value="">Select a tool...</option>
+                            {toolsList.map(it => (<option key={it.id} value={it.id}>{it.name}</option>))}
+                          </select>
+                        </div>
+                        <div className="md:col-span-6">
+                          <Label className="text-xs text-purple-500/70">Activity Notes</Label>
+                          <Input className="h-9 border-purple-500/20 bg-zinc-900" type="text" value={row.notes} onChange={(e) => updateToolRow(idx, { notes: e.target.value })} placeholder="Usage details" />
+                        </div>
+                        <div className="md:col-span-1 flex justify-end">
+                          <Button variant="ghost" size="icon" className="text-red-400 hover:text-red-300 hover:bg-red-500/10 h-9 w-9" onClick={() => removeToolRow(idx)}><Trash2 className="h-4 w-4" /></Button>
+                        </div>
+                      </div>
+                    ))}
+                    {toolRows.length === 0 && <p className="text-center text-sm text-zinc-500 italic py-4">No tools added yet.</p>}
+                  </div>
+                </div>
+              )}
             </div>
           </Card>
 
@@ -1331,47 +1429,85 @@ const ServiceChecklist = () => {
 
           {/* Discount & Total */}
           <Card className="p-6 bg-gradient-card border-border">
-            <h2 className="text-2xl font-bold text-foreground mb-4">Discount & Total</h2>
-
-            <div className="space-y-4">
-              <div className="flex gap-4 items-end">
-                <div className="flex-1">
-                  <Label>Discount Type</Label>
-                  <select
-                    value={discountType}
-                    onChange={(e) => setDiscountType(e.target.value as "percent" | "dollar")}
-                    className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
-                  >
-                    <option value="percent">Percentage (%)</option>
-                    <option value="dollar">Dollar Amount ($)</option>
-                  </select>
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between mb-4 gap-4">
+              <h2 className="text-2xl font-bold text-foreground">Totals & Payment</h2>
+              <div className="flex flex-wrap gap-2">
+                <div
+                  className={`flex items-center gap-2 cursor-pointer text-sm transition-colors px-3 py-1.5 rounded-full border ${discountExpanded ? 'bg-zinc-800 border-zinc-500 text-white' : 'bg-zinc-900/50 border-zinc-700 text-zinc-400 hover:border-zinc-500 hover:text-white'}`}
+                  onClick={() => setDiscountExpanded(!discountExpanded)}
+                >
+                  {discountExpanded ? 'Hide Discount' : 'Add Discount'}
+                  {discountExpanded ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
                 </div>
-                <div className="flex-1">
-                  <Label>Discount Value</Label>
-                  <Input
-                    type="number"
-                    placeholder={discountType === "percent" ? "e.g., 10" : "e.g., 20"}
-                    value={discountValue}
-                    onChange={(e) => setDiscountValue(e.target.value)}
-                  />
+                <div
+                  className={`flex items-center gap-2 cursor-pointer text-sm transition-colors px-3 py-1.5 rounded-full border ${destinationExpanded ? 'bg-zinc-800 border-zinc-500 text-white' : 'bg-zinc-900/50 border-zinc-700 text-zinc-400 hover:border-zinc-500 hover:text-white'}`}
+                  onClick={() => setDestinationExpanded(!destinationExpanded)}
+                >
+                  {destinationExpanded ? 'Hide Fee' : 'Add Destination Fee'}
+                  {destinationExpanded ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
                 </div>
               </div>
+            </div>
 
-              <div className="space-y-2 text-lg">
-                <div className="flex justify-between">
-                  <span>Subtotal:</span>
-                  <span className="font-bold">${calculateSubtotal().toFixed(2)}</span>
-                </div>
-                {calculateDiscount() > 0 && (
-                  <div className="flex justify-between text-destructive">
-                    <span>Discount:</span>
-                    <span className="font-bold">-${calculateDiscount().toFixed(2)}</span>
+            {/* Collapsible Discount Controls */}
+            {discountExpanded && (
+              <div className="mb-4 p-4 bg-zinc-900/50 border border-zinc-800 rounded-lg animate-in slide-in-from-top-2 duration-200">
+                <div className="flex gap-4 items-end">
+                  <div className="flex-1">
+                    <Label className="text-zinc-400 mb-1.5 block">Discount Type</Label>
+                    <div className="relative">
+                      <select
+                        value={discountType}
+                        onChange={(e) => setDiscountType(e.target.value as "percent" | "dollar")}
+                        className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm appearance-none"
+                      >
+                        <option value="percent">Percentage (%)</option>
+                        <option value="dollar">Dollar Amount ($)</option>
+                      </select>
+                      <ChevronDown className="absolute right-3 top-3 h-4 w-4 text-muted-foreground pointer-events-none" />
+                    </div>
                   </div>
-                )}
-                <div className="flex justify-between text-2xl border-t pt-2">
-                  <span className="font-bold">Total:</span>
-                  <span className="font-bold text-primary">${calculateTotal().toFixed(2)}</span>
+                  <div className="flex-1">
+                    <Label className="text-zinc-400 mb-1.5 block">Discount Value</Label>
+                    <Input
+                      type="number"
+                      placeholder={discountType === "percent" ? "e.g., 10" : "e.g., 20"}
+                      value={discountValue}
+                      onChange={(e) => setDiscountValue(e.target.value)}
+                    />
+                  </div>
                 </div>
+              </div>
+            )}
+
+            {/* Collapsible Destination Fee Controls */}
+            {destinationExpanded && (
+              <div className="mb-6 p-4 bg-zinc-900/50 border border-zinc-800 rounded-lg animate-in slide-in-from-top-2 duration-200">
+                <Label className="text-zinc-400 mb-1.5 block">Destination Fee ($)</Label>
+                <Input
+                  type="number"
+                  placeholder="e.g. 50"
+                  value={destinationFee || ''}
+                  onChange={(e) => setDestinationFee(Number(e.target.value))}
+                />
+                <p className="text-xs text-zinc-500 mt-1">Added to total as a service charge.</p>
+              </div>
+            )}
+
+            <div className="space-y-3 pt-2">
+              <div className="flex justify-between text-zinc-400">
+                <span>Subtotal:</span>
+                <span className="font-mono text-zinc-200">${calculateSubtotal().toFixed(2)}</span>
+              </div>
+              {calculateDiscount() > 0 && (
+                <div className="flex justify-between text-red-400">
+                  <span>Discount Applied:</span>
+                  <span className="font-mono">-${calculateDiscount().toFixed(2)}</span>
+                </div>
+              )}
+              <div className="flex justify-between text-2xl border-t border-zinc-800 pt-4 mt-2">
+                <span className="font-bold text-white">Total Due:</span>
+                <span className="font-bold text-emerald-400 font-mono">${calculateTotal().toFixed(2)}</span>
               </div>
             </div>
           </Card>
@@ -1449,9 +1585,38 @@ const ServiceChecklist = () => {
               setSelectedCustomer((saved as any).id);
             }}
           />
+
+          {/* Rick's Pro Tips Modal (View Only) */}
+          <Dialog open={tipsOpen} onOpenChange={setTipsOpen}>
+            <DialogContent className="sm:max-w-[600px] bg-zinc-950 border-zinc-900 text-zinc-100">
+              <DialogHeader>
+                <DialogTitle className="text-2xl font-bold text-purple-500 flex items-center gap-2">
+                  Rick's Pro Tips
+                </DialogTitle>
+                <DialogDescription className="text-zinc-400">
+                  Quick professional reminders to ensure quality.
+                </DialogDescription>
+              </DialogHeader>
+              <div className="space-y-3 mt-4 max-h-[60vh] overflow-y-auto pr-2">
+                {proTips.length === 0 ? (
+                  <p className="text-zinc-500 italic">No tips available.</p>
+                ) : (
+                  proTips.map((tip, i) => (
+                    <div key={i} className="flex gap-3 p-3 rounded-lg bg-zinc-900/50 border border-zinc-800/50">
+                      <div className="mt-1 h-2 w-2 rounded-full bg-purple-500 shrink-0" />
+                      <p className="text-zinc-200 leading-relaxed">{tip}</p>
+                    </div>
+                  ))
+                )}
+              </div>
+              <div className="flex justify-end mt-4">
+                <Button variant="ghost" onClick={() => setTipsOpen(false)}>Close</Button>
+              </div>
+            </DialogContent>
+          </Dialog>
         </div>
-      </main>
-    </div>
+      </main >
+    </div >
   );
 };
 

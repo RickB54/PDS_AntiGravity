@@ -10,8 +10,15 @@ const TrainingManual = () => {
 
       <main className="container mx-auto px-4 py-6 max-w-6xl">
         <Card className="p-6 bg-gradient-card border-border animate-fade-in">
-          <h1 className="text-3xl font-bold text-foreground mb-2">Quick Detailing Manual</h1>
-          <p className="text-muted-foreground mb-6">Complete Interior & Exterior Process + Product & Equipment Guides</p>
+          <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-6">
+            <div>
+              <h1 className="text-3xl font-bold text-foreground mb-2">Quick Detailing Manual</h1>
+              <p className="text-muted-foreground">Complete Interior & Exterior Process + Product & Equipment Guides</p>
+            </div>
+            <button className="bg-purple-600 hover:bg-purple-700 text-white font-bold py-2 px-4 rounded shadow-lg transition-transform hover:scale-105 active:scale-95">
+              Rick's Pro Tips
+            </button>
+          </div>
 
           <Tabs defaultValue="hardware" className="w-full space-y-6">
             <TabsList className="flex flex-wrap h-auto w-full gap-2 justify-start md:justify-center bg-zinc-900/50 p-2 rounded-xl border border-zinc-800">

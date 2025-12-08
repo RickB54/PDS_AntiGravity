@@ -39,7 +39,7 @@ import {
 import { Separator } from "@/components/ui/separator";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Label } from "@/components/ui/label";
-import { AlertTriangle, CalendarDays, UserPlus, FileText, Package, DollarSign, Calculator, Folder, Users, Grid3X3, CheckSquare, Tag, Settings as Cog, Shield, ClipboardCheck, RotateCcw } from "lucide-react";
+import { AlertTriangle, CalendarDays, UserPlus, FileText, Package, DollarSign, Calculator, Folder, Users, Grid3X3, CheckSquare, Tag, Settings as Cog, Shield, ClipboardCheck, RotateCcw, BookOpen } from "lucide-react";
 import { Link } from "react-router-dom";
 import { CheatSheetPanel } from "@/pages/CheatSheet";
 import localforage from "localforage";
@@ -730,6 +730,10 @@ export default function AdminDashboard() {
                 <Link to="/employee-dashboard?startExam=1" className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md border border-green-600 text-green-600 hover:bg-green-600/10 w-fit">
                   <ClipboardCheck className="w-3.5 h-3.5 text-green-600" />
                   <span>Take Exam</span>
+                </Link>
+                <Link to="/app-manual" className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md border border-cyan-500 text-cyan-500 hover:bg-cyan-500/10 w-fit">
+                  <BookOpen className="w-3.5 h-3.5 text-cyan-500" />
+                  <span>App Manual</span>
                 </Link>
               </div>
             </Card>

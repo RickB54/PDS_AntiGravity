@@ -69,7 +69,7 @@ const api = async (endpoint, options = {}) => {
   if (endpoint.startsWith('/api/services')) {
     const method = (options.method || 'GET').toUpperCase();
     const key = 'servicesContent';
-  const defaults = { disclaimer: '⚠️ Service & Pricing Disclaimer \n • Paint Protection & Ceramic Coating NOT included. Available only in Premium packages or add-ons. \n \n • We do NOT offer: → Biological Cleanup → Emergency Services \n \n • We focus on premium cosmetic and protective detailing. \n \n Important: Final price may vary based on vehicle condition, size, or additional work required. All quotes are estimates until vehicle is inspected.' };
+    const defaults = { disclaimer: '⚠️ Service & Pricing Disclaimer \n • Paint Protection & Ceramic Coating NOT included. Available only in Premium packages or add-ons. \n \n • We do NOT offer: → Biological Cleanup → Emergency Services \n \n • We focus on premium cosmetic and protective detailing. \n \n Important: Final price may vary based on vehicle condition, size, or additional work required. All quotes are estimates until vehicle is inspected.' };
     const getCurrent = async () => {
       const curr = (await localforage.getItem(key)) || {};
       return {
@@ -84,7 +84,7 @@ const api = async (endpoint, options = {}) => {
         const payload = JSON.parse(options.body || '{}');
         const next = { disclaimer: String(payload.disclaimer || defaults.disclaimer) };
         await localforage.setItem(key, next);
-        try { window.dispatchEvent(new CustomEvent('content-changed', { detail: { type: 'services' } })); } catch {}
+        try { window.dispatchEvent(new CustomEvent('content-changed', { detail: { type: 'services' } })); } catch { }
         return { ok: true, record: next };
       } catch { return { ok: false, error: 'failed_to_update_services_local' }; }
     }
@@ -183,7 +183,7 @@ const api = async (endpoint, options = {}) => {
       try {
         const payload = JSON.parse(options.body || '{}');
         const list = (await ensureSeed()) || [];
-        const id = String(payload.id || `vt_${Date.now()}_${Math.random().toString(36).slice(2,6)}`);
+        const id = String(payload.id || `vt_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`);
         const record = {
           id,
           name: String(payload.name || 'New Type'),
@@ -197,7 +197,7 @@ const api = async (endpoint, options = {}) => {
         list.push(record);
         await localforage.setItem(key, list);
         // Broadcast for immediate UI refresh
-        try { window.dispatchEvent(new CustomEvent('content-changed', { detail: { type: 'vehicle-types' } })); } catch {}
+        try { window.dispatchEvent(new CustomEvent('content-changed', { detail: { type: 'vehicle-types' } })); } catch { }
         return { ok: true, record };
       } catch (e) {
         return { ok: false, error: 'failed_to_create_local' };
@@ -219,7 +219,7 @@ const api = async (endpoint, options = {}) => {
           hasPricing: payload.hasPricing != null ? Boolean(payload.hasPricing) : prev.hasPricing,
         };
         await localforage.setItem(key, list);
-        try { window.dispatchEvent(new CustomEvent('content-changed', { detail: { type: 'vehicle-types' } })); } catch {}
+        try { window.dispatchEvent(new CustomEvent('content-changed', { detail: { type: 'vehicle-types' } })); } catch { }
         return { ok: true, record: list[idx] };
       } catch (e) {
         return { ok: false, error: 'failed_to_update_local' };
@@ -230,12 +230,12 @@ const api = async (endpoint, options = {}) => {
         const id = endpoint.split('/')[3];
         const list = (await ensureSeed()) || [];
         // Protect base pricing keys from deletion to avoid breaking pricing
-        if (['compact','midsize','truck','luxury'].includes(id)) {
+        if (['compact', 'midsize', 'truck', 'luxury'].includes(id)) {
           return { ok: false, error: 'protected_base_type' };
         }
         const next = list.filter((v) => v.id !== id);
         await localforage.setItem(key, next);
-        try { window.dispatchEvent(new CustomEvent('content-changed', { detail: { type: 'vehicle-types' } })); } catch {}
+        try { window.dispatchEvent(new CustomEvent('content-changed', { detail: { type: 'vehicle-types' } })); } catch { }
         return { ok: true };
       } catch (e) {
         return { ok: false, error: 'failed_to_delete_local' };
@@ -255,7 +255,7 @@ const api = async (endpoint, options = {}) => {
         if (!newTypeId) {
           return { ok: false, error: 'missing_new_type' };
         }
-        if (!['compact','midsize','truck','luxury'].includes(baseType)) {
+        if (!['compact', 'midsize', 'truck', 'luxury'].includes(baseType)) {
           return { ok: false, error: 'invalid_base_type' };
         }
         const saved = (await localforage.getItem('savedPrices')) || {};
@@ -292,9 +292,9 @@ const api = async (endpoint, options = {}) => {
               created++;
             }
           }
-        } catch {}
+        } catch { }
         await localforage.setItem('savedPrices', saved);
-        try { window.dispatchEvent(new CustomEvent('content-changed', { detail: { type: 'savedPrices' } })); } catch {}
+        try { window.dispatchEvent(new CustomEvent('content-changed', { detail: { type: 'savedPrices' } })); } catch { }
         return { ok: true, count: created, newTypeId, baseType, multiplier };
       } catch (e) {
         return { ok: false, error: 'failed_to_apply_multiplier_local' };
@@ -342,9 +342,9 @@ const api = async (endpoint, options = {}) => {
               if (!Number.isNaN(nextVal) && nextVal >= 0) { saved[newKey] = String(nextVal); created++; }
             }
           }
-        } catch {}
+        } catch { }
         await localforage.setItem('savedPrices', saved);
-        try { window.dispatchEvent(new CustomEvent('content-changed', { detail: { type: 'savedPrices' } })); } catch {}
+        try { window.dispatchEvent(new CustomEvent('content-changed', { detail: { type: 'savedPrices' } })); } catch { }
         return { ok: true, count: created, vehicleTypeId, amount };
       } catch {
         return { ok: false, error: 'failed_to_apply_amount_local' };
@@ -368,7 +368,7 @@ const api = async (endpoint, options = {}) => {
           version: Date.now(),
         };
         await localforage.setItem('packagesLive', snapshot);
-        try { window.dispatchEvent(new CustomEvent('content-changed', { detail: { type: 'packages' } })); } catch {}
+        try { window.dispatchEvent(new CustomEvent('content-changed', { detail: { type: 'packages' } })); } catch { }
         return { ok: true, version: snapshot.version };
       } catch {
         return { ok: false, error: 'failed_to_store_packages_live' };
@@ -379,7 +379,7 @@ const api = async (endpoint, options = {}) => {
       try {
         const live = await localforage.getItem('packagesLive');
         if (live) return live;
-      } catch {}
+      } catch { }
       try {
         const { buildFullSyncPayload } = await import('@/lib/servicesMeta');
         const payload = await buildFullSyncPayload();
@@ -424,10 +424,10 @@ const api = async (endpoint, options = {}) => {
       try {
         const payload = JSON.parse(options.body || '{}');
         const list = (await ensureSeed()) || [];
-        const record = { id: `faq_${Date.now()}_${Math.random().toString(36).slice(2,6)}`, question: String(payload.question || ''), answer: String(payload.answer || '') };
+        const record = { id: `faq_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`, question: String(payload.question || ''), answer: String(payload.answer || '') };
         list.push(record);
         await localforage.setItem(key, list);
-        try { window.dispatchEvent(new CustomEvent('content-changed', { detail: { type: 'faqs' } })); } catch {}
+        try { window.dispatchEvent(new CustomEvent('content-changed', { detail: { type: 'faqs' } })); } catch { }
         return { ok: true, record };
       } catch { return { ok: false, error: 'failed_to_create_local' }; }
     }
@@ -440,7 +440,7 @@ const api = async (endpoint, options = {}) => {
         if (idx < 0) return { ok: false, error: 'not_found' };
         list[idx] = { ...list[idx], question: String(payload.question ?? list[idx].question), answer: String(payload.answer ?? list[idx].answer) };
         await localforage.setItem(key, list);
-        try { window.dispatchEvent(new CustomEvent('content-changed', { detail: { type: 'faqs' } })); } catch {}
+        try { window.dispatchEvent(new CustomEvent('content-changed', { detail: { type: 'faqs' } })); } catch { }
         return { ok: true, record: list[idx] };
       } catch { return { ok: false, error: 'failed_to_update_local' }; }
     }
@@ -450,7 +450,7 @@ const api = async (endpoint, options = {}) => {
         const list = (await ensureSeed()) || [];
         const next = list.filter((f) => f.id !== id);
         await localforage.setItem(key, next);
-        try { window.dispatchEvent(new CustomEvent('content-changed', { detail: { type: 'faqs' } })); } catch {}
+        try { window.dispatchEvent(new CustomEvent('content-changed', { detail: { type: 'faqs' } })); } catch { }
         return { ok: true };
       } catch { return { ok: false, error: 'failed_to_delete_local' }; }
     }
@@ -485,7 +485,7 @@ const api = async (endpoint, options = {}) => {
           email: String(payload.email ?? curr.email),
         };
         await localforage.setItem(key, next);
-        try { window.dispatchEvent(new CustomEvent('content-changed', { detail: { type: 'contact' } })); } catch {}
+        try { window.dispatchEvent(new CustomEvent('content-changed', { detail: { type: 'contact' } })); } catch { }
         return { ok: true, record: next };
       } catch { return { ok: false, error: 'failed_to_update_local' }; }
     }
@@ -500,7 +500,7 @@ const api = async (endpoint, options = {}) => {
           email: String(payload.email ?? curr.email),
         };
         await localforage.setItem(key, next);
-        try { window.dispatchEvent(new CustomEvent('content-changed', { detail: { type: 'contact' } })); } catch {}
+        try { window.dispatchEvent(new CustomEvent('content-changed', { detail: { type: 'contact' } })); } catch { }
         return { ok: true, record: next };
       } catch { return { ok: false, error: 'failed_to_update_local' }; }
     }
@@ -527,10 +527,10 @@ const api = async (endpoint, options = {}) => {
       try {
         const payload = JSON.parse(options.body || '{}');
         const list = (await ensureSeed()) || [];
-        const record = { id: `about_${Date.now()}_${Math.random().toString(36).slice(2,6)}`, section: String(payload.section || 'Section'), content: String(payload.content || '') };
+        const record = { id: `about_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`, section: String(payload.section || 'Section'), content: String(payload.content || '') };
         list.push(record);
         await localforage.setItem(key, list);
-        try { window.dispatchEvent(new CustomEvent('content-changed', { detail: { type: 'about' } })); } catch {}
+        try { window.dispatchEvent(new CustomEvent('content-changed', { detail: { type: 'about' } })); } catch { }
         return { ok: true, record };
       } catch { return { ok: false, error: 'failed_to_create_local' }; }
     }
@@ -543,7 +543,7 @@ const api = async (endpoint, options = {}) => {
         if (idx < 0) return { ok: false, error: 'not_found' };
         list[idx] = { ...list[idx], section: String(payload.section ?? list[idx].section), content: String(payload.content ?? list[idx].content) };
         await localforage.setItem(key, list);
-        try { window.dispatchEvent(new CustomEvent('content-changed', { detail: { type: 'about' } })); } catch {}
+        try { window.dispatchEvent(new CustomEvent('content-changed', { detail: { type: 'about' } })); } catch { }
         return { ok: true, record: list[idx] };
       } catch { return { ok: false, error: 'failed_to_update_local' }; }
     }
@@ -553,7 +553,7 @@ const api = async (endpoint, options = {}) => {
         const list = (await ensureSeed()) || [];
         const next = list.filter((a) => a.id !== id);
         await localforage.setItem(key, next);
-        try { window.dispatchEvent(new CustomEvent('content-changed', { detail: { type: 'about' } })); } catch {}
+        try { window.dispatchEvent(new CustomEvent('content-changed', { detail: { type: 'about' } })); } catch { }
         return { ok: true };
       } catch { return { ok: false, error: 'failed_to_delete_local' }; }
     }
@@ -588,7 +588,7 @@ const api = async (endpoint, options = {}) => {
           satisfactionGuarantee: String(payload.satisfactionGuarantee || defaults.satisfactionGuarantee),
         };
         await localforage.setItem(key, next);
-        try { window.dispatchEvent(new CustomEvent('content-changed', { detail: { type: 'aboutFeatures' } })); } catch {}
+        try { window.dispatchEvent(new CustomEvent('content-changed', { detail: { type: 'aboutFeatures' } })); } catch { }
         return { ok: true, record: next };
       } catch { return { ok: false, error: 'failed_to_update_local' }; }
     }
@@ -619,10 +619,10 @@ const api = async (endpoint, options = {}) => {
       try {
         const payload = JSON.parse(options.body || '{}');
         const list = (await ensureList()) || [];
-        const record = { id: `t_${Date.now()}_${Math.random().toString(36).slice(2,6)}`, name: String(payload.name || 'Customer'), quote: String(payload.quote || '') };
+        const record = { id: `t_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`, name: String(payload.name || 'Customer'), quote: String(payload.quote || '') };
         list.push(record);
         await localforage.setItem(key, list);
-        try { window.dispatchEvent(new CustomEvent('content-changed', { detail: { type: 'testimonials' } })); } catch {}
+        try { window.dispatchEvent(new CustomEvent('content-changed', { detail: { type: 'testimonials' } })); } catch { }
         return { ok: true, record };
       } catch { return { ok: false, error: 'failed_to_create_local' }; }
     }
@@ -635,7 +635,7 @@ const api = async (endpoint, options = {}) => {
         if (idx < 0) return { ok: false, error: 'not_found' };
         list[idx] = { ...list[idx], name: String(payload.name ?? list[idx].name), quote: String(payload.quote ?? list[idx].quote) };
         await localforage.setItem(key, list);
-        try { window.dispatchEvent(new CustomEvent('content-changed', { detail: { type: 'testimonials' } })); } catch {}
+        try { window.dispatchEvent(new CustomEvent('content-changed', { detail: { type: 'testimonials' } })); } catch { }
         return { ok: true, record: list[idx] };
       } catch { return { ok: false, error: 'failed_to_update_local' }; }
     }
@@ -645,7 +645,7 @@ const api = async (endpoint, options = {}) => {
         const list = (await ensureList()) || [];
         const next = list.filter((t) => t.id !== id);
         await localforage.setItem(key, next);
-        try { window.dispatchEvent(new CustomEvent('content-changed', { detail: { type: 'testimonials' } })); } catch {}
+        try { window.dispatchEvent(new CustomEvent('content-changed', { detail: { type: 'testimonials' } })); } catch { }
         return { ok: true };
       } catch { return { ok: false, error: 'failed_to_delete_local' }; }
     }
@@ -661,7 +661,7 @@ const api = async (endpoint, options = {}) => {
       if (exists) {
         return { ok: false, error: 'user_exists' };
       }
-      const id = `u_${Date.now()}_${Math.random().toString(36).slice(2,6)}`;
+      const id = `u_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`;
       const passwordHash = await (async () => {
         try {
           if (crypto?.subtle?.digest) {
@@ -670,7 +670,7 @@ const api = async (endpoint, options = {}) => {
             const bytes = Array.from(new Uint8Array(buf));
             return bytes.map((b) => b.toString(16).padStart(2, '0')).join('');
           }
-        } catch {}
+        } catch { }
         // Fallback naive hash
         const s = password || `${Math.random()}`;
         let h = 0;
@@ -683,7 +683,7 @@ const api = async (endpoint, options = {}) => {
       try {
         const { pushAdminAlert } = await import('@/lib/adminAlerts');
         pushAdminAlert('user_created', `New user: ${name} (${role})`, 'system', { id, recordType: 'User' });
-      } catch {}
+      } catch { }
       return { ok: true, user: record };
     } catch (e) {
       return { ok: false, error: 'failed_to_create_user_local' };
@@ -718,7 +718,7 @@ const api = async (endpoint, options = {}) => {
           localStorage.setItem('currentUser', JSON.stringify({ ...curr, role: users[idx].role }));
           window.dispatchEvent(new CustomEvent('auth-changed', { detail: { ...curr, role: users[idx].role } }));
         }
-      } catch {}
+      } catch { }
       return { ok: true };
     } catch (e) {
       return { ok: false, error: 'failed_to_update_role_local' };
@@ -742,7 +742,7 @@ const api = async (endpoint, options = {}) => {
         if (prev && prev.role === 'admin') {
           localStorage.setItem('impersonator', JSON.stringify(prev));
         }
-      } catch {}
+      } catch { }
       const user = { email: target.email, role: target.role, name: target.name };
       localStorage.setItem('currentUser', JSON.stringify(user));
       // update last login
@@ -756,11 +756,11 @@ const api = async (endpoint, options = {}) => {
           if (empIdx >= 0) {
             companyEmps[empIdx] = { ...companyEmps[empIdx], lastLogin: target.lastLogin };
             await localforage.setItem('company-employees', companyEmps);
-            try { localStorage.setItem('company-employees', JSON.stringify(companyEmps)); } catch {}
+            try { localStorage.setItem('company-employees', JSON.stringify(companyEmps)); } catch { }
           }
         }
-      } catch {}
-      try { window.dispatchEvent(new CustomEvent('auth-changed', { detail: user })); } catch {}
+      } catch { }
+      try { window.dispatchEvent(new CustomEvent('auth-changed', { detail: user })); } catch { }
       return { ok: true, user };
     } catch (e) {
       return { ok: false, error: 'failed_to_impersonate_local' };
@@ -781,7 +781,7 @@ const api = async (endpoint, options = {}) => {
       const filtered = (Array.isArray(companyEmps) ? companyEmps : []).filter((e) => `emp_${String(e.email || e.name || '').toLowerCase()}` !== String(id));
       if (filtered.length !== (Array.isArray(companyEmps) ? companyEmps.length : 0)) {
         await localforage.setItem('company-employees', filtered);
-        try { localStorage.setItem('company-employees', JSON.stringify(filtered)); } catch {}
+        try { localStorage.setItem('company-employees', JSON.stringify(filtered)); } catch { }
         changed = true;
       }
       return changed ? { ok: true } : { ok: false, error: 'not_found' };
@@ -813,7 +813,7 @@ const api = async (endpoint, options = {}) => {
       const updated = { ...existing, name: name ?? existing.name, email: email ?? existing.email, updatedAt: new Date().toISOString() };
       companyEmps[empIdx] = updated;
       await localforage.setItem('company-employees', companyEmps);
-      try { localStorage.setItem('company-employees', JSON.stringify(companyEmps)); } catch {}
+      try { localStorage.setItem('company-employees', JSON.stringify(companyEmps)); } catch { }
       const normalized = { id: `emp_${String(updated.email || updated.name || '').toLowerCase()}`, name: updated.name, email: updated.email, role: 'employee', updatedAt: updated.updatedAt };
       return { ok: true, user: normalized };
     } catch (e) {
@@ -821,7 +821,7 @@ const api = async (endpoint, options = {}) => {
     }
   }
 
-// handlers continue under the same api() scope
+  // handlers continue under the same api() scope
   // Live add-ons list with pricing and visibility
   if (endpoint === '/api/addons/live' && (options.method || 'GET').toUpperCase() === 'GET') {
     try {
@@ -867,7 +867,7 @@ const api = async (endpoint, options = {}) => {
     try {
       const payload = JSON.parse(options.body || '{}');
       const list = (await localforage.getItem('inventory-estimates')) || [];
-      list.push({ ...payload, id: `ie_${Date.now()}_${Math.random().toString(36).slice(2,6)}`, savedAt: new Date().toISOString() });
+      list.push({ ...payload, id: `ie_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`, savedAt: new Date().toISOString() });
       await localforage.setItem('inventory-estimates', list);
       return { ok: true };
     } catch (e) {
@@ -884,11 +884,11 @@ const api = async (endpoint, options = {}) => {
       const payload = JSON.parse(options.body || '{}');
       const { employeeId = '', date = new Date().toISOString(), items = 133, name = '' } = payload || {};
       const list = (await localforage.getItem('training-handbook')) || [];
-      const record = { id: `th_${Date.now()}_${Math.random().toString(36).slice(2,6)}`, employeeId, name, date, items };
+      const record = { id: `th_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`, employeeId, name, date, items };
       list.push(record);
       await localforage.setItem('training-handbook', list);
       // Notify UI listeners
-      try { window.dispatchEvent(new CustomEvent('training-handbook-complete', { detail: record })); } catch {}
+      try { window.dispatchEvent(new CustomEvent('training-handbook-complete', { detail: record })); } catch { }
       // Forward to live backend if available
       try {
         await fetchWithRetry(`${API_BASE}/api/training/handbook-complete`, {
@@ -896,7 +896,7 @@ const api = async (endpoint, options = {}) => {
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(record),
         }, 1);
-      } catch {}
+      } catch { }
       return { ok: true, id: record.id };
     } catch (e) {
       return { ok: false, error: 'failed_to_save_handbook_local' };
@@ -908,9 +908,9 @@ const api = async (endpoint, options = {}) => {
       const payload = JSON.parse(options.body || '{}');
       const { employeeId = '', index = 0, answers = [] } = payload || {};
       const key = `training-exam-progress:${String(employeeId || 'unknown')}`;
-      const record = { employeeId, index: Number(index) || 0, answers: Array.isArray(answers) ? answers : [] , savedAt: new Date().toISOString() };
+      const record = { employeeId, index: Number(index) || 0, answers: Array.isArray(answers) ? answers : [], savedAt: new Date().toISOString() };
       await localforage.setItem(key, record);
-      try { window.dispatchEvent(new CustomEvent('training-exam-progress', { detail: record })); } catch {}
+      try { window.dispatchEvent(new CustomEvent('training-exam-progress', { detail: record })); } catch { }
       // Best-effort forward
       try {
         await fetchWithRetry(`${API_BASE}/api/training/exam-progress`, {
@@ -918,7 +918,7 @@ const api = async (endpoint, options = {}) => {
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(record),
         }, 1);
-      } catch {}
+      } catch { }
       return { ok: true };
     } catch (e) {
       return { ok: false, error: 'failed_to_save_progress_local' };
@@ -930,17 +930,17 @@ const api = async (endpoint, options = {}) => {
       const payload = JSON.parse(options.body || '{}');
       const { employeeId = '', answers = [], score = 0, percent = 0, pass = false } = payload || {};
       const list = (await localforage.getItem('training-exams')) || [];
-      const record = { id: `tx_${Date.now()}_${Math.random().toString(36).slice(2,6)}`, employeeId, answers: Array.isArray(answers) ? answers : [], score: Number(score)||0, percent: Number(percent)||0, pass: !!pass, date: new Date().toISOString() };
+      const record = { id: `tx_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`, employeeId, answers: Array.isArray(answers) ? answers : [], score: Number(score) || 0, percent: Number(percent) || 0, pass: !!pass, date: new Date().toISOString() };
       list.push(record);
       await localforage.setItem('training-exams', list);
-      try { window.dispatchEvent(new CustomEvent('training-exam-submitted', { detail: record })); } catch {}
+      try { window.dispatchEvent(new CustomEvent('training-exam-submitted', { detail: record })); } catch { }
       try {
         await fetchWithRetry(`${API_BASE}/api/training/exam-submit`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(record),
         }, 1);
-      } catch {}
+      } catch { }
       return { ok: true, id: record.id };
     } catch (e) {
       return { ok: false, error: 'failed_to_save_exam_local' };
@@ -951,7 +951,7 @@ const api = async (endpoint, options = {}) => {
     try {
       const payload = JSON.parse(options.body || '{}');
       const list = (await localforage.getItem('generic-checklists')) || [];
-      const id = `gc_${Date.now()}_${Math.random().toString(36).slice(2,6)}`;
+      const id = `gc_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`;
       const record = { id, ...payload, createdAt: new Date().toISOString() };
       list.push(record);
       await localforage.setItem('generic-checklists', list);
@@ -962,7 +962,7 @@ const api = async (endpoint, options = {}) => {
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(record),
         }, 0);
-      } catch {}
+      } catch { }
       return { ok: true, id };
     } catch (e) {
       return { ok: false, error: 'failed_to_save_generic_local' };
@@ -986,7 +986,7 @@ const api = async (endpoint, options = {}) => {
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ customerId, jobId }),
           }, 0);
-        } catch {}
+        } catch { }
         return { ok: true };
       }
       return { ok: false, error: 'not_found' };
@@ -1037,7 +1037,7 @@ const api = async (endpoint, options = {}) => {
           list.push(saved);
         }
       } else {
-        const id = `c_${Date.now()}_${Math.random().toString(36).slice(2,6)}`;
+        const id = `c_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`;
         saved = { id, ...payload, createdAt: now, updatedAt: now };
         list.push(saved);
       }
@@ -1045,7 +1045,7 @@ const api = async (endpoint, options = {}) => {
       try {
         const { pushAdminAlert } = await import('@/lib/adminAlerts');
         pushAdminAlert('customer_added', `New customer added: ${String((saved || {}).name || '').trim()}`, 'system', { id: saved.id, recordType: 'Customer' });
-      } catch {}
+      } catch { }
       return saved;
     } catch (e) {
       return { ok: false, error: 'failed_to_save_customer_local' };
@@ -1151,8 +1151,8 @@ const api = async (endpoint, options = {}) => {
         const payload = JSON.parse(options.body || 'null');
         const list = (await localforage.getItem('payroll-history')) || [];
         const pushEntry = (e) => {
-          const id = `ph_${Date.now()}_${Math.random().toString(36).slice(2,6)}`;
-          list.push({ id, ...(e || {}), date: e?.date || new Date().toISOString().slice(0,10) });
+          const id = `ph_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`;
+          list.push({ id, ...(e || {}), date: e?.date || new Date().toISOString().slice(0, 10) });
         };
         if (Array.isArray(payload)) payload.forEach(pushEntry); else pushEntry(payload);
         await localforage.setItem('payroll-history', list);
@@ -1183,7 +1183,7 @@ const api = async (endpoint, options = {}) => {
           return matchEmp && matchType && matchSearch && matchDate;
         });
         // Sort by date desc
-        filtered.sort((a,b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+        filtered.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
         return filtered;
       } catch (e) {
         return [];
@@ -1251,14 +1251,14 @@ const api = async (endpoint, options = {}) => {
       const payload = JSON.parse(options.body || '{}');
       const { subject = '', body = '' } = payload || {};
       const list = (await localforage.getItem('admin-emails')) || [];
-      const record = { id: `em_${Date.now()}_${Math.random().toString(36).slice(2,6)}`, subject, body, sentAt: new Date().toISOString() };
+      const record = { id: `em_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`, subject, body, sentAt: new Date().toISOString() };
       list.push(record);
       await localforage.setItem('admin-emails', list);
       try {
         const { pushAdminAlert } = await import('@/lib/adminAlerts');
         const safeSubject = String(subject || '').trim() || 'Admin email';
-        pushAdminAlert('admin_email_sent', `Admin email: ${safeSubject}`,'system', { recordType: 'Admin Email', subject: safeSubject, id: record.id });
-      } catch {}
+        pushAdminAlert('admin_email_sent', `Admin email: ${safeSubject}`, 'system', { recordType: 'Admin Email', subject: safeSubject, id: record.id });
+      } catch { }
       return { ok: true };
     } catch (e) {
       return { ok: false, error: 'failed_to_send_admin_email_local' };
@@ -1270,14 +1270,14 @@ const api = async (endpoint, options = {}) => {
       const payload = JSON.parse(options.body || '{}');
       const { to = '', subject = '', body = '' } = payload || {};
       const list = (await localforage.getItem('customer-emails')) || [];
-      const record = { id: `ce_${Date.now()}_${Math.random().toString(36).slice(2,6)}`, to, subject, body, sentAt: new Date().toISOString() };
+      const record = { id: `ce_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`, to, subject, body, sentAt: new Date().toISOString() };
       list.push(record);
       await localforage.setItem('customer-emails', list);
       try {
         const { pushAdminAlert } = await import('@/lib/adminAlerts');
         const safeSubject = String(subject || '').trim() || 'Customer email';
-        pushAdminAlert('admin_email_sent', `Customer email: ${safeSubject}`,'system', { recordType: 'Customer Email', subject: safeSubject, id: record.id });
-      } catch {}
+        pushAdminAlert('admin_email_sent', `Customer email: ${safeSubject}`, 'system', { recordType: 'Customer Email', subject: safeSubject, id: record.id });
+      } catch { }
       return { ok: true };
     } catch (e) {
       return { ok: false, error: 'failed_to_send_customer_email_local' };
@@ -1290,7 +1290,7 @@ const api = async (endpoint, options = {}) => {
       try {
         const payload = JSON.parse(options.body || '{}');
         const list = (await localforage.getItem('bookings-api')) || [];
-        const id = payload.id || `bk_${Date.now()}_${Math.random().toString(36).slice(2,6)}`;
+        const id = payload.id || `bk_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`;
         const record = { id, ...payload, createdAt: new Date().toISOString() };
         list.push(record);
         await localforage.setItem('bookings-api', list);
@@ -1299,8 +1299,8 @@ const api = async (endpoint, options = {}) => {
           const price = Number(payload.total || 0);
           const name = String(payload?.customer?.name || '').trim() || 'Customer';
           pushAdminAlert('booking_created', `New booking $${price} — ${name}`, 'system', { recordType: 'Booking', bookingId: id, price });
-        } catch {}
-        try { window.dispatchEvent(new CustomEvent('content-changed', { detail: { kind: 'bookings' } })); } catch {}
+        } catch { }
+        try { window.dispatchEvent(new CustomEvent('content-changed', { detail: { kind: 'bookings' } })); } catch { }
         return { ok: true, id };
       } catch (e) {
         return { ok: false, error: 'failed_to_create_booking_local' };
@@ -1327,6 +1327,58 @@ const api = async (endpoint, options = {}) => {
       return { ok: false, error: 'failed_to_save_local' };
     }
   }
+  // Local handler: checklist materials usage (decrement stock + log history)
+  if (endpoint === '/api/checklist/materials' && (options.method || 'GET').toUpperCase() === 'POST') {
+    try {
+      const payload = JSON.parse(options.body || '{}');
+      const { jobId, rows } = payload;
+
+      const usageList = (await localforage.getItem('chemical-usage')) || [];
+      const chemicals = (await localforage.getItem('chemicals')) || [];
+      const materials = (await localforage.getItem('materials')) || [];
+
+      // Process rows
+      if (Array.isArray(rows)) {
+        rows.forEach(row => {
+          const chem = chemicals.find(c => String(c.id) === String(row.chemicalId));
+          const mat = materials.find(m => String(m.id) === String(row.materialId));
+
+          let remaining = 0;
+          // Decrement stock first to capture post-usage level
+          if (row.chemicalId && chem) {
+            chem.currentStock = Math.max(0, (chem.currentStock || 0) - (Number(row.quantity) || 0));
+            remaining = chem.currentStock;
+          }
+          if (row.materialId && mat) {
+            mat.quantity = Math.max(0, (mat.quantity || 0) - (Number(row.quantity) || 0));
+            remaining = mat.quantity;
+          }
+
+          // Log usage
+          usageList.push({
+            id: `usage_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
+            jobId,
+            ...row,
+            chemicalName: chem ? chem.name : undefined,
+            materialName: mat ? mat.name : undefined,
+            amountUsed: row.quantity, // explicitly separate for clarity
+            remainingStock: remaining
+          });
+        });
+      }
+
+      await localforage.setItem('chemical-usage', usageList);
+      await localforage.setItem('chemicals', chemicals);
+      await localforage.setItem('materials', materials);
+      // Trigger update notifications
+      try { window.dispatchEvent(new CustomEvent('content-changed', { detail: { kind: 'inventory' } })); } catch { }
+
+      return { ok: true };
+    } catch (e) {
+      return { ok: false, error: 'failed_to_save_checklist_materials_local' };
+    }
+  }
+
   const token = localStorage.getItem('token');
   const url = `${API_BASE}${endpoint}${endpoint.includes('?') ? '&' : '?'}v=${Date.now()}`;
   return fetchWithRetry(url, {

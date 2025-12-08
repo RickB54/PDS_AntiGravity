@@ -62,7 +62,7 @@ const EmployeeDashboard = () => {
     const cert = localStorage.getItem("employee_training_certified");
     if (cert) setCertifiedDate(cert);
     // Remove any legacy task data from persistent storage
-    try { localStorage.removeItem("employee_tasks"); } catch {}
+    try { localStorage.removeItem("employee_tasks"); } catch { }
     // Load persisted pro tips and acknowledgements
     try {
       const saved = JSON.parse(localStorage.getItem("pro_tips") || "[]");
@@ -84,15 +84,15 @@ const EmployeeDashboard = () => {
         setOrientationOpen(true);
         setStartExamOnOpen(true);
       }
-    } catch {}
+    } catch { }
   }, [location.search]);
 
   useEffect(() => {
-    try { localStorage.setItem("pro_tips", JSON.stringify(tips)); } catch {}
+    try { localStorage.setItem("pro_tips", JSON.stringify(tips)); } catch { }
   }, [tips]);
 
   useEffect(() => {
-    try { localStorage.setItem("pro_tips_ack", JSON.stringify(tipsChecked)); } catch {}
+    try { localStorage.setItem("pro_tips_ack", JSON.stringify(tipsChecked)); } catch { }
   }, [tipsChecked]);
 
   const handleNotifyAdmin = async (e: React.FormEvent) => {
@@ -132,7 +132,7 @@ const EmployeeDashboard = () => {
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ from: actor, subject, message, priority, pdfDataUrl })
         });
-      } catch {}
+      } catch { }
 
       // Open Gmail compose for reliability
       const body = `Priority: ${priority}\nEmployee: ${actor}\n\n${message}`;
@@ -164,7 +164,7 @@ const EmployeeDashboard = () => {
           </div>
 
           {/* Big cards arranged in two rows (2 columns on md+) */}
-  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <Link to="/service-checklist" className="block">
               <Card className="p-6 bg-green-700 text-white rounded-xl">
                 <div className="text-2xl font-bold">SERVICE CHECKLIST</div>
@@ -199,7 +199,7 @@ const EmployeeDashboard = () => {
           </div>
 
           {/* Quick actions */}
-  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
             <Link to="/tasks" className="block">
               <Card className="p-4 text-center bg-muted/30 hover:bg-muted/50 transition rounded-xl">
                 <div className="font-semibold text-white">Todo</div>
@@ -216,13 +216,18 @@ const EmployeeDashboard = () => {
                 <div className="font-semibold text-white">NEW BOOKING</div>
               </Card>
             </Link>
+            <Link to="/app-manual" className="block">
+              <Card className="p-4 text-center bg-muted/30 hover:bg-muted/50 transition rounded-xl">
+                <div className="font-semibold text-white">APP MANUAL</div>
+              </Card>
+            </Link>
           </div>
 
           {/* Notify Admin */}
           <Card className="p-6 bg-gradient-card border-border">
             <div className="text-xl font-bold text-foreground mb-4">NOTIFY ADMIN</div>
             <form onSubmit={handleNotifyAdmin} className="space-y-3">
-  <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                 <Input placeholder="Subject" value={subject} onChange={(e) => setSubject(e.target.value)} />
                 <Select value={priority} onValueChange={setPriority}>
                   <SelectTrigger><SelectValue /></SelectTrigger>
@@ -316,7 +321,7 @@ const EmployeeDashboard = () => {
               This action cannot be undone. The selected tip will be removed.
             </AlertDialogDescription>
           </AlertDialogHeader>
-<AlertDialogFooter className="button-group-responsive">
+          <AlertDialogFooter className="button-group-responsive">
             <AlertDialogCancel>Cancel</AlertDialogCancel>
             <AlertDialogAction className="bg-destructive" onClick={() => {
               if (deleteIndex === null) return;
@@ -325,7 +330,7 @@ const EmployeeDashboard = () => {
               setDeleteIndex(null);
               toast({ title: 'Deleted', description: 'Tip removed.' });
             }}>Delete</AlertDialogAction>
-</AlertDialogFooter>
+          </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
       <HelpModal open={helpOpen} onOpenChange={setHelpOpen} role={(user?.role === 'admin') ? 'admin' : 'employee'} />

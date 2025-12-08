@@ -7,7 +7,7 @@ import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
-import { Plus, AlertTriangle, Printer, Save, Trash2, TrendingUp, Package } from "lucide-react";
+import { Plus, AlertTriangle, Printer, Save, Trash2, TrendingUp, Package, ChevronDown, ChevronUp, FileText, HelpCircle } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { pushAdminAlert } from "@/lib/adminAlerts";
 import { useAlertsStore } from "@/store/alerts";
@@ -38,6 +38,9 @@ interface UsageHistory {
   toolName?: string;
   serviceName: string;
   date: string;
+  remainingStock?: number;
+  amountUsed?: string | number;
+  notes?: string;
 }
 
 interface Tool {
@@ -86,7 +89,11 @@ const InventoryControl = () => {
   const [employees, setEmployees] = useState<any[]>([]);
   const [importWizardOpen, setImportWizardOpen] = useState(false);
   const [importWizardTab, setImportWizardTab] = useState<"chemicals" | "tools" | "materials">("chemicals");
-  // Using UnifiedInventoryModal; local form state removed
+
+  // Usage Edit State
+  const [usageEditOpen, setUsageEditOpen] = useState(false);
+  const [usageEditItem, setUsageEditItem] = useState<UsageHistory | null>(null);
+  const [usageEditNotes, setUsageEditNotes] = useState("");
 
   useEffect(() => {
     loadData();
@@ -203,371 +210,403 @@ const InventoryControl = () => {
   const lowStockTotal = lowStockChemicals.length + lowStockMaterials.length;
 
   // Push admin alert when low inventory changes (dedup by hash incl. quantities)
-  useEffect(() => {
-    // Avoid clearing hash before data loads (arrays empty on first render)
-    if (chemicals.length === 0 && materials.length === 0) return;
-    try {
-      // Include current quantities/stock in the hash so edits re-trigger alerts
-      const ids = [
-        ...lowStockChemicals.map(c => `c:${c.id}:${c.currentStock}`),
-        ...lowStockMaterials.map(m => `m:${m.id}:${m.quantity}`)
-      ];
-      const hash = ids.sort().join("|");
-      const prev = localStorage.getItem('inventory_low_hash') || '';
-      // Persist count for sidebar badge
-      localStorage.setItem('inventory_low_count', String(ids.length));
-      if (hash && hash !== prev) {
-        localStorage.setItem('inventory_low_hash', hash);
-        const names = [
-          ...lowStockMaterials.map(m => m.name),
-          ...lowStockChemicals.map(c => c.name)
-        ];
-        pushAdminAlert(
-          'low_inventory',
-          `Low inventory: ${ids.length} item(s) below threshold`,
-          'system',
-          { count: ids.length, items: names, recordType: 'Inventory' }
-        );
-        // Immediately refresh alert UI
-        try { useAlertsStore.getState().refresh(); } catch { }
-      }
-      // If data loaded and no low inventory, clear hash to allow future alerts
-      if (!hash && prev) {
-        localStorage.removeItem('inventory_low_hash');
-        localStorage.setItem('inventory_low_count', '0');
-      }
-    } catch { }
-  }, [chemicals, materials]);
+  // Expanded state for sections
+  const [expandedSections, setExpandedSections] = useState({
+    chemicals: false,
+    materials: false,
+    tools: false,
+  });
+
+  const toggleSection = (sec: 'chemicals' | 'materials' | 'tools') => {
+    setExpandedSections(prev => ({ ...prev, [sec]: !prev[sec] }));
+  };
+
+  const expandAll = () => setExpandedSections({ chemicals: true, materials: true, tools: true });
+  const collapseAll = () => setExpandedSections({ chemicals: false, materials: false, tools: false });
+
+  // Metrics
+  const totalItems = chemicals.length + materials.length + tools.length;
+  const lowStockCount = chemicals.filter(c => c.currentStock <= c.threshold).length +
+    materials.filter(m => typeof m.lowThreshold === 'number' && m.quantity <= (m.lowThreshold || 0)).length;
+  // Approximating value if cost exists
+  const totalValue =
+    chemicals.reduce((acc, c) => acc + (c.costPerBottle || 0) * (c.currentStock || 0), 0) +
+    materials.reduce((acc, m) => acc + (m.costPerItem || 0) * (m.quantity || 0), 0) +
+    tools.reduce((acc, t) => acc + (t.price || 0), 0);
+
+  // Helper to get formatted fraction/qty string
+  const getUsageAmount = (item: any) => {
+    if (item.fraction) return item.fraction; // Chemical fraction string
+    if (item.amountUsed) {
+      const n = Number(item.amountUsed);
+      // If small decimal, might be fraction converted
+      if (n < 1 && n > 0) return item.fraction || `${(n * 100).toFixed(0)}%`;
+      return n.toFixed(1).replace(/\.0$/, '');
+    }
+    return '-';
+  };
 
   return (
-    <div className="min-h-screen bg-background">
+    <div className="min-h-screen bg-background pb-20">
       <PageHeader title="Inventory Control" />
 
-      <main className="container mx-auto px-4 py-6 max-w-6xl">
-        <div className="space-y-6 animate-fade-in">
-          {lowStockTotal > 0 && (
-            <Card className="p-4 bg-destructive/10 border-destructive">
-              <div className="flex items-center gap-2 text-destructive">
-                <AlertTriangle className="h-5 w-5" />
-                <span className="font-semibold">
-                  Low Inventory Alert: {lowStockTotal} item(s) below threshold
-                </span>
+      <main className="container mx-auto px-4 py-6 max-w-6xl space-y-6">
+
+        {/* Inventory Summary (Top, Non-Collapsible) */}
+        <Card className="p-6 bg-gradient-to-r from-zinc-900 to-zinc-800 border-zinc-700 shadow-lg">
+          <div className="flex flex-col md:flex-row items-center justify-between gap-6">
+            <div className="flex items-center gap-4">
+              <div className="p-4 rounded-full bg-blue-500/20 text-blue-400">
+                <Package className="h-8 w-8" />
               </div>
-              <ul className="mt-2 ml-7 text-sm">
-                {[...lowStockMaterials.map(m => ({ id: m.id, label: `${m.name} (${m.category}) - ${m.quantity} remaining` })),
-                ...lowStockChemicals.map(c => ({ id: c.id, label: `${c.name} (Chemical) - ${c.currentStock} remaining` }))]
-                  .map(item => (
-                    <li key={item.id}>{item.label}</li>
-                  ))}
-              </ul>
-            </Card>
+              <div>
+                <h2 className="text-2xl font-bold text-white">Inventory Summary</h2>
+                <p className="text-zinc-400 text-sm">Overview of all assets and stock levels</p>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-3 gap-8 w-full md:w-auto">
+              <div className="text-center">
+                <p className="text-zinc-500 text-xs uppercase tracking-wider font-semibold">Total Items</p>
+                <p className="text-3xl font-bold text-white mt-1">{totalItems}</p>
+              </div>
+              <div className="text-center border-l border-zinc-700 pl-8">
+                <p className="text-zinc-500 text-xs uppercase tracking-wider font-semibold">Total Value</p>
+                <p className="text-3xl font-bold text-emerald-400 mt-1">${totalValue.toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 0 })}</p>
+              </div>
+              <div className="text-center border-l border-zinc-700 pl-8 relative">
+                <p className="text-zinc-500 text-xs uppercase tracking-wider font-semibold">Low Stock</p>
+                <div className="flex items-center justify-center gap-2 mt-1">
+                  <p className={`text-3xl font-bold ${lowStockCount > 0 ? "text-red-500" : "text-zinc-400"}`}>{lowStockCount}</p>
+                  {lowStockCount > 0 && <AlertTriangle className="h-6 w-6 text-red-500 animate-pulse" />}
+                </div>
+              </div>
+            </div>
+          </div>
+        </Card>
+
+        {/* Global Expand/Collapse Controls */}
+        <div className="flex justify-end gap-2">
+          <Button variant="ghost" size="sm" onClick={expandAll}>Expand All</Button>
+          <Button variant="ghost" size="sm" onClick={collapseAll}>Collapse All</Button>
+        </div>
+
+        {/* Chemicals Section (Yellow) */}
+        <div className="border border-yellow-500/30 rounded-xl overflow-hidden bg-zinc-900/50">
+          <div
+            className="p-4 bg-yellow-500/10 flex items-center justify-between cursor-pointer hover:bg-yellow-500/15 transition-colors"
+            onClick={() => toggleSection('chemicals')}
+          >
+            <div className="flex items-center gap-3">
+              <div className={`h-2 w-2 rounded-full ${chemicals.some(c => c.currentStock <= c.threshold) ? 'bg-red-500 animate-pulse' : 'bg-yellow-500'}`} />
+              <h3 className="text-lg font-semibold text-yellow-100">Chemicals</h3>
+              <HelpCircle className="h-4 w-4 text-zinc-400 hover:text-white cursor-pointer" onClick={(e) => { e.stopPropagation(); window.dispatchEvent(new CustomEvent('open-help', { detail: 'inventory-chemicals' })); }} />
+              <span className="text-xs px-2 py-0.5 rounded bg-zinc-800 text-zinc-400 border border-zinc-700">{chemicals.length} items</span>
+            </div>
+            <div className="flex items-center gap-4 text-sm text-zinc-400">
+              <div className="hidden sm:block">
+                <span className="mr-4">Value: <span className="text-zinc-200">${chemicals.reduce((a, c) => a + (c.costPerBottle * c.currentStock), 0).toFixed(0)}</span></span>
+                {chemicals.some(c => c.currentStock <= c.threshold) && (
+                  <span className="text-red-400 font-medium flex items-center gap-1 inline-flex">
+                    <AlertTriangle className="h-3 w-3" /> {chemicals.filter(c => c.currentStock <= c.threshold).length} Low
+                  </span>
+                )}
+              </div>
+              {expandedSections.chemicals ? <ChevronUp className="h-5 w-5" /> : <ChevronDown className="h-5 w-5" />}
+            </div>
+          </div>
+
+          {expandedSections.chemicals && (
+            <div className="p-4 border-t border-yellow-500/10 animate-in slide-in-from-top-2 duration-200">
+              <div className="flex justify-between items-center mb-4">
+                <div className="flex gap-2">
+                  <Button size="sm" onClick={openAddChemical} className="bg-yellow-600 hover:bg-yellow-500 text-white border-0"><Plus className="h-3 w-3 mr-1" /> Add Chemical</Button>
+                  <Button size="sm" variant="outline" onClick={() => { setImportWizardTab("chemicals"); setImportWizardOpen(true); }}><Package className="h-3 w-3 mr-1" /> Import</Button>
+                </div>
+              </div>
+              <div className="overflow-x-auto">
+                <Table>
+                  <TableHeader>
+                    <TableRow className="hover:bg-transparent border-yellow-500/20">
+                      <TableHead>Name</TableHead>
+                      <TableHead>Size</TableHead>
+                      <TableHead>Cost/Unit</TableHead>
+                      <TableHead>Stock Level</TableHead>
+                      <TableHead className="text-right">Actions</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {chemicals.map(c => (
+                      <TableRow key={c.id} className="border-yellow-500/10 hover:bg-yellow-500/5">
+                        <TableCell className="font-medium">{c.name}</TableCell>
+                        <TableCell>{c.bottleSize}</TableCell>
+                        <TableCell>${c.costPerBottle.toFixed(2)}</TableCell>
+                        <TableCell>
+                          <span className={`px-2 py-1 rounded text-xs font-bold ${c.currentStock <= c.threshold ? 'bg-red-500/20 text-red-400 border border-red-500/30' : 'bg-emerald-500/10 text-emerald-400'}`}>
+                            {c.currentStock} remaining
+                          </span>
+                        </TableCell>
+                        <TableCell className="text-right">
+                          <Button variant="ghost" size="sm" onClick={() => openEdit(c, 'chemical')} className="h-8 w-8 p-0"><FileText className="h-4 w-4" /></Button>
+                          <Button variant="ghost" size="sm" onClick={() => handleDelete(c.id, 'chemical', c.name)} className="h-8 w-8 p-0 text-red-500"><Trash2 className="h-4 w-4" /></Button>
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                    {chemicals.length === 0 && <TableRow><TableCell colSpan={5} className="text-center py-6 text-muted-foreground">No chemicals tracked.</TableCell></TableRow>}
+                  </TableBody>
+                </Table>
+              </div>
+            </div>
           )}
+        </div>
 
-          {/* Materials Section */}
-          <Card className="p-6 bg-gradient-card border-border">
-            <div className="flex items-center justify-between mb-4 flex-wrap gap-2">
-              <h2 className="text-2xl font-bold text-foreground">Materials Inventory</h2>
-              <div className="flex gap-2">
-                <Button
-                  variant="outline"
-                  onClick={() => navigate('/company-budget?tab=inventory')}
-                  className="flex items-center gap-2"
-                >
-                  <TrendingUp className="h-4 w-4" />
-                  Track in Budget
-                </Button>                <Button
-                  variant="ghost"
-                  size="sm"
-                  onClick={() => {
-                    setImportWizardTab("materials");
-                    setImportWizardOpen(true);
-                  }}
-                  className="flex items-center gap-2"
-                >
-                  <Package className="h-4 w-4" />
-                  Import
-                </Button>
-
-                <Button onClick={openAddMaterial} className="bg-gradient-hero">
-                  <Plus className="h-4 w-4 mr-2" />
-                  Add Material
-                </Button>
-              </div>
+        {/* Materials Section (Blue) */}
+        <div className="border border-blue-500/30 rounded-xl overflow-hidden bg-zinc-900/50">
+          <div
+            className="p-4 bg-blue-500/10 flex items-center justify-between cursor-pointer hover:bg-blue-500/15 transition-colors"
+            onClick={() => toggleSection('materials')}
+          >
+            <div className="flex items-center gap-3">
+              <div className={`h-2 w-2 rounded-full ${materials.some(m => typeof m.lowThreshold === 'number' && m.quantity <= m.lowThreshold) ? 'bg-red-500 animate-pulse' : 'bg-blue-500'}`} />
+              <h3 className="text-lg font-semibold text-blue-100">Materials</h3>
+              <HelpCircle className="h-4 w-4 text-zinc-400 hover:text-white cursor-pointer" onClick={(e) => { e.stopPropagation(); window.dispatchEvent(new CustomEvent('open-help', { detail: 'inventory-materials' })); }} />
+              <span className="text-xs px-2 py-0.5 rounded bg-zinc-800 text-zinc-400 border border-zinc-700">{materials.length} items</span>
             </div>
+            <div className="flex items-center gap-4 text-sm text-zinc-400">
+              <div className="hidden sm:block">
+                <span className="mr-4">Value: <span className="text-zinc-200">${materials.reduce((a, m) => a + ((m.costPerItem || 0) * (m.quantity || 0)), 0).toFixed(0)}</span></span>
+                {materials.some(m => typeof m.lowThreshold === 'number' && m.quantity <= m.lowThreshold) && (
+                  <span className="text-red-400 font-medium flex items-center gap-1 inline-flex">
+                    <AlertTriangle className="h-3 w-3" /> {materials.filter(m => typeof m.lowThreshold === 'number' && m.quantity <= m.lowThreshold).length} Low
+                  </span>
+                )}
+              </div>
+              {expandedSections.materials ? <ChevronUp className="h-5 w-5" /> : <ChevronDown className="h-5 w-5" />}
+            </div>
+          </div>
 
-            <div className="overflow-x-auto">
+          {expandedSections.materials && (
+            <div className="p-4 border-t border-blue-500/10 animate-in slide-in-from-top-2 duration-200">
+              <div className="flex justify-between items-center mb-4">
+                <div className="flex gap-2">
+                  <Button size="sm" onClick={openAddMaterial} className="bg-blue-600 hover:bg-blue-500 text-white border-0"><Plus className="h-3 w-3 mr-1" /> Add Material</Button>
+                  <Button size="sm" variant="outline" onClick={() => { setImportWizardTab("materials"); setImportWizardOpen(true); }}><Package className="h-3 w-3 mr-1" /> Import</Button>
+                </div>
+              </div>
               <Table>
                 <TableHeader>
-                  <TableRow>
+                  <TableRow className="hover:bg-transparent border-blue-500/20">
                     <TableHead>Name</TableHead>
-                    <TableHead className="hidden md:table-cell">Category</TableHead>
-                    <TableHead className="hidden md:table-cell">Subtype</TableHead>
-                    <TableHead className="hidden md:table-cell">Cost</TableHead>
+                    <TableHead>Category</TableHead>
+                    <TableHead>Cost/Item</TableHead>
                     <TableHead>Quantity</TableHead>
-                    <TableHead className="hidden md:table-cell">Threshold</TableHead>
                     <TableHead className="text-right">Actions</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {materials.map(m => {
-                    const isLow = typeof m.lowThreshold === 'number' && m.quantity <= m.lowThreshold;
-                    return (
-                      <TableRow key={m.id}>
-                        <TableCell className="font-medium cursor-pointer" onClick={() => openEdit(m, 'material')}>{m.name}</TableCell>
-                        <TableCell className="hidden md:table-cell cursor-pointer" onClick={() => openEdit(m, 'material')}>{m.category}</TableCell>
-                        <TableCell className="hidden md:table-cell cursor-pointer" onClick={() => openEdit(m, 'material')}>{m.subtype || '-'}</TableCell>
-                        <TableCell className="hidden md:table-cell cursor-pointer" onClick={() => openEdit(m, 'material')}>
-                          {typeof m.costPerItem === 'number' ? `$${m.costPerItem.toFixed(2)}` : '-'}
-                        </TableCell>
-                        <TableCell className={`cursor-pointer ${isLow ? "text-destructive font-bold" : ""}`} onClick={() => openEdit(m, 'material')}>
-                          {m.quantity}
-                        </TableCell>
-                        <TableCell className="hidden md:table-cell cursor-pointer" onClick={() => openEdit(m, 'material')}>
-                          {typeof m.lowThreshold === 'number' ? m.lowThreshold : '-'}
-                        </TableCell>
-                        <TableCell className="text-right">
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              handleDelete(m.id, 'material', m.name);
-                            }}
-                            className="text-destructive hover:text-destructive hover:bg-destructive/10"
-                          >
-                            <Trash2 className="h-4 w-4" />
-                          </Button>
-                        </TableCell>
-                      </TableRow>
-                    );
-                  })}
-                  {materials.length === 0 && (
-                    <TableRow>
-                      <TableCell colSpan={7} className="text-center text-muted-foreground py-8">No materials added yet.</TableCell>
+                  {materials.map(m => (
+                    <TableRow key={m.id} className="border-blue-500/10 hover:bg-blue-500/5">
+                      <TableCell className="font-medium">{m.name}</TableCell>
+                      <TableCell>{m.category}</TableCell>
+                      <TableCell>${(m.costPerItem || 0).toFixed(2)}</TableCell>
+                      <TableCell>
+                        <span className={`px-2 py-1 rounded text-xs font-bold ${typeof m.lowThreshold === 'number' && m.quantity <= m.lowThreshold ? 'bg-red-500/20 text-red-400 border border-red-500/30' : 'bg-blue-500/10 text-blue-400'}`}>
+                          {m.quantity} units
+                        </span>
+                      </TableCell>
+                      <TableCell className="text-right">
+                        <Button variant="ghost" size="sm" onClick={() => openEdit(m, 'material')} className="h-8 w-8 p-0"><FileText className="h-4 w-4" /></Button>
+                        <Button variant="ghost" size="sm" onClick={() => handleDelete(m.id, 'material', m.name)} className="h-8 w-8 p-0 text-red-500"><Trash2 className="h-4 w-4" /></Button>
+                      </TableCell>
                     </TableRow>
-                  )}
+                  ))}
+                  {materials.length === 0 && <TableRow><TableCell colSpan={5} className="text-center py-6 text-muted-foreground">No materials tracked.</TableCell></TableRow>}
                 </TableBody>
               </Table>
             </div>
-          </Card>
+          )}
+        </div>
 
-          {/* Chemicals Section */}
-          <Card className="p-6 bg-gradient-card border-border">
-            <div className="flex items-center justify-between mb-4 flex-wrap gap-2">
-              <h2 className="text-2xl font-bold text-foreground">Chemicals Inventory</h2>
-              <div className="flex gap-2">
-                <Button
-                  variant="outline"
-                  onClick={() => navigate('/company-budget?tab=inventory')}
-                  className="flex items-center gap-2"
-                >
-                  <TrendingUp className="h-4 w-4" />
-                  Track in Budget
-                </Button>                <Button
-                  variant="ghost"
-                  size="sm"
-                  onClick={() => {
-                    setImportWizardTab("chemicals");
-                    setImportWizardOpen(true);
-                  }}
-                  className="flex items-center gap-2"
-                >
-                  <Package className="h-4 w-4" />
-                  Import
-                </Button>
-
-                <Button onClick={openAddChemical} className="bg-gradient-hero">
-                  <Plus className="h-4 w-4 mr-2" />
-                  Add Chemical
-                </Button>
-              </div>
+        {/* Tools Section (Purple) */}
+        <div className="border border-purple-500/30 rounded-xl overflow-hidden bg-zinc-900/50">
+          <div
+            className="p-4 bg-purple-500/10 flex items-center justify-between cursor-pointer hover:bg-purple-500/15 transition-colors"
+            onClick={() => toggleSection('tools')}
+          >
+            <div className="flex items-center gap-3">
+              <div className="h-2 w-2 rounded-full bg-purple-500" />
+              <h3 className="text-lg font-semibold text-purple-100">Tools</h3>
+              <HelpCircle className="h-4 w-4 text-zinc-400 hover:text-white cursor-pointer" onClick={(e) => { e.stopPropagation(); window.dispatchEvent(new CustomEvent('open-help', { detail: 'inventory-tools' })); }} />
+              <span className="text-xs px-2 py-0.5 rounded bg-zinc-800 text-zinc-400 border border-zinc-700">{tools.length} items</span>
             </div>
+            <div className="flex items-center gap-4 text-sm text-zinc-400">
+              <div className="hidden sm:block">
+                <span className="mr-4">Value: <span className="text-zinc-200">${tools.reduce((a, t) => a + (t.price || 0), 0).toFixed(0)}</span></span>
+              </div>
+              {expandedSections.tools ? <ChevronUp className="h-5 w-5" /> : <ChevronDown className="h-5 w-5" />}
+            </div>
+          </div>
 
-            <div className="overflow-x-auto">
+          {expandedSections.tools && (
+            <div className="p-4 border-t border-purple-500/10 animate-in slide-in-from-top-2 duration-200">
+              <div className="flex justify-between items-center mb-4">
+                <div className="flex gap-2">
+                  <Button size="sm" onClick={openAddTool} className="bg-purple-600 hover:bg-purple-500 text-white border-0"><Plus className="h-3 w-3 mr-1" /> Add Tool</Button>
+                  <Button size="sm" variant="outline" onClick={() => { setImportWizardTab("tools"); setImportWizardOpen(true); }}><Package className="h-3 w-3 mr-1" /> Import</Button>
+                </div>
+              </div>
               <Table>
                 <TableHeader>
-                  <TableRow>
+                  <TableRow className="hover:bg-transparent border-purple-500/20">
                     <TableHead>Name</TableHead>
-                    <TableHead className="hidden md:table-cell">Bottle Size</TableHead>
-                    <TableHead className="hidden md:table-cell">Cost</TableHead>
-                    <TableHead>Stock</TableHead>
-                    <TableHead className="hidden md:table-cell">Threshold</TableHead>
-                    <TableHead className="text-right">Actions</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {chemicals.map(c => {
-                    const isLow = c.currentStock <= c.threshold;
-                    return (
-                      <TableRow key={c.id}>
-                        <TableCell className="font-medium cursor-pointer" onClick={() => openEdit(c, 'chemical')}>{c.name}</TableCell>
-                        <TableCell className="hidden md:table-cell cursor-pointer" onClick={() => openEdit(c, 'chemical')}>{c.bottleSize}</TableCell>
-                        <TableCell className="hidden md:table-cell cursor-pointer" onClick={() => openEdit(c, 'chemical')}>
-                          ${c.costPerBottle.toFixed(2)}
-                        </TableCell>
-                        <TableCell className={`cursor-pointer ${isLow ? "text-destructive font-bold" : ""}`} onClick={() => openEdit(c, 'chemical')}>
-                          {c.currentStock}
-                        </TableCell>
-                        <TableCell className="hidden md:table-cell cursor-pointer" onClick={() => openEdit(c, 'chemical')}>
-                          {c.threshold}
-                        </TableCell>
-                        <TableCell className="text-right">
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              handleDelete(c.id, 'chemical', c.name);
-                            }}
-                            className="text-destructive hover:text-destructive hover:bg-destructive/10"
-                          >
-                            <Trash2 className="h-4 w-4" />
-                          </Button>
-                        </TableCell>
-                      </TableRow>
-                    );
-                  })}
-                  {chemicals.length === 0 && (
-                    <TableRow>
-                      <TableCell colSpan={6} className="text-center text-muted-foreground py-8">No chemicals added yet.</TableCell>
-                    </TableRow>
-                  )}
-                </TableBody>
-              </Table>
-            </div>
-          </Card>
-
-          <Card className="p-6 bg-gradient-card border-border">
-            <div className="flex items-center justify-between mb-4 flex-wrap gap-2">
-              <h2 className="text-2xl font-bold text-foreground">Tools Inventory</h2>
-              <div className="flex gap-2">
-                <Button
-                  variant="outline"
-                  onClick={() => navigate('/company-budget?tab=inventory')}
-                  className="flex items-center gap-2"
-                >
-                  <TrendingUp className="h-4 w-4" />
-                  Track in Budget
-                </Button>                <Button
-                  variant="ghost"
-                  size="sm"
-                  onClick={() => {
-                    setImportWizardTab("tools");
-                    setImportWizardOpen(true);
-                  }}
-                  className="flex items-center gap-2"
-                >
-                  <Package className="h-4 w-4" />
-                  Import
-                </Button>
-
-                <Button onClick={openAddTool} className="bg-gradient-hero">
-                  <Plus className="h-4 w-4 mr-2" />
-                  Add Tool
-                </Button>
-              </div>
-            </div>
-
-            <div className="overflow-x-auto">
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>Name</TableHead>
-                    <TableHead>Warranty</TableHead>
                     <TableHead>Purchase Date</TableHead>
                     <TableHead>Price</TableHead>
-                    <TableHead>Life Expectancy</TableHead>
                     <TableHead>Notes</TableHead>
                     <TableHead className="text-right">Actions</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {tools.map((tool) => (
-                    <TableRow key={tool.id}>
-                      <TableCell className="font-medium cursor-pointer" onClick={() => openEdit(tool, 'tool')}>{tool.name}</TableCell>
-                      <TableCell className="cursor-pointer" onClick={() => openEdit(tool, 'tool')}>{tool.warranty || '-'}</TableCell>
-                      <TableCell className="cursor-pointer" onClick={() => openEdit(tool, 'tool')}>{tool.purchaseDate ? new Date(tool.purchaseDate).toLocaleDateString() : '-'}</TableCell>
-                      <TableCell className="cursor-pointer" onClick={() => openEdit(tool, 'tool')}>{tool.price ? `$${tool.price.toFixed(2)}` : '-'}</TableCell>
-                      <TableCell className="cursor-pointer" onClick={() => openEdit(tool, 'tool')}>{tool.lifeExpectancy || '-'}</TableCell>
-                      <TableCell className="cursor-pointer" onClick={() => openEdit(tool, 'tool')}>{tool.notes || '-'}</TableCell>
+                  {tools.map(t => (
+                    <TableRow key={t.id} className="border-purple-500/10 hover:bg-purple-500/5">
+                      <TableCell className="font-medium">{t.name}</TableCell>
+                      <TableCell>{t.purchaseDate ? new Date(t.purchaseDate).toLocaleDateString() : '-'}</TableCell>
+                      <TableCell>${(t.price || 0).toFixed(2)}</TableCell>
+                      <TableCell><span className="text-xs text-muted-foreground truncate max-w-[200px] inline-block">{t.notes}</span></TableCell>
                       <TableCell className="text-right">
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            handleDelete(tool.id, 'tool', tool.name);
-                          }}
-                          className="text-destructive hover:text-destructive hover:bg-destructive/10"
-                        >
-                          <Trash2 className="h-4 w-4" />
-                        </Button>
+                        <Button variant="ghost" size="sm" onClick={() => openEdit(t, 'tool')} className="h-8 w-8 p-0"><FileText className="h-4 w-4" /></Button>
+                        <Button variant="ghost" size="sm" onClick={() => handleDelete(t.id, 'tool', t.name)} className="h-8 w-8 p-0 text-red-500"><Trash2 className="h-4 w-4" /></Button>
                       </TableCell>
                     </TableRow>
                   ))}
-                  {tools.length === 0 && (
-                    <TableRow>
-                      <TableCell colSpan={7} className="text-center text-muted-foreground py-8">No tools added yet.</TableCell>
-                    </TableRow>
-                  )}
+                  {tools.length === 0 && <TableRow><TableCell colSpan={5} className="text-center py-6 text-muted-foreground">No tools tracked.</TableCell></TableRow>}
                 </TableBody>
               </Table>
             </div>
-          </Card>
-
-          <Card className="p-6 bg-gradient-card border-border">
-            <div className="flex items-center justify-between mb-4 flex-wrap gap-2">
-              <h2 className="text-2xl font-bold text-foreground">Usage History</h2>
-              <div className="flex gap-2 items-center flex-wrap">
-                <select
-                  value={dateFilter}
-                  onChange={(e) => setDateFilter(e.target.value as any)}
-                  className="h-10 rounded-md border border-input bg-background px-3 py-2 text-sm"
-                >
-                  <option value="all">All Time</option>
-                  <option value="daily">Today</option>
-                  <option value="weekly">This Week</option>
-                  <option value="monthly">This Month</option>
-                </select>
-                <DateRangeFilter value={dateRange} onChange={setDateRange} storageKey="inventory-history-range" />
-                <Button variant="outline" onClick={() => setUpdatesModalOpen(true)}>Material Updates</Button>
-              </div>
-            </div>
-
-            <div className="overflow-x-auto">
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>Date</TableHead>
-                    <TableHead>Chemical</TableHead>
-                    <TableHead>Material</TableHead>
-                    <TableHead>Tool</TableHead>
-                    <TableHead>Service</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {filteredHistory.map(item => (
-                    <TableRow key={item.id}>
-                      <TableCell>{new Date(item.date).toLocaleString()}</TableCell>
-                      <TableCell>{item.chemicalName || '-'}</TableCell>
-                      <TableCell>{(item as any).materialName || '-'}</TableCell>
-                      <TableCell>{(item as any).toolName || '-'}</TableCell>
-                      <TableCell>{item.serviceName}</TableCell>
-                    </TableRow>
-                  ))}
-                  {filteredHistory.length === 0 && (
-                    <TableRow>
-                      <TableCell colSpan={4} className="text-center text-muted-foreground py-8">
-                        No usage history found for the selected period.
-                      </TableCell>
-                    </TableRow>
-                  )}
-                </TableBody>
-              </Table>
-            </div>
-          </Card>
+          )}
         </div>
+
+        {/* Usage History Section (Updated) */}
+        <Card className="p-6 bg-gradient-card border-border">
+          <div className="flex items-center justify-between mb-4 flex-wrap gap-2">
+            <h2 className="text-2xl font-bold text-foreground">Usage History</h2>
+            <div className="flex gap-2 items-center flex-wrap">
+              <select
+                value={dateFilter}
+                onChange={(e) => setDateFilter(e.target.value as any)}
+                className="h-10 rounded-md border border-input bg-background px-3 py-2 text-sm"
+              >
+                <option value="all">All Time</option>
+                <option value="daily">Today</option>
+                <option value="weekly">This Week</option>
+                <option value="monthly">This Month</option>
+              </select>
+              <DateRangeFilter value={dateRange} onChange={setDateRange} storageKey="inventory-history-range" />
+              <Button variant="outline" onClick={() => setUpdatesModalOpen(true)}>Material Updates</Button>
+            </div>
+          </div>
+          <div className="rounded-md border border-zinc-800">
+            <Table>
+              <TableHeader>
+                <TableRow className="bg-zinc-900/50 hover:bg-zinc-900/50">
+                  <TableHead>Date</TableHead>
+                  <TableHead>Item Used</TableHead>
+                  <TableHead>Amount Used</TableHead>
+                  <TableHead>Amount Left</TableHead>
+                  <TableHead>Service / Reason</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {filteredHistory.map(item => (
+                  <TableRow
+                    key={item.id}
+                    className="hover:bg-zinc-900/30 cursor-pointer transition-colors border-b border-zinc-800/50"
+                    onClick={() => { setUsageEditItem(item); setUsageEditNotes(item.notes || ''); setUsageEditOpen(true); }}
+                    title="Click to view/edit notes"
+                  >
+                    <TableCell className="text-zinc-400 font-mono text-xs">{new Date(item.date).toLocaleString([], { dateStyle: 'short', timeStyle: 'short' })}</TableCell>
+                    <TableCell>
+                      <span className={`font-medium ${item.chemicalId ? 'text-yellow-400' : item.materialId ? 'text-blue-400' : 'text-purple-400'}`}>
+                        {item.chemicalName || item.materialName || item.toolName || 'Unknown Item'}
+                      </span>
+                    </TableCell>
+                    <TableCell>{getUsageAmount(item)}</TableCell>
+                    <TableCell>
+                      {item.remainingStock !== undefined
+                        ? <span className="text-zinc-300 font-mono">{Number(item.remainingStock).toFixed(1).replace(/\.0$/, '')}</span>
+                        : <span className="text-zinc-600 italic text-xs">n/a</span>}
+                    </TableCell>
+                    <TableCell className="text-zinc-300 max-w-[200px]">
+                      <div>{item.serviceName}</div>
+                      {item.notes && <div className="text-xs text-zinc-500 truncate" title={item.notes}>{item.notes}</div>}
+                    </TableCell>
+                  </TableRow>
+                ))}
+                {filteredHistory.length === 0 && (
+                  <TableRow>
+                    <TableCell colSpan={5} className="text-center py-10 text-zinc-500">
+                      No usage history found for this period.
+                    </TableCell>
+                  </TableRow>
+                )}
+              </TableBody>
+            </Table>
+          </div>
+        </Card>
+
       </main>
+
+      {/* Usage Edit Modal */}
+      <Dialog open={usageEditOpen} onOpenChange={setUsageEditOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Edit Usage Record</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div>
+              <Label className="text-muted-foreground">Service / Reason</Label>
+              <p className="font-medium text-white">{usageEditItem?.serviceName}</p>
+            </div>
+            <div>
+              <Label className="text-muted-foreground">Item</Label>
+              <p className="font-medium text-white">{usageEditItem?.chemicalName || usageEditItem?.materialName || usageEditItem?.toolName || 'Unknown'}</p>
+            </div>
+            <div>
+              <Label className="text-muted-foreground">Date</Label>
+              <p className="text-sm text-zinc-400">{usageEditItem ? new Date(usageEditItem.date).toLocaleString() : '-'}</p>
+            </div>
+            <div>
+              <Label>Notes</Label>
+              <Input
+                value={usageEditNotes}
+                onChange={(e) => setUsageEditNotes(e.target.value)}
+                placeholder="Add details about this usage..."
+              />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setUsageEditOpen(false)}>Cancel</Button>
+            <Button onClick={async () => {
+              if (!usageEditItem) return;
+              const list = (await localforage.getItem<UsageHistory[]>('chemical-usage')) || [];
+              const idx = list.findIndex(x => x.id === usageEditItem.id);
+              if (idx !== -1) {
+                list[idx] = { ...list[idx], notes: usageEditNotes };
+                await localforage.setItem('chemical-usage', list);
+              } else {
+                const toolList = (await localforage.getItem<UsageHistory[]>('tool-usage')) || [];
+                const toolIdx = toolList.findIndex(x => x.id === usageEditItem.id);
+                if (toolIdx !== -1) {
+                  toolList[toolIdx] = { ...toolList[toolIdx], notes: usageEditNotes };
+                  await localforage.setItem('tool-usage', toolList);
+                }
+              }
+              await loadData();
+              setUsageEditOpen(false);
+              toast({ title: 'Usage Updated', description: 'Notes saved.' });
+            }}>Save Changes</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       <UnifiedInventoryModal
         mode={modalMode}
@@ -576,6 +615,7 @@ const InventoryControl = () => {
         initial={editing || null}
         onSaved={async () => { await loadData(); }}
       />
+      {/* ... keeping other modals ... */}
 
       {/* Material Updates modal (Usage History) */}
       <Dialog

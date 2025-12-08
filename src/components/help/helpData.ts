@@ -99,6 +99,19 @@ export const adminMenuTopics: HelpTopic[] = [
     section: 'menu',
   },
   {
+    id: 'inventory-control',
+    title: 'Inventory Control',
+    summary: 'Track chemical/material levels, view usage history, and manage tools.',
+    content: [
+      'Dashboards show stock levels with low-stock alerts.',
+      'Usage History tracks all consumption automatically from Jobs.',
+      "Material Updates: Use the 'Material Updates' button to log bulk usage or adjustments (e.g. spills, restock) not tied to a specific job.",
+      'Edit History: Click any Usage history item to view or edit notes.',
+    ],
+    route: '/inventory-control',
+    section: 'menu',
+  },
+  {
     id: 'inventory',
     title: 'Inventory Control',
     summary: 'Maintain supply levels, set thresholds, and track usage.',

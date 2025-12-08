@@ -149,6 +149,17 @@ export async function insertMockData(reporter?: (msg: string) => void) {
     report(`Employee created: ${u.name} (${u.email})`);
   }
 
+  // Add mock inventory items FIRST so jobs can use them
+  report('Adding mock inventory (chemicals and materials)…');
+  const inventoryInfo = await addMockInventory();
+  tracker.inventory = inventoryInfo;
+  report('Inventory added');
+
+  // Reload full inventory lists to get IDs
+  const chemicalsList = (await localforage.getItem<any[]>("chemicals")) || [];
+  const materialsList = (await localforage.getItem<any[]>("materials")) || [];
+  const chemicalUsageList = (await localforage.getItem<any[]>("chemical-usage")) || [];
+
   // Create 2 jobs via normal checklist flow
   report('Creating jobs and checklists…');
   const customers = tracker.users.filter(u => u.role === 'customer');
@@ -178,6 +189,44 @@ export async function insertMockData(reporter?: (msg: string) => void) {
     // Link to customer (normal flow)
     await api(`/api/checklist/${checklistId}/link-customer`, { method: 'PUT', body: JSON.stringify({ customerId: cust.id }) });
     report(`Linked checklist ${checklistId} to customer ${cust.name}`);
+
+    // Mock Material Usage
+    const usedChemName = j === 0 ? 'All-Purpose Cleaner' : 'Glass Cleaner';
+    const usedMatName = j === 0 ? 'Microfiber Rag' : 'Detailing Clay';
+    const usedChem = chemicalsList.find(c => c.name === usedChemName);
+    const usedMat = materialsList.find(m => m.name === usedMatName);
+    const fraction = j === 0 ? '1/4' : '1/8';
+    const fractionNum = j === 0 ? 0.25 : 0.125;
+    const qty = j === 0 ? 2 : 1;
+
+    if (usedChem) {
+      chemicalUsageList.push({
+        id: `usage_${Date.now()}_c${j}`,
+        jobId: checklistId,
+        chemicalId: usedChem.id,
+        chemicalName: usedChem.name,
+        amountUsed: fraction,
+        remainingStock: Math.max(0, (usedChem.currentStock || 10) - fractionNum),
+        serviceName: pkg.name,
+        date: new Date().toISOString()
+      });
+      // Update stock in memory list
+      usedChem.currentStock = Math.max(0, (usedChem.currentStock || 10) - fractionNum);
+    }
+    if (usedMat) {
+      chemicalUsageList.push({
+        id: `usage_${Date.now()}_m${j}`,
+        jobId: checklistId,
+        materialId: usedMat.id,
+        materialName: usedMat.name,
+        amountUsed: qty,
+        remainingStock: Math.max(0, (usedMat.quantity || 10) - qty),
+        serviceName: pkg.name,
+        date: new Date().toISOString()
+      });
+      usedMat.quantity = Math.max(0, (usedMat.quantity || 10) - qty);
+    }
+
     // Build selected items for invoice & PDF
     const items = [
       { name: pkg.name, price: getServicePrice(pkg.id, vehicleType as any) },
@@ -213,11 +262,10 @@ export async function insertMockData(reporter?: (msg: string) => void) {
     });
   }
 
-  // Add mock inventory items
-  report('Adding mock inventory (chemicals and materials)…');
-  const inventory = await addMockInventory();
-  tracker.inventory = inventory;
-  report('Inventory added');
+  // Save updated stocks and usage
+  await localforage.setItem('chemicals', chemicalsList);
+  await localforage.setItem('materials', materialsList);
+  await localforage.setItem('chemical-usage', chemicalUsageList);
 
   await localforage.setItem('mock-tracker', tracker);
   report('Saved tracker and notifying UI listeners');

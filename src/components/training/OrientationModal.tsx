@@ -1,6 +1,8 @@
 import { useEffect, useMemo, useState } from "react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { HelpCircle } from "lucide-react";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
@@ -104,9 +106,11 @@ const handbookSections: HandbookSection[] = (() => {
     ]),
   ];
   // Professional Practice: single topic (avoid duplication)
-  S.push({ id: "professional-practice", name: "Professional Practice", items: [
-    { title: "Consistent Technique", desc: "Careful product use and thorough inspections to ensure premium results." },
-  ] });
+  S.push({
+    id: "professional-practice", name: "Professional Practice", items: [
+      { title: "Consistent Technique", desc: "Careful product use and thorough inspections to ensure premium results." },
+    ]
+  });
   return S;
 })();
 
@@ -120,7 +124,7 @@ const EXAM_QUESTIONS: ExamQ[] = (() => {
     if (custom && Array.isArray(custom) && custom.every((c: any) => typeof c.q === 'string' && Array.isArray(c.options) && typeof c.correct === 'number')) {
       return custom.slice(0, 50);
     }
-  } catch {}
+  } catch { }
   // Build 50 hard questions directly tied to handbook chapters
   const all = handbookSections.flatMap((sec) => sec.items.map((it) => ({ sec: sec.name, title: it.title, desc: it.desc })));
   const N = all.length;
@@ -180,11 +184,11 @@ export default function OrientationModal({ open, onOpenChange, startExamOnOpen =
           setExamAnswers(saved.answers.slice(0, EXAM_QUESTIONS.length).concat(Array(Math.max(0, EXAM_QUESTIONS.length - saved.answers.length)).fill(-1)));
           setExamIdx(Math.min(Math.max(0, saved.index), EXAM_QUESTIONS.length - 1));
         }
-      } catch {}
+      } catch { }
       try {
         const sched = localStorage.getItem(EXAM_SCHEDULE_KEY);
         if (sched) setScheduledAt(sched);
-      } catch {}
+      } catch { }
       // If requested, auto-open the exam when the orientation modal opens
       if (startExamOnOpen) {
         setExamOpen(true);
@@ -197,7 +201,7 @@ export default function OrientationModal({ open, onOpenChange, startExamOnOpen =
       if (!localStorage.getItem(HANDBOOK_START_KEY)) {
         localStorage.setItem(HANDBOOK_START_KEY, new Date().toISOString());
       }
-    } catch {}
+    } catch { }
     setHandbookOpen(true);
   };
   const toggleSectionRead = (idx: number) => {
@@ -210,7 +214,7 @@ export default function OrientationModal({ open, onOpenChange, startExamOnOpen =
     const completedAtStr = completedAt.toLocaleString();
     try {
       await api('/api/training/handbook-complete', { method: 'POST', body: JSON.stringify({ employeeId, date: completedAt.toISOString(), items: totalItems }) });
-    } catch {}
+    } catch { }
     pushAdminAlert('handbook_completed' as any, `New Employee ${employeeName} completed Handbook`, employeeName, { recordType: 'Employee Training', completedAt: completedAtStr });
     // PDF summary
     const dateStr = completedAtStr;
@@ -239,7 +243,7 @@ export default function OrientationModal({ open, onOpenChange, startExamOnOpen =
       if (y > 270) { doc.addPage(); page++; y = 20; }
     });
     const pdfData = doc.output('dataurlstring');
-    const fileName = `Handbook_Summary_${employeeName.replace(/\s+/g,'_')}_${dateStr.replace(/[\/:]/g,'-')}.pdf`;
+    const fileName = `Handbook_Summary_${employeeName.replace(/\s+/g, '_')}_${dateStr.replace(/[\/:]/g, '-')}.pdf`;
     savePDFToArchive('Employee Training' as any, employeeName, `handbook_${Date.now()}`, pdfData, { fileName, path: 'Employee Training/' });
     setHandbookOpen(false);
   };
@@ -247,10 +251,10 @@ export default function OrientationModal({ open, onOpenChange, startExamOnOpen =
   const saveExamForLater = async () => {
     try {
       localStorage.setItem(EXAM_STORAGE_KEY, JSON.stringify({ index: examIdx, answers: examAnswers }));
-    } catch {}
+    } catch { }
     try {
       await api('/api/training/exam-progress', { method: 'POST', body: JSON.stringify({ employeeId, index: examIdx, answers: examAnswers }) });
-    } catch {}
+    } catch { }
     pushAdminAlert('exam_paused' as any, `Employee ${employeeName} paused exam`, employeeName, { recordType: 'Employee Training' });
   };
 
@@ -260,7 +264,7 @@ export default function OrientationModal({ open, onOpenChange, startExamOnOpen =
     const pass = percent >= 75;
     try {
       await api('/api/training/exam-submit', { method: 'POST', body: JSON.stringify({ employeeId, answers: examAnswers, score: correctCount, percent, pass }) });
-    } catch {}
+    } catch { }
     pushAdminAlert(pass ? 'exam_passed' : 'exam_failed', `Employee ${employeeName} exam score: ${percent}% - ${pass ? 'Passed' : 'Failed'}`, employeeName, { score: correctCount, percent });
     // PDF report
     const dateStr = new Date().toLocaleDateString();
@@ -285,15 +289,15 @@ export default function OrientationModal({ open, onOpenChange, startExamOnOpen =
       if (y > 270) { doc.addPage(); y = 20; }
     });
     const pdfData = doc.output('dataurlstring');
-    const fileName = `Training_Exam_${employeeName.replace(/\s+/g,'_')}_${dateStr.replace(/\//g,'-')}.pdf`;
+    const fileName = `Training_Exam_${employeeName.replace(/\s+/g, '_')}_${dateStr.replace(/\//g, '-')}.pdf`;
     savePDFToArchive('Employee Training' as any, employeeName, `exam_${Date.now()}`, pdfData, { fileName, path: 'Employee Training/' });
     setExamOpen(false);
     if (pass) {
       try {
         const dateStr = new Date().toLocaleDateString();
         localStorage.setItem('employee_training_certified', dateStr);
-      } catch {}
-      try { window.location.href = '/certificate'; } catch {}
+      } catch { }
+      try { window.location.href = '/certificate'; } catch { }
     }
   };
 
@@ -302,7 +306,7 @@ export default function OrientationModal({ open, onOpenChange, startExamOnOpen =
     const savedAt = new Date();
     try {
       localStorage.setItem(HANDBOOK_STORAGE_KEY, JSON.stringify({ sectionsRead, activeSectionIdx, startedAt, savedAt: savedAt.toISOString() }));
-    } catch {}
+    } catch { }
     // PDF snapshot for admin visibility
     const doc = new jsPDF();
     doc.setFontSize(16);
@@ -321,7 +325,7 @@ export default function OrientationModal({ open, onOpenChange, startExamOnOpen =
       y += 8; if (y > 270) { doc.addPage(); y = 20; }
     });
     const pdfData = doc.output('dataurlstring');
-    const fileName = `Handbook_Progress_${employeeName.replace(/\s+/g,'_')}_${savedAt.toLocaleString().replace(/[\/:]/g,'-')}.pdf`;
+    const fileName = `Handbook_Progress_${employeeName.replace(/\s+/g, '_')}_${savedAt.toLocaleString().replace(/[\/:]/g, '-')}.pdf`;
     savePDFToArchive('Employee Training' as any, employeeName, `handbook_progress_${Date.now()}`, pdfData, { fileName, path: 'Employee Training/' });
   };
 
@@ -376,128 +380,245 @@ export default function OrientationModal({ open, onOpenChange, startExamOnOpen =
                 </div>
                 {scheduledAt && (
                   <div className="flex items-center gap-2">
-                    <Badge className="bg-yellow-400 text-black">Exam reminder set for {new Date(new Date(scheduledAt).getTime() - 24*60*60*1000).toLocaleString()}</Badge>
+                    <Badge className="bg-yellow-400 text-black">Exam reminder set for {new Date(new Date(scheduledAt).getTime() - 24 * 60 * 60 * 1000).toLocaleString()}</Badge>
                   </div>
                 )}
               </div>
             </div>
+
           </Card>
         </div>
-      </DialogContent>
+      </DialogContent >
 
       {/* Handbook Sub-Modal: Handbook UI */}
-      <Dialog open={handbookOpen} onOpenChange={setHandbookOpen}>
-      <DialogContent className="max-w-[110rem] w-[100vw] h-[98vh] bg-purple-900 text-white overflow-hidden border border-purple-700 rounded-lg shadow-2xl">
-        <DialogHeader>
-          <DialogTitle className="text-white">Auto Detailing Handbook</DialogTitle>
-        </DialogHeader>
-        <div className="grid grid-cols-1 md:grid-cols-6 gap-6 h-[90vh]">
-          {/* Table of contents */}
-          <div className="md:col-span-2 overflow-y-auto overflow-x-hidden pr-4 min-w-[300px] border-r border-purple-800">
-            <div className="space-y-2">
-              <div className="flex items-center justify-between gap-2 mb-3 sticky top-0 bg-purple-900 py-2 px-2 z-10 border-b border-purple-700">
-                <span className="text-xs">Jump to skipped sections</span>
-                <Button className="bg-blue-600 text-white hover:bg-blue-700 shrink-0 whitespace-nowrap" size="sm" onClick={() => setShowSkippedOnly(s => !s)}>{showSkippedOnly ? 'Show All' : 'Show Skipped'}</Button>
+      < Dialog open={handbookOpen} onOpenChange={setHandbookOpen} >
+        <DialogContent className="max-w-[110rem] w-[98vw] h-[95vh] bg-[#020617] text-white p-0 border border-blue-900 rounded-lg shadow-2xl flex flex-col overflow-hidden">
+          <DialogHeader className="bg-[#172554] p-4 border-b border-blue-800 shrink-0 flex flex-row items-center justify-between">
+            <DialogTitle className="text-white">Auto Detailing Handbook</DialogTitle>
+            <Popover>
+              <PopoverTrigger asChild>
+                <Button variant="ghost" size="icon" className="text-blue-200 hover:text-white hover:bg-blue-800 h-8 w-8">
+                  <HelpCircle className="h-5 w-5" />
+                </Button>
+              </PopoverTrigger>
+              <PopoverContent className="bg-slate-900 border-blue-800 text-white w-80">
+                <div className="space-y-2">
+                  <h4 className="font-medium text-blue-400">Handbook Navigation</h4>
+                  <p className="text-sm text-slate-300">
+                    • Use the <strong>Sidebar</strong> or <strong>Next/Prev</strong> buttons to move between sections.<br />
+                    • Click <strong>Mark Read</strong> to complete a section.<br />
+                    • You can <strong>Skip</strong> sections, but you must complete all of them to finish the handbook.<br />
+                    • Your progress is saved automatically.
+                  </p>
+                </div>
+              </PopoverContent>
+            </Popover>
+          </DialogHeader>
+
+          <div className="flex flex-1 overflow-hidden min-h-0">
+            {/* Table of contents - Sidebar */}
+            <div className="hidden md:flex flex-col w-64 lg:w-80 border-r border-blue-800 bg-[#0f172a]">
+              <div className="p-2 border-b border-blue-800 bg-[#0f172a] shrink-0">
+                <div className="flex items-center justify-between gap-2">
+                  <span className="text-xs text-blue-200">Jump to skipped</span>
+                  <Button className="bg-blue-600 text-white hover:bg-blue-500 h-7 text-xs" size="sm" onClick={() => setShowSkippedOnly(s => !s)}>
+                    {showSkippedOnly ? 'Show All' : 'Show Skipped'}
+                  </Button>
+                </div>
               </div>
+              <div className="flex-1 overflow-y-auto p-2 space-y-1">
                 {(showSkippedOnly ? handbookSections.filter((_, idx) => !sectionsRead[idx]) : handbookSections).map((sec, idxRaw) => {
                   const idx = showSkippedOnly ? handbookSections.findIndex(s => s.id === sec.id) : idxRaw;
                   return (
                     <Button
                       key={sec.id}
-                      className={`w-full bg-blue-600 hover:bg-blue-700 text-white ${activeSectionIdx === idx ? 'ring-2 ring-white' : ''} flex items-center justify-between gap-2 text-left rounded px-4 py-3 text-sm leading-tight whitespace-normal break-words min-h-[48px] overflow-hidden`}
+                      variant="ghost"
+                      className={`w-full justify-start text-left h-auto py-2 px-3 whitespace-normal ${activeSectionIdx === idx ? 'bg-[#334155] text-white ring-1 ring-blue-400' : 'text-slate-300 hover:bg-[#1e293b] hover:text-white'}`}
                       onClick={() => setActiveSectionIdx(idx)}
                     >
-                      <span className="w-full pr-2 break-words">{sec.name}</span>
+                      <span className="flex-1 text-sm">{sec.name}</span>
                       {!sectionsRead[idx] && (
-                        <Badge className="bg-blue-900 text-white text-[10px] px-3 py-1 leading-none rounded text-center min-w-[64px]">Skipped</Badge>
+                        <Badge className="bg-blue-900 text-white text-[10px] ml-1 shrink-0">Skipped</Badge>
                       )}
                     </Button>
                   );
                 })}
-            </div>
-          </div>
-          {/* Content */}
-          <div className="md:col-span-4 bg-purple-800 rounded-lg p-4 overflow-y-auto overflow-x-hidden relative z-10">
-              <div className="flex items-center justify-between mb-4">
-                <h3 className="text-xl font-bold">{handbookSections[activeSectionIdx].name} ({activeSectionIdx + 1}/{handbookSections.length})</h3>
-                <div className="w-64">
-                <Progress value={handbookProgress} className="h-2 bg-yellow-200 [&>div]:bg-yellow-400" />
-                </div>
-              </div>
-            <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-4 mt-2 pb-40 content-grid">
-              {handbookSections[activeSectionIdx].items.map((it, i) => (
-                <div key={i} className="p-3 bg-purple-700 rounded w-full">
-                  <div className="font-semibold break-words">{it.title}</div>
-                  <div className="text-sm break-words">{it.desc}</div>
-                </div>
-              ))}
-            </div>
-            {/* Stationary footer with all controls */}
-            <div className="sticky bottom-0 left-0 w-full bg-purple-800/95 pt-3 backdrop-blur supports-[backdrop-filter]:bg-purple-800/90">
-              <div className="flex flex-col md:flex-row items-stretch md:items-center justify-between border-t border-purple-700 pt-3 px-2 gap-3">
-                <div className="flex flex-col sm:flex-row flex-wrap gap-2">
-                  <Button className="bg-blue-600 text-white hover:bg-blue-700 w-full sm:w-auto" onClick={() => setActiveSectionIdx(s => Math.max(0, s - 1))}>Previous</Button>
-                  <Button className="bg-blue-600 text-white hover:bg-blue-700 w-full sm:w-auto" onClick={() => setActiveSectionIdx(s => Math.min(handbookSections.length - 1, s + 1))}>Next Section</Button>
-                  <Button className="bg-blue-600 text-white hover:bg-blue-700 w-full sm:w-auto" onClick={() => toggleSectionRead(activeSectionIdx)}>{sectionsRead[activeSectionIdx] ? 'Mark as Unread' : 'Mark Section Read'}</Button>
-                  <Button className="bg-blue-600 text-white hover:bg-blue-700 w-full sm:w-auto" onClick={() => {
-                    setSectionsRead(prev => { const n = [...prev]; n[activeSectionIdx] = false; return n; });
-                    setActiveSectionIdx(s => Math.min(handbookSections.length - 1, s + 1));
-                  }}>Skip Chapter</Button>
-                </div>
-                <div className="flex flex-col sm:flex-row gap-2">
-                  <Button className="bg-blue-600 text-white hover:bg-blue-700 w-full sm:w-auto" onClick={saveHandbookProgress}>Save Progress</Button>
-                  <Button className="bg-blue-600 text-white hover:bg-blue-700 w-full sm:w-auto" onClick={confirmHandbook}>Confirm Completion</Button>
-                </div>
               </div>
             </div>
+
+            {/* Main Content Area */}
+            <div className="flex-1 flex flex-col min-w-0 bg-[#172554] relative">
+              {/* Header for Content */}
+              <div className="p-4 bg-[#172554] border-b border-blue-800 shrink-0 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                <div className="flex items-center gap-2">
+                  <div>
+                    <h3 className="text-lg md:text-xl font-bold text-white leading-tight">{handbookSections[activeSectionIdx].name}</h3>
+                    <p className="text-xs text-blue-200">Section {activeSectionIdx + 1} of {handbookSections.length}</p>
+                  </div>
+                  <Popover>
+                    <PopoverTrigger asChild>
+                      <Button variant="ghost" size="icon" className="text-blue-200 hover:text-white hover:bg-blue-800 h-8 w-8">
+                        <HelpCircle className="h-5 w-5" />
+                      </Button>
+                    </PopoverTrigger>
+                    <PopoverContent className="bg-slate-900 border-blue-800 text-white w-80">
+                      <div className="space-y-2">
+                        <h4 className="font-medium text-blue-400">Handbook Navigation</h4>
+                        <p className="text-sm text-slate-300">
+                          • Use the <strong>Sidebar</strong> or <strong>Next/Prev</strong> buttons to move between sections.<br />
+                          • Click <strong>Mark Read</strong> to complete a section.<br />
+                          • You can <strong>Skip</strong> sections, but you must complete all of them to finish the handbook.<br />
+                          • Your progress is saved automatically.
+                        </p>
+                      </div>
+                    </PopoverContent>
+                  </Popover>
+                </div>
+                <div className="w-full sm:w-48">
+                  <div className="flex justify-between text-xs text-blue-200 mb-1">
+                    <span>Progress</span>
+                    <span>{handbookProgress}%</span>
+                  </div>
+                  <Progress value={handbookProgress} className="h-2 bg-blue-950 [&>div]:bg-blue-400" />
+                </div>
+              </div>
+
+              {/* Scrollable Items Grid */}
+              <div className="flex-1 overflow-y-auto p-4 content-grid">
+                <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-4 pb-4">
+                  {handbookSections[activeSectionIdx].items.map((it, i) => (
+                    <div key={i} className="p-4 bg-[#1e3a8a] rounded-lg border border-blue-700 shadow-sm flex flex-col">
+                      <div className="font-semibold break-words text-white mb-2">{it.title}</div>
+                      <div className="text-sm text-blue-100 leading-relaxed">{it.desc}</div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              {/* Fixed Footer Controls */}
+              <div className="shrink-0 p-3 bg-[#0f172a] border-t border-blue-800 flex flex-col gap-3 z-20 shadow-[0_-4px_6px_-1px_rgba(0,0,0,0.3)]">
+                {/* Navigation Row */}
+                <div className="flex flex-wrap items-center justify-center md:justify-between gap-3">
+                  <div className="flex items-center gap-2 w-full md:w-auto justify-center">
+                    <Button variant="secondary" className="bg-slate-700 text-white hover:bg-slate-600 flex-1 md:flex-none min-w-[80px]" onClick={() => setActiveSectionIdx(s => Math.max(0, s - 1))} disabled={activeSectionIdx === 0}>
+                      Previous
+                    </Button>
+                    <Button className="bg-blue-600 text-white hover:bg-blue-500 flex-1 md:flex-none min-w-[100px]" onClick={() => setActiveSectionIdx(s => Math.min(handbookSections.length - 1, s + 1))} disabled={activeSectionIdx === handbookSections.length - 1}>
+                      Next Section
+                    </Button>
+                  </div>
+
+                  <div className="flex items-center gap-3 w-full md:w-auto justify-center flex-wrap">
+                    <Button
+                      className={`${sectionsRead[activeSectionIdx] ? 'bg-slate-600 hover:bg-slate-500' : 'bg-green-600 hover:bg-green-500'} text-white min-w-[130px] flex-1 md:flex-none`}
+                      onClick={() => toggleSectionRead(activeSectionIdx)}
+                    >
+                      {sectionsRead[activeSectionIdx] ? 'Mark Unread' : 'Mark Read'}
+                    </Button>
+                    <Button
+                      className="bg-orange-600 text-white hover:bg-orange-500 min-w-[110px] flex-1 md:flex-none"
+                      onClick={() => {
+                        setSectionsRead(prev => { const n = [...prev]; n[activeSectionIdx] = false; return n; });
+                        setActiveSectionIdx(s => Math.min(handbookSections.length - 1, s + 1));
+                      }}
+                    >
+                      Skip Chapter
+                    </Button>
+                  </div>
+                </div>
+
+                {/* Global Actions Row */}
+                <div className="flex items-center justify-center md:justify-end gap-3 pt-2 border-t border-blue-900/50">
+                  <Button variant="ghost" className="text-blue-400 hover:text-blue-300 hover:bg-blue-900/50 h-8 text-sm" onClick={saveHandbookProgress}>
+                    Save Progress
+                  </Button>
+                  <Button className="bg-emerald-600 text-white hover:bg-emerald-500 h-8 text-sm" onClick={confirmHandbook}>
+                    Complete Handbook
+                  </Button>
+                </div>
+              </div>
+            </div>
           </div>
-        </div>
-      </DialogContent>
-      </Dialog>
+        </DialogContent>
+      </Dialog >
 
       {/* Exam Popup Modal */}
-      <Dialog open={examOpen} onOpenChange={setExamOpen}>
-        <DialogContent className="max-w-3xl h-[85vh] overflow-hidden bg-[#4b0082] text-white border border-purple-700 rounded-lg shadow-xl">
-          <DialogHeader>
-            <DialogTitle className="text-white">Training Exam</DialogTitle>
+      < Dialog open={examOpen} onOpenChange={setExamOpen} >
+        <DialogContent className="max-w-3xl w-[95vw] h-[90vh] bg-[#4b0082] text-white border border-purple-700 rounded-lg shadow-xl p-0 flex flex-col overflow-hidden">
+          <DialogHeader className="p-4 border-b border-purple-800 bg-[#3c0068] shrink-0">
+            <div className="flex items-center justify-between w-full">
+              <DialogTitle className="text-white flex items-center gap-2">
+                Training Exam
+                <Popover>
+                  <PopoverTrigger asChild>
+                    <Button variant="ghost" size="icon" className="text-purple-200 hover:text-white hover:bg-purple-800 h-6 w-6">
+                      <HelpCircle className="h-4 w-4" />
+                    </Button>
+                  </PopoverTrigger>
+                  <PopoverContent className="bg-[#2e1065] border-purple-700 text-white w-80">
+                    <div className="space-y-2">
+                      <h4 className="font-medium text-yellow-400">Exam Instructions</h4>
+                      <p className="text-sm text-purple-100">
+                        • There are <strong>50 questions</strong>. You need <strong>75%</strong> to pass.<br />
+                        • Use <strong>Lock Answer</strong> to prevent accidental changes.<br />
+                        • You can pause the exam using <strong>Save & Close</strong>.<br />
+                        • Good luck!
+                      </p>
+                    </div>
+                  </PopoverContent>
+                </Popover>
+              </DialogTitle>
+              <Button className="bg-yellow-400 text-black hover:bg-yellow-500 h-7 text-xs" size="sm" onClick={saveExamForLater}>Save & Close</Button>
+            </div>
           </DialogHeader>
-          <div className="flex items-center justify-between mb-3">
-            <div className="text-sm text-white">Answer all 50 questions (A–E). 75% to pass. Save for Later to pause.</div>
-            <Button className="bg-yellow-400 text-black hover:bg-yellow-500" onClick={saveExamForLater}>Save for Later</Button>
+
+          <div className="p-4 border-b border-purple-800 bg-[#4b0082] shrink-0 space-y-2">
+            <div className="flex justify-between text-sm text-purple-200">
+              <span>Question {examIdx + 1} of {EXAM_QUESTIONS.length}</span>
+              <span>{examProgress}% Completed</span>
+            </div>
+            <Progress value={examProgress} className="h-2 bg-purple-900 [&>div]:bg-yellow-400" />
           </div>
-          <Progress value={examProgress} className="h-2 mb-3 bg-yellow-200 [&>div]:bg-yellow-400" />
-          <div className="space-y-4 h-[64vh] overflow-auto">
-            <Card className="p-4 bg-[#5a189a] text-white border-purple-900">
-              <div className="font-medium mb-2">{examIdx + 1}. {EXAM_QUESTIONS[examIdx].q}</div>
-              <div className="grid gap-2">
+
+          <div className="flex-1 overflow-y-auto p-4 bg-[#5a189a]">
+            <Card className="p-6 bg-[#4b0082] text-white border-purple-900 shadow-lg">
+              <div className="font-medium text-lg mb-6 leading-relaxed">{examIdx + 1}. {EXAM_QUESTIONS[examIdx].q}</div>
+              <div className="flex flex-col gap-3">
                 {EXAM_QUESTIONS[examIdx].options.map((opt, oi) => (
-                  <label key={oi} className="flex items-center gap-2">
-                    <input
-                      type="radio"
-                      name={`q-${examIdx}`}
-                      disabled={lockedAnswers[examIdx]}
-                      checked={examAnswers[examIdx] === oi}
-                      onChange={() => setExamAnswers(prev => { const n = [...prev]; n[examIdx] = oi; return n; })}
-                    />
-                    <span>{String.fromCharCode(65 + oi)}. {opt}</span>
+                  <label key={oi} className={`flex items-start gap-3 p-3 rounded-lg border cursor-pointer transition-colors ${examAnswers[examIdx] === oi ? 'bg-purple-600 border-yellow-400' : 'bg-purple-900/50 border-purple-800 hover:bg-purple-800'}`}>
+                    <div className="pt-0.5">
+                      <input
+                        type="radio"
+                        name={`q-${examIdx}`}
+                        disabled={lockedAnswers[examIdx]}
+                        checked={examAnswers[examIdx] === oi}
+                        onChange={() => setExamAnswers(prev => { const n = [...prev]; n[examIdx] = oi; return n; })}
+                        className="w-4 h-4 accent-yellow-400"
+                      />
+                    </div>
+                    <span className="text-base leading-snug">{String.fromCharCode(65 + oi)}. {opt}</span>
                   </label>
                 ))}
               </div>
             </Card>
           </div>
-          <div className="flex items-center justify-between mt-3 sticky bottom-0 bg-[#4b0082] py-2">
-            <div className="flex gap-2">
-              <Button className="bg-blue-600 text-white hover:bg-blue-700" onClick={() => setExamIdx(i => Math.max(0, i - 1))}>Previous</Button>
-              <Button className="bg-blue-600 text-white hover:bg-blue-700" onClick={() => setExamIdx(i => Math.min(EXAM_QUESTIONS.length - 1, i + 1))}>Next</Button>
-              <Button className="bg-blue-600 text-white hover:bg-blue-700" onClick={() => setLockedAnswers(prev => { const n = [...prev]; n[examIdx] = true; return n; })}>{`Is this your final answer for question number ${examIdx + 1}?`}</Button>
+
+          <div className="shrink-0 p-4 bg-[#3c0068] border-t border-purple-800 flex flex-wrap items-center justify-between gap-3">
+            <div className="flex gap-2 w-full sm:w-auto justify-center">
+              <Button className="bg-blue-600 text-white hover:bg-blue-700 min-w-[80px]" onClick={() => setExamIdx(i => Math.max(0, i - 1))} disabled={examIdx === 0}>Previous</Button>
+              <Button className="bg-blue-600 text-white hover:bg-blue-700 min-w-[80px]" onClick={() => setExamIdx(i => Math.min(EXAM_QUESTIONS.length - 1, i + 1))} disabled={examIdx === EXAM_QUESTIONS.length - 1}>Next</Button>
             </div>
-            <Button className="bg-red-600 text-white hover:bg-red-700" onClick={submitExam}>Submit Exam</Button>
+
+            <div className="flex gap-2 w-full sm:w-auto justify-center">
+              <Button variant="outline" className="border-purple-400 text-purple-200 hover:bg-purple-800 whitespace-nowrap" onClick={() => setLockedAnswers(prev => { const n = [...prev]; n[examIdx] = true; return n; })}>Lock Answer</Button>
+              <Button className="bg-red-600 text-white hover:bg-red-700 whitespace-nowrap" onClick={submitExam}>Submit Exam</Button>
+            </div>
           </div>
         </DialogContent>
-      </Dialog>
+      </Dialog >
 
       {/* Schedule Confirmation Modal */}
-      <Dialog open={scheduleConfirmOpen} onOpenChange={setScheduleConfirmOpen}>
+      < Dialog open={scheduleConfirmOpen} onOpenChange={setScheduleConfirmOpen} >
         <DialogContent className="max-w-md">
           <DialogHeader>
             <DialogTitle>Confirm Exam Schedule</DialogTitle>
@@ -510,7 +631,7 @@ export default function OrientationModal({ open, onOpenChange, startExamOnOpen =
                 if (!scheduleDraft) return setScheduleConfirmOpen(false);
                 const selected = new Date(scheduleDraft);
                 localStorage.setItem(EXAM_SCHEDULE_KEY, selected.toISOString());
-                const reminderAt = new Date(selected.getTime() - 24*60*60*1000);
+                const reminderAt = new Date(selected.getTime() - 24 * 60 * 60 * 1000);
                 pushAdminAlert('exam_scheduled' as any, `Exam scheduled for ${employeeName} on ${selected.toLocaleString()}`, employeeName, { recordType: 'Employee Training', when: selected.toISOString() });
                 pushAdminAlert('exam_reminder' as any, `Reminder: Exam in 24 hours for ${employeeName}`, employeeName, { recordType: 'Employee Training', when: reminderAt.toISOString() });
                 setScheduleConfirmOpen(false);
@@ -519,7 +640,7 @@ export default function OrientationModal({ open, onOpenChange, startExamOnOpen =
             </div>
           </div>
         </DialogContent>
-      </Dialog>
-    </Dialog>
+      </Dialog >
+    </Dialog >
   );
 }
